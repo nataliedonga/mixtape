@@ -1,9 +1,11 @@
 // Mixtape offline cache. Bump VERSION whenever app files change so installed copies pick up the new version.
-const VERSION = 'mixtape-v69';
+const VERSION = 'mixtape-v70';
 const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', './dsp-worker.js', './dsp-shared.js', './midi.js', './long-mp3.js', './media-cut.js', './vendor/mediabunny/mediabunny.min.mjs', './lofi-worklet.js', './vendor/tone/Tone.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './cutter/', './cutter/index.html', './cutter/app.js', './cutter/engine.js', './cutter/model.js', './cutter/h264.js', './cutter/style.css', './cutter/host-mixtape.js', './cutter/olddecode.js', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.wasm',
   './lyrics-core.js', './lyrics.js', './lyrics.css', './asr-worker.js', './speaker-worker.js',
-  './transcript-core.js', './transcribe/', './transcribe/index.html', './transcribe/app.js', './transcribe/style.css'];
+  './transcript-core.js', './transcribe/', './transcribe/index.html', './transcribe/app.js', './transcribe/style.css',
+  './reader/', './reader/index.html', './reader/app.js', './reader/style.css', './vendor/embedpdf/embedpdf.js', './vendor/embedpdf/embedpdf-cl9qiF45.js', './vendor/embedpdf/browser-BKLM0ThC-BCLQGPD6.js', './vendor/embedpdf/direct-engine-DVLMOJWp.js', './vendor/embedpdf/worker-engine-BCCrxWYm.js', './vendor/embedpdf/pdfium.wasm',
+  './vendor/embedpdf/fonts/NotoSans-Regular.ttf', './vendor/embedpdf/fonts/NotoSans-Bold.ttf', './vendor/embedpdf/fonts/NotoSans-Italic.ttf', './vendor/embedpdf/fonts/NotoSans-BoldItalic.ttf'];
 // The AI stem splitter is large and changes rarely, so it lives in its own caches that app updates don't clear.
 const STEMS_RUNTIME = 'mixtape-stems-runtime-v1';   // ONNX Runtime + splitter code, saved on first use
 const LYRICS_RUNTIME = 'mixtape-lyrics-runtime-v1'; // the lyrics recogniser's runtime (transformers.js + ONNX Runtime), saved on first use
@@ -58,7 +60,7 @@ self.addEventListener('fetch', e => {
   // answers with an error (a 404 after the GitHub account was renamed left the installed app showing "not found"
   // although its saved copy, and the songs, were still on the phone).
   if (req.mode === 'navigate') {
-    const key = path.endsWith('studio.html') ? './studio.html' : path.includes('/cutter/') ? './cutter/index.html' : path.includes('/transcribe/') ? './transcribe/index.html' : './index.html'; // offline, each page falls back to itself
+    const key = path.endsWith('studio.html') ? './studio.html' : path.includes('/cutter/') ? './cutter/index.html' : path.includes('/transcribe/') ? './transcribe/index.html' : path.includes('/reader/') ? './reader/index.html' : './index.html'; // offline, each page falls back to itself
     e.respondWith(fetch(req).then(async r => {
       if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(key, copy)); return r; }
       return (await caches.match(key)) || r;

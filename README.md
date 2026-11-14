@@ -11,6 +11,7 @@ An offline music player for your own songs, with a studio for mixing, scoring to
 - **Player:** your own song files, saved on your device and never uploaded. Queue, playlists, favourites, search, shuffle and repeat, sleep timer, speed, lock-screen controls. Reads title, artist, album and cover art from MP3 tags.
 - **Studio:** cut and arrange parts on a timeline, mix with per-track EQ, compression, sends and groups, drum machine, MIDI and synthesised instruments, and an orchestra of CC0 samples.
 - **Scoring to picture:** a picture track, hit points, a tempo map that fits the cuts, and finished mixes delivered to broadcast and streaming loudness standards (EBU R128, -23 LUFS).
+- **Reader:** open a PDF to read it, mark it up, fill in its forms and sign it, then save back into the same file.
 - **Lyrics and transcripts:** speech recognition runs in the browser (Whisper through transformers.js) to time lyrics line by line, transcribe interviews, find the speakers, and match a read script to its recording word by word.
 
 Everything runs on the device. The only exception is an optional AI check of a transcript, which is switched off for anything marked sensitive.
@@ -48,5 +49,19 @@ Rules: `lyrics-core.js` (checked by `node lyrics-check.cjs`); screens: `lyrics.j
 - Save as text with timestamps, plain text, .srt, .vtt, or words with times (.json).
 
 Rules: `transcript-core.js` (checked by `node transcript-check.cjs`); screen: `transcribe/`. Same recogniser as the lyrics.
+
+## Reader
+
+**Reader** (top bar): PDFs, read and marked up on this computer. The document is never uploaded.
+
+- Open with **Open…** (Ctrl+O), by dropping a PDF on the page, from **Recent** (the last 20 documents you opened, found again where they were), or, in the installed app, by opening a `.pdf` with Mixtape.
+- Several documents at once, each in its own tab.
+- **Annotate**: highlight, underline, strike out, squiggly, notes, free text, drawing. **Shapes**: boxes, circles, lines, arrows, polygons. **Insert**: images and stamps. **Form**: fill in a PDF's form fields, and sign.
+- **Save** (Ctrl+S) writes the changes into the same file; **Save a copy…** (Ctrl+Shift+S) asks where. The title bar shows *unsaved changes* until you save, and closing with changes unsaved asks first. Password-protected and permission-protected PDFs keep their protection when saved.
+- Built on EmbedPDF 2.15.1 (MIT) running PDFium (BSD/Apache-2.0) in WebAssembly, with Noto Sans (OFL) for text in scripts a PDF does not carry a font for; all in `vendor/embedpdf/`, nothing is fetched from the internet.
+
+Coming next: Word, text, Markdown and ebooks; page tools; redaction with a check; reading scanned pages (OCR); read-along with a recording.
+
+Screen: `reader/`.
 
 **Where it lives:** this repository is carried inside screenwright as `apps/mixtape` and served there at `/studio/mixtape/` (behind staff sign-in). Pushing to `main` still publishes the phone version on GitHub Pages. Edit it in `screenwright/apps/mixtape`.
