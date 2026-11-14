@@ -199,3 +199,4 @@ select { background: var(--panel-2); border: 1px solid var(--line-2); border-rad
 
 .files h2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .files h2 .sm { text-transform: none; letter-spacing: 0; }
+.joinopt { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--dim); font-size: 13px; cursor: pointer; }

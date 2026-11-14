@@ -17,7 +17,7 @@ const S = Object.assign({ mode: 'keep', out: 'each', prec: 'exact', tracks: 'bot
 // 2026-11: the jump became 3 seconds by default (one frame was too small to be useful); moved over once, then your choice stands
 if (S.skipV !== 2) { S.skip = '3'; S.skipV = 2; }
 let destDir = null, targets = [];
-const saveSettings = () => LS.set('cutter:settings', { mode: S.mode, out: S.out, prec: S.prec, tracks: S.tracks, fmt: S.fmt, showKeys: S.showKeys, loop: S.loop, skip: S.skip, skipV: S.skipV, vol: S.vol });
+const saveSettings = () => LS.set('cutter:settings', { clipList: S.clipList, mode: S.mode, out: S.out, prec: S.prec, tracks: S.tracks, fmt: S.fmt, showKeys: S.showKeys, loop: S.loop, skip: S.skip, skipV: S.skipV, vol: S.vol });
 const dur = () => cur?.media?.duration || 0, fps = () => cur?.media?.fps || null;
 const step = () => fps() ? 1 / fps() : 0.01;
 
@@ -454,7 +454,7 @@ $('#exportBtn').addEventListener('click', () => {
 /* ---------- join files ---------- */
 $('#joinBtn').addEventListener('click', () => {
   const ok = files.filter(f => f.state === 'ok'); if (ok.length < 2) return; let order = ok.map(f => ({ f, on: true }));
-  const sh = openSheet(`<h3>Join files</h3><p class="lead">The files are joined end to end into one, in this order. The precision, tracks and format below the timeline apply.</p><div class="jointools"><button class="sm" id="jSort" title="Put them in name order: 1, 2, 10 rather than 1, 10, 2">Sort by name</button><button class="sm" id="jAll">Tick all</button><button class="sm" id="jNone">Tick none</button><span class="sp"></span><span class="d" id="jSum"></span></div><div class="joinlist" id="jl"></div><div class="warnline" id="jw" hidden></div><div class="acts"><button id="jClose">Close</button><span class="sp"></span><button class="primary" id="jGo">Join</button></div>`);
+  const sh = openSheet(`<h3>Join files</h3><p class="lead">The files are joined end to end into one, in this order. The precision, tracks and format below the timeline apply.</p><div class="jointools"><button class="sm" id="jSort" title="Put them in name order: 1, 2, 10 rather than 1, 10, 2">Sort by name</button><button class="sm" id="jAll">Tick all</button><button class="sm" id="jNone">Tick none</button><span class="sp"></span><span class="d" id="jSum"></span></div><div class="joinlist" id="jl"></div><div class="warnline" id="jw" hidden></div><label class="joinopt" title="A small text file saved beside the joined file: the start, end and name of every clip, so a moment in the joined file can be traced to its clip"><input type="checkbox" id="jList" ${S.clipList !== false ? 'checked' : ''}> Also save a clip list (where each clip begins)</label><div class="acts"><button id="jClose">Close</button><span class="sp"></span><button class="primary" id="jGo">Join</button></div>`);
   const draw = () => {
     const jl = sh.querySelector('#jl'), top = jl.scrollTop; // a long list stays where it was scrolled to
     jl.innerHTML = order.map((o, i) => `<div class="joinrow"><input type="checkbox" data-c="${i}" ${o.on ? 'checked' : ''} aria-label="Include ${esc(o.f.media.file.name)}"><div><div>${esc(o.f.media.file.name)}</div><div class="d">${C.fmtTime(o.f.media.duration, o.f.media.fps)} · ${o.f.media.v ? `${o.f.media.video.w}×${o.f.media.video.h} ${o.f.media.video.codec.toUpperCase()}` : o.f.media.audio.codec.toUpperCase()}</div></div><button class="sm" data-u="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Earlier">↑</button><button class="sm" data-d="${i}" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Later">↓</button></div>`).join('');
@@ -470,11 +470,12 @@ $('#joinBtn').addEventListener('click', () => {
   draw();
   sh.querySelector('#jl').addEventListener('click', e => { const u = e.target.dataset.u, d = e.target.dataset.d, c = e.target.dataset.c; if (u != null) { const i = +u; [order[i - 1], order[i]] = [order[i], order[i - 1]]; draw(); } else if (d != null) { const i = +d; [order[i + 1], order[i]] = [order[i], order[i + 1]]; draw(); } else if (c != null) { order[+c].on = e.target.checked; draw(); } });
   sh.querySelector('#jClose').addEventListener('click', closeSheet);
+  sh.querySelector('#jList').addEventListener('change', e => { S.clipList = e.target.checked; saveSettings(); });
   sh.querySelector('#jGo').addEventListener('click', () => {
     const sel = order.filter(o => o.on).map(o => o.f.media), anyV = sel.some(m => m.v), allV = sel.every(m => m.v);
     let tracks = S.tracks; if (!allV) tracks = 'audio'; if (anyV && !allV && S.tracks !== 'audio') { toast('Some files have no picture: joining their sound only.', 5000); }
     const prec = S.prec === 'copy' && sameTracks(sel) ? 'copy' : 'exact', base = sel[0].name;
-    closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` }, clips: sel.map(m => ({ name: m.file.name, length: m.duration })) }], 'Joining files');
+    closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` }, clips: S.clipList !== false ? sel.map(m => ({ name: m.file.name, length: m.duration })) : null }], 'Joining files');
   });
 });
 
