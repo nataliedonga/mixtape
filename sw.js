@@ -1,5 +1,5 @@
 // Mixtape offline cache. Bump VERSION whenever app files change so installed copies pick up the new version.
-const VERSION = 'mixtape-v63';
+const VERSION = 'mixtape-v66';
 const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', './dsp-worker.js', './dsp-shared.js', './midi.js', './long-mp3.js', './media-cut.js', './vendor/mediabunny/mediabunny.min.mjs', './lofi-worklet.js', './vendor/tone/Tone.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './cutter/', './cutter/index.html', './cutter/app.js', './cutter/engine.js', './cutter/model.js', './cutter/h264.js', './cutter/style.css', './cutter/host-mixtape.js', './cutter/olddecode.js', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.wasm',
   './lyrics-core.js', './lyrics.js', './lyrics.css', './asr-worker.js', './speaker-worker.js',
@@ -54,11 +54,15 @@ self.addEventListener('fetch', e => {
     }));
     return;
   }
-  // Pages: try the network for updates, fall back to the saved copy of that same page offline.
+  // Pages: try the network for updates, fall back to the saved copy of that same page offline — and also when the site
+  // answers with an error (a 404 after the GitHub account was renamed left the installed app showing "not found"
+  // although its saved copy, and the songs, were still on the phone).
   if (req.mode === 'navigate') {
     const key = path.endsWith('studio.html') ? './studio.html' : path.includes('/cutter/') ? './cutter/index.html' : path.includes('/transcribe/') ? './transcribe/index.html' : './index.html'; // offline, each page falls back to itself
-    e.respondWith(fetch(req).then(r => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(key, copy)); } return r; })
-      .catch(() => caches.match(key)));
+    e.respondWith(fetch(req).then(async r => {
+      if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(key, copy)); return r; }
+      return (await caches.match(key)) || r;
+    }).catch(() => caches.match(key)));
     return;
   }
   e.respondWith(caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req)));
