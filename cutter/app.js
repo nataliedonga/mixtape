@@ -423,6 +423,10 @@ async function startExport(jobsIn, title) {
       const lk = row.querySelector('.lk'); lk.hidden = false; lk.innerHTML = '<button class="sm" data-open>Open it here to check</button>' + (host ? `<button class="sm" data-lib>Add to my ${esc(host.name)} library</button>` : '');
       if (host) lk.querySelector('[data-lib]').addEventListener('click', async ev => { const b = ev.currentTarget; b.disabled = true; b.textContent = 'Adding…'; try { await host.addToLibrary(res.file, saved.name, { duration: res.length, video: !!j.spec.ranges[0].media.v && (j.spec.tracks || 'both') !== 'audio' && !(TARGET_SOUND[j.spec.format]) }); b.textContent = `In your ${host.name} library ✓`; } catch (err) { b.disabled = false; b.textContent = `Add to my ${host.name} library`; toast(`Could not add it: ${err.message || err}`, 6000); } });
       lk.querySelector('[data-open]').addEventListener('click', () => { closeSheet(); openFiles([new File([res.file], saved.name, { type: res.file.type, lastModified: Date.now() })], { show: true }); });
+      if (j.clips) { // joined files: a list of where each one begins, saved beside the joined file
+        try { const listName = saved.name.replace(/\.[a-z0-9]+$/i, '') + ' (clip list).txt', ls = await saveFile(new File([clipList(saved.name, j.clips)], listName, { type: 'text/plain' }), listName); st.innerHTML += ` <span style="color:var(--faint)">· where each clip begins: “${esc(ls.name)}”</span>`; window.__lastClipList = clipList(saved.name, j.clips); }
+        catch (err) { st.innerHTML += ' <span style="color:var(--warn)">· the clip list could not be saved</span>'; }
+      }
       ok++; window.__lastExport = res;
     } catch (e) {
       row.classList.add('fail'); st.textContent = e.cancelled || ac.signal.aborted ? 'Cancelled' : `Could not write this one: ${e.message || e}`; if (!e.cancelled && !ac.signal.aborted) console.error(e);
@@ -430,6 +434,12 @@ async function startExport(jobsIn, title) {
   }
   exporting = null; const c = sh.querySelector('#exCancel'); c.textContent = 'Close'; c.classList.add('primary');
   if (ok) toast(`${ok} file${ok === 1 ? '' : 's'} saved.`);
+}
+// Where each joined clip begins and ends in the joined file, as plain text with tabs (opens in Notepad, Excel, Sheets)
+const stamp = t => { const ms = Math.round(t * 1000), p = (n, w = 2) => String(n).padStart(w, '0'); return `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)}.${p(ms % 1000, 3)}`; };
+function clipList(joinedName, clips) {
+  let t = 0; const rows = clips.map((c, i) => { const a = t; t += c.length; return [i + 1, stamp(a), stamp(t), c.length.toFixed(3), c.name].join('\t'); });
+  return [`Clip list for “${joinedName}”`, `${clips.length} clips, ${stamp(t)} in all. Times are hours:minutes:seconds.thousandths from the start of the joined file.`, '', ['No.', 'Starts', 'Ends', 'Seconds', 'Clip'].join('\t'), ...rows, ''].join('\r\n');
 }
 function specBase() { return { precision: S.prec, tracks: S.tracksNow || S.tracks, format: S.fmt }; }
 $('#exportBtn').addEventListener('click', () => {
@@ -464,7 +474,7 @@ $('#joinBtn').addEventListener('click', () => {
     const sel = order.filter(o => o.on).map(o => o.f.media), anyV = sel.some(m => m.v), allV = sel.every(m => m.v);
     let tracks = S.tracks; if (!allV) tracks = 'audio'; if (anyV && !allV && S.tracks !== 'audio') { toast('Some files have no picture: joining their sound only.', 5000); }
     const prec = S.prec === 'copy' && sameTracks(sel) ? 'copy' : 'exact', base = sel[0].name;
-    closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` } }], 'Joining files');
+    closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` }, clips: sel.map(m => ({ name: m.file.name, length: m.duration })) }], 'Joining files');
   });
 });
 
