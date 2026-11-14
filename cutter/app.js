@@ -13,9 +13,11 @@ let toastT = 0; function toast(msg, ms = 3200) { const t = $('#toast'); t.textCo
 /* ---------- state ---------- */
 const files = [];            // { id, media, state, error, parts, undo, redo, peaks, detail, keys }
 let cur = null, sel = null, ph = 0, view = { t0: 0, t1: 1 };
-const S = Object.assign({ mode: 'keep', out: 'each', prec: 'exact', tracks: 'both', fmt: 'same', showKeys: true, loop: false, skip: 'frame' }, LS.get('cutter:settings', {}));
+const S = Object.assign({ mode: 'keep', out: 'each', prec: 'exact', tracks: 'both', fmt: 'same', showKeys: true, loop: false, skip: '3' }, LS.get('cutter:settings', {}));
+// 2026-11: the jump became 3 seconds by default (one frame was too small to be useful); moved over once, then your choice stands
+if (S.skipV !== 2) { S.skip = '3'; S.skipV = 2; }
 let destDir = null, targets = [];
-const saveSettings = () => LS.set('cutter:settings', { mode: S.mode, out: S.out, prec: S.prec, tracks: S.tracks, fmt: S.fmt, showKeys: S.showKeys, loop: S.loop, skip: S.skip, vol: S.vol });
+const saveSettings = () => LS.set('cutter:settings', { mode: S.mode, out: S.out, prec: S.prec, tracks: S.tracks, fmt: S.fmt, showKeys: S.showKeys, loop: S.loop, skip: S.skip, skipV: S.skipV, vol: S.vol });
 const dur = () => cur?.media?.duration || 0, fps = () => cur?.media?.fps || null;
 const step = () => fps() ? 1 / fps() : 0.01;
 
@@ -528,7 +530,7 @@ $('#helpBtn').addEventListener('click', help);
 function help() {
   const sh = openSheet(`<h3>Keys and tips</h3><div class="keys">
     <kbd>Space</kbd><span>Play / pause</span><kbd>P</kbd><span>Play the selected part</span>
-    <kbd>Tab</kbd><span>Play / pause from anywhere, even while typing a time or a name</span><kbd>Shift Tab</kbd><span>Back 5 seconds</span>
+    <kbd>Tab</kbd><span>Play / pause from anywhere, even while typing a time or a name</span><kbd>Shift Tab</kbd><span>Back 3 seconds</span>
     <kbd>← →</kbd><span>Back / forward by the Step chosen beside ◀ ▶ (Shift: one frame; Ctrl: ten seconds)</span><kbd>[ ]</kbd><span>Previous / next keyframe</span>
     <kbd>L</kbd><span>Loop the selected part (or the whole file) on or off</span>
     <kbd>Home End</kbd><span>Start / end of the file</span><kbd>N</kbd><span>A new part at the playhead</span>
@@ -547,9 +549,9 @@ function help() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (menuEl) closeMenu(); else if (!$('#sheet').hidden) closeSheet(); return; }
   // Tab plays and pauses from anywhere, even while typing a time or a name, as in Transcripts; Shift + Tab goes back
-  // 5 seconds (it keeps playing if it was). Inside a sheet or a menu Tab still moves between its controls.
+  // 3 seconds (it keeps playing if it was). Inside a sheet or a menu Tab still moves between its controls.
   if (e.key === 'Tab' && cur && $('#sheet').hidden && !menuEl && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    e.preventDefault(); if (e.shiftKey) { movePH(ph - 5); revealT(ph); } else togglePlay(); return;
+    e.preventDefault(); if (e.shiftKey) { movePH(ph - 3); revealT(ph); } else togglePlay(); return;
   }
   const tag = e.target.tagName; if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || !$('#sheet').hidden) return;
   if (e.key === '?') { help(); e.preventDefault(); return; }
