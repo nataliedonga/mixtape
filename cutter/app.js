@@ -80,8 +80,14 @@ function loadPeaks(entry) {
   const m = entry.media, n = Math.min(30000, Math.max(1500, Math.round(m.duration * 25)));
   let last = 0; m.peaks(n, 0, m.duration, p => { entry.peaks = p; if (entry === cur && performance.now() - last > 250) { last = performance.now(); dirty(); drawOverview(); } }).then(p => { if (p) { entry.peaks = p; if (entry === cur) { dirty(); drawOverview(); } } });
 }
+// Close all asks once more before it does it: the button changes to "Close all 120?" for a few seconds
+let closeArmT = 0; function armClose(on) { const b = $('#closeAll'); clearTimeout(closeArmT); b.dataset.armed = on ? '1' : ''; b.textContent = on ? `Close all ${files.length}?` : 'Close all'; if (on) closeArmT = setTimeout(() => armClose(false), 4000); }
+$('#closeAll').addEventListener('click', () => {
+  if (exporting) return; if (!$('#closeAll').dataset.armed) return armClose(true);
+  player.stop(); for (const f of files.splice(0)) forget(f.id); cur = null; select(null); renderFiles(); toast('All files closed. Parts you marked come back when a file is opened again.', 5000);
+});
 function renderFiles() {
-  const el = $('#fileList'); $('#filesHint').hidden = files.length > 0; $('#joinBtn').disabled = files.filter(f => f.state === 'ok').length < 2;
+  const el = $('#fileList'); $('#filesHint').hidden = files.length > 0; $('#closeAll').hidden = files.length < 2; if (files.length < 2) armClose(false); $('#joinBtn').disabled = files.filter(f => f.state === 'ok').length < 2;
   el.innerHTML = files.map((f, i) => `<div class="fi${f === cur ? ' on' : ''}" data-i="${i}" title="${esc(f.media.file.name)}"><span class="k">${f.state === 'ok' ? (f.media.v ? '▣' : '♪') : f.state === 'error' ? '!' : '…'}</span><span class="n">${esc(f.media.file.name)}</span><button class="x" data-x="${i}" title="Close this file" aria-label="Close ${esc(f.media.file.name)}">✕</button>${f.state === 'ok' ? `<span class="d">${C.fmtTime(f.media.duration, f.media.fps)}</span>` : f.state === 'error' ? `<span class="err">${esc(f.error)}</span>` : `<span class="d">${esc(f.note || 'opening…')}</span>`}</div>`).join('');
 }
 $('#fileList').addEventListener('click', e => {
@@ -438,14 +444,19 @@ $('#exportBtn').addEventListener('click', () => {
 /* ---------- join files ---------- */
 $('#joinBtn').addEventListener('click', () => {
   const ok = files.filter(f => f.state === 'ok'); if (ok.length < 2) return; let order = ok.map(f => ({ f, on: true }));
-  const sh = openSheet(`<h3>Join files</h3><p class="lead">The files are joined end to end into one, in this order. The precision, tracks and format below the timeline apply.</p><div class="joinlist" id="jl"></div><div class="warnline" id="jw" hidden></div><div class="acts"><button id="jClose">Close</button><span class="sp"></span><button class="primary" id="jGo">Join</button></div>`);
+  const sh = openSheet(`<h3>Join files</h3><p class="lead">The files are joined end to end into one, in this order. The precision, tracks and format below the timeline apply.</p><div class="jointools"><button class="sm" id="jSort" title="Put them in name order: 1, 2, 10 rather than 1, 10, 2">Sort by name</button><button class="sm" id="jAll">Tick all</button><button class="sm" id="jNone">Tick none</button><span class="sp"></span><span class="d" id="jSum"></span></div><div class="joinlist" id="jl"></div><div class="warnline" id="jw" hidden></div><div class="acts"><button id="jClose">Close</button><span class="sp"></span><button class="primary" id="jGo">Join</button></div>`);
   const draw = () => {
-    sh.querySelector('#jl').innerHTML = order.map((o, i) => `<div class="joinrow"><input type="checkbox" data-c="${i}" ${o.on ? 'checked' : ''} aria-label="Include ${esc(o.f.media.file.name)}"><div><div>${esc(o.f.media.file.name)}</div><div class="d">${C.fmtTime(o.f.media.duration, o.f.media.fps)} · ${o.f.media.v ? `${o.f.media.video.w}×${o.f.media.video.h} ${o.f.media.video.codec.toUpperCase()}` : o.f.media.audio.codec.toUpperCase()}</div></div><button class="sm" data-u="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Earlier">↑</button><button class="sm" data-d="${i}" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Later">↓</button></div>`).join('');
+    const jl = sh.querySelector('#jl'), top = jl.scrollTop; // a long list stays where it was scrolled to
+    jl.innerHTML = order.map((o, i) => `<div class="joinrow"><input type="checkbox" data-c="${i}" ${o.on ? 'checked' : ''} aria-label="Include ${esc(o.f.media.file.name)}"><div><div>${esc(o.f.media.file.name)}</div><div class="d">${C.fmtTime(o.f.media.duration, o.f.media.fps)} · ${o.f.media.v ? `${o.f.media.video.w}×${o.f.media.video.h} ${o.f.media.video.codec.toUpperCase()}` : o.f.media.audio.codec.toUpperCase()}</div></div><button class="sm" data-u="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Earlier">↑</button><button class="sm" data-d="${i}" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Later">↓</button></div>`).join('');
     const sel = order.filter(o => o.on).map(o => o.f.media), w = sh.querySelector('#jw'), mixed = sel.some(m => !!m.v) !== sel.every(m => !!m.v);
     w.hidden = !(sel.length >= 2 && (mixed || (S.prec === 'copy' && S.fmt === 'same' && !sameTracks(sel))));
     w.textContent = mixed ? 'Some of these have a picture and some do not; only their sound can be joined (choose “Sound only”).' : 'These files differ in format or settings, so they cannot be joined untouched; they will be joined exactly (re-encoded where needed).';
-    sh.querySelector('#jGo').disabled = sel.length < 2;
+    sh.querySelector('#jGo').disabled = sel.length < 2; jl.scrollTop = top;
+    sh.querySelector('#jSum').textContent = `${sel.length} of ${order.length} files · ${C.fmtLength(sel.reduce((t, m) => t + m.duration, 0))}`;
   };
+  sh.querySelector('#jSort').addEventListener('click', () => { order.sort((a, b) => a.f.media.file.name.localeCompare(b.f.media.file.name, undefined, { numeric: true, sensitivity: 'base' })); draw(); });
+  sh.querySelector('#jAll').addEventListener('click', () => { order.forEach(o => { o.on = true; }); draw(); });
+  sh.querySelector('#jNone').addEventListener('click', () => { order.forEach(o => { o.on = false; }); draw(); });
   draw();
   sh.querySelector('#jl').addEventListener('click', e => { const u = e.target.dataset.u, d = e.target.dataset.d, c = e.target.dataset.c; if (u != null) { const i = +u; [order[i - 1], order[i]] = [order[i], order[i - 1]]; draw(); } else if (d != null) { const i = +d; [order[i + 1], order[i]] = [order[i], order[i + 1]]; draw(); } else if (c != null) { order[+c].on = e.target.checked; draw(); } });
   sh.querySelector('#jClose').addEventListener('click', closeSheet);

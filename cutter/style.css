@@ -144,7 +144,10 @@ select { background: var(--panel-2); border: 1px solid var(--line-2); border-rad
 .jobrow .lk { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .keys { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; font-size: 13.5px; }
 .keys kbd { font: 12px var(--f-mono); background: var(--mat); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
-.joinlist { display: flex; flex-direction: column; gap: 6px; }
+.joinlist { display: flex; flex-direction: column; gap: 6px; max-height: min(50vh, 460px); overflow: auto; padding-right: 4px; } /* the list scrolls; Join stays in reach below it */
+.jointools { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.jointools .d { font: 11.5px var(--f-mono); color: var(--faint); }
+.jointools .sp { flex: 1; }
 .joinrow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; }
 .joinrow .d { font: 11.5px var(--f-mono); color: var(--faint); }
 .warnline { color: var(--warn); font-size: 13px; margin-top: 10px; }
@@ -193,3 +196,6 @@ select { background: var(--panel-2); border: 1px solid var(--line-2); border-rad
 .transport .volsel { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 13px; }
 .transport .volsel input { width: 90px; accent-color: var(--accent); }
 .transport .volsel span { min-width: 3.2em; font-variant-numeric: tabular-nums; }
+
+.files h2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.files h2 .sm { text-transform: none; letter-spacing: 0; }
