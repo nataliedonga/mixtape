@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- The browser itself refuses every connection except to this app's own files: a document cannot make this page fetch or send anything. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; connect-src 'self' blob: data:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Reader · Mixtape</title>
 <meta name="theme-color" content="#F7F1E8" media="(prefers-color-scheme: light)">
@@ -18,8 +20,10 @@
   <span class="state" id="state" aria-live="polite"></span>
   <button class="btn" id="recentBtn" title="Documents you opened before">Recent ▾</button>
   <button class="btn" id="openBtn" title="Open a PDF from this computer (Ctrl+O)">Open…</button>
+  <label class="auto" title="Every change is saved into the file as you make it. Undo (Ctrl+Z) takes a change back, and that is saved too. Switch off to save only when you press Save."><input type="checkbox" id="autoChk" checked> Save as I go</label>
+  <button class="btn" id="revertBtn" title="Put the file back exactly as it was when you opened it here, undoing everything since" disabled>Back to original</button>
   <button class="btn" id="saveAsBtn" title="Save a copy under another name or place (Ctrl+Shift+S)" disabled>Save a copy…</button>
-  <button class="btn primary" id="saveBtn" title="Save your changes into the file (Ctrl+S)" disabled>Save</button>
+  <button class="btn primary" id="saveBtn" title="Save now (Ctrl+S)" disabled>Save</button>
   <input type="file" id="fileIn" accept=".pdf,application/pdf" multiple hidden>
 </header>
 <main class="stage">
@@ -27,7 +31,7 @@
   <div class="empty" id="empty">
     <div class="card">
       <h1>Open a PDF to read it, mark it up, fill it in or sign it.</h1>
-      <p>Highlight, underline, strike out, add notes, draw, add shapes and stamps, fill forms and sign. Then save it back into the same file.</p>
+      <p>Highlight, underline, strike out, add notes, draw, add shapes and stamps, fill forms and sign. Every change is saved into the same file as you make it; Undo takes it back, and <b>Back to original</b> restores the file as you opened it.</p>
       <p class="quiet">Everything happens here on this computer: the document is never uploaded.</p>
       <div class="row"><button class="btn primary" id="openBtn2">Open a PDF…</button></div>
       <p class="quiet" id="dropHint">Or drop a PDF anywhere on this page.</p>
