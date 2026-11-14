@@ -185,7 +185,7 @@ export class Player {
      scheduled back to back on the audio clock, so a loop runs without a gap (no stop and start at each turn). */
   async play(media, from, to = media.duration, loop = null) {
     this.stop(); const run = ++this.run; this.media = media;
-    this.ctx ||= new AudioContext(); if (!this.gain) { this.gain = this.ctx.createGain(); this.gain.connect(this.ctx.destination); }
+    this.ctx ||= new AudioContext(); if (!this.gain) { this.gain = this.ctx.createGain(); this.gain.connect(this.ctx.destination); } this.gain.gain.value = this.vol ?? 1;
     await this.ctx.resume(); if (run !== this.run) return;
     this.loop = loop && loop.b - loop.a > 0.02 ? { a: loop.a, b: Math.min(loop.b, media.duration) } : null;
     this.rate = 1; this.from = from; this.to = this.loop ? this.loop.b : Math.min(to, media.duration); this.ctxStart = this.ctx.currentTime + 0.1; this.playing = true;
@@ -233,6 +233,8 @@ export class Player {
     const tick = () => { if (!live()) return; const t = this.time; if (!this.loop && t >= this.to - EPS) { this.at = this.to; this.stop(); this.onTime(this.to); this.onEnd && this.onEnd(); return; } this.onTime(t); requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
   }
+  // listening volume, 0 to 1 (playback only: exports are never touched); changes at once, even mid-play
+  setVolume(v) { this.vol = Math.max(0, Math.min(1, v)); if (this.gain) this.gain.gain.setTargetAtTime(this.vol, this.ctx.currentTime, 0.02); }
   stop() { if (this.playing) this.at = Math.min(this.to, this.time); this.run++; this.playing = false; for (const n of this.nodes) { try { n.stop(); } catch (e) {} } this.nodes.clear(); }
 }
 

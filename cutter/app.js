@@ -15,7 +15,7 @@ const files = [];            // { id, media, state, error, parts, undo, redo, pe
 let cur = null, sel = null, ph = 0, view = { t0: 0, t1: 1 };
 const S = Object.assign({ mode: 'keep', out: 'each', prec: 'exact', tracks: 'both', fmt: 'same', showKeys: true, loop: false, skip: 'frame' }, LS.get('cutter:settings', {}));
 let destDir = null, targets = [];
-const saveSettings = () => LS.set('cutter:settings', { mode: S.mode, out: S.out, prec: S.prec, tracks: S.tracks, fmt: S.fmt, showKeys: S.showKeys, loop: S.loop, skip: S.skip });
+const saveSettings = () => LS.set('cutter:settings', { mode: S.mode, out: S.out, prec: S.prec, tracks: S.tracks, fmt: S.fmt, showKeys: S.showKeys, loop: S.loop, skip: S.skip, vol: S.vol });
 const dur = () => cur?.media?.duration || 0, fps = () => cur?.media?.fps || null;
 const step = () => fps() ? 1 / fps() : 0.01;
 
@@ -212,6 +212,11 @@ $('#tEnd').addEventListener('click', () => { movePH(dur()); revealT(dur()); });
 $('#tBack').addEventListener('click', e => nudge(-1, e));
 $('#tFwd').addEventListener('click', e => nudge(1, e));
 showStep(); $('#tLoop').setAttribute('aria-pressed', S.loop);
+/* Volume (↑ ↓, or the slider): how loud playback is here; the files you export are never changed by it */
+function setVol(v, say) { S.vol = Math.round(Math.max(0, Math.min(100, v)) / 5) * 5; player.setVolume(S.vol / 100); $('#volSl').value = S.vol; $('#volN').textContent = `${S.vol}%`; saveSettings(); if (say) toast(S.vol ? `Volume ${S.vol}%` : 'Volume off', 1200); }
+$('#volSl').addEventListener('input', e => setVol(+e.target.value, false));
+$('#volSl').addEventListener('change', e => e.target.blur());
+setVol(S.vol ?? 100, false);
 // buttons do not keep focus: Space must reach the player, not press the last button again
 document.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.closest('.sheet')) b.blur(); });
 
@@ -523,11 +528,12 @@ $('#helpBtn').addEventListener('click', help);
 function help() {
   const sh = openSheet(`<h3>Keys and tips</h3><div class="keys">
     <kbd>Space</kbd><span>Play / pause</span><kbd>P</kbd><span>Play the selected part</span>
+    <kbd>Tab</kbd><span>Play / pause from anywhere, even while typing a time or a name</span><kbd>Shift Tab</kbd><span>Back 5 seconds</span>
     <kbd>← →</kbd><span>Back / forward by the Step chosen beside ◀ ▶ (Shift: one frame; Ctrl: ten seconds)</span><kbd>[ ]</kbd><span>Previous / next keyframe</span>
     <kbd>L</kbd><span>Loop the selected part (or the whole file) on or off</span>
     <kbd>Home End</kbd><span>Start / end of the file</span><kbd>N</kbd><span>A new part at the playhead</span>
     <kbd>I O</kbd><span>The selected part starts / ends at the playhead</span><kbd>B</kbd><span>Split the part under the playhead</span>
-    <kbd>↑ ↓</kbd><span>Select the previous / next part</span><kbd>Delete</kbd><span>Remove the selected part</span>
+    <kbd>↑ ↓</kbd><span>Volume up / down (playback only)</span><kbd>Shift ↑ ↓</kbd><span>Select the previous / next part</span><kbd>Delete</kbd><span>Remove the selected part</span>
     <kbd>Ctrl Z</kbd><span>Undo (Ctrl Y or Ctrl Shift Z: redo)</span><kbd>+ − 0</kbd><span>Zoom in / out / whole file</span>
     <kbd>S</kbd><span>Save the frame at the playhead as a picture</span><kbd>E</kbd><span>Export</span></div>
     <p class="lead" style="margin-top:14px"><b>Mouse:</b> drag across the timeline to mark a part; drag a part's edges to change it (they stick to the playhead and to keyframes; hold Alt to stop that); the wheel zooms, Shift + wheel moves along.</p>
@@ -540,6 +546,11 @@ function help() {
 /* ---------- keys ---------- */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (menuEl) closeMenu(); else if (!$('#sheet').hidden) closeSheet(); return; }
+  // Tab plays and pauses from anywhere, even while typing a time or a name, as in Transcripts; Shift + Tab goes back
+  // 5 seconds (it keeps playing if it was). Inside a sheet or a menu Tab still moves between its controls.
+  if (e.key === 'Tab' && cur && $('#sheet').hidden && !menuEl && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    e.preventDefault(); if (e.shiftKey) { movePH(ph - 5); revealT(ph); } else togglePlay(); return;
+  }
   const tag = e.target.tagName; if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || !$('#sheet').hidden) return;
   if (e.key === '?') { help(); e.preventDefault(); return; }
   if (!cur) return; const k = e.key, ctrl = e.ctrlKey || e.metaKey;
@@ -553,8 +564,8 @@ document.addEventListener('keydown', e => {
     i: markStart, o: markEnd, b: splitAtPlayhead, n: newPartAtPlayhead, s: snapshot, e: () => $('#exportBtn').click(),
     p: () => { const q = cur.parts.find(x => x.id === sel); if (q) playRange(q.t0, q.t1); else togglePlay(); },
     Delete: () => { if (sel) commit(C.removePart(cur.parts, sel)); }, Backspace: () => { if (sel) commit(C.removePart(cur.parts, sel)); },
-    ArrowUp: () => { const i = cur.parts.findIndex(x => x.id === sel), q = cur.parts[Math.max(0, i < 0 ? 0 : i - 1)]; if (q) { sel = q.id; markSel(); movePH(q.t0); revealPart(q); rows.get(sel)?.el.scrollIntoView({ block: 'nearest' }); } },
-    ArrowDown: () => { const i = cur.parts.findIndex(x => x.id === sel), q = cur.parts[Math.min(cur.parts.length - 1, i + 1)]; if (q) { sel = q.id; markSel(); movePH(q.t0); revealPart(q); rows.get(sel)?.el.scrollIntoView({ block: 'nearest' }); } },
+    ArrowUp: () => { if (!e.shiftKey) return setVol(S.vol + 10, true); const i = cur.parts.findIndex(x => x.id === sel), q = cur.parts[Math.max(0, i < 0 ? 0 : i - 1)]; if (q) { sel = q.id; markSel(); movePH(q.t0); revealPart(q); rows.get(sel)?.el.scrollIntoView({ block: 'nearest' }); } },
+    ArrowDown: () => { if (!e.shiftKey) return setVol(S.vol - 10, true); const i = cur.parts.findIndex(x => x.id === sel), q = cur.parts[Math.min(cur.parts.length - 1, i + 1)]; if (q) { sel = q.id; markSel(); movePH(q.t0); revealPart(q); rows.get(sel)?.el.scrollIntoView({ block: 'nearest' }); } },
     '+': () => zoomAt(ph, 0.5), '=': () => zoomAt(ph, 0.5), '-': () => zoomAt(ph, 2), '0': () => setView(0, dur()),
   };
   const f = acts[k] || acts[k.toLowerCase()]; if (f) { e.preventDefault(); f(); }
