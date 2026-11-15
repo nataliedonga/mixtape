@@ -239,9 +239,21 @@ export class Player {
 }
 
 /* ---------- where output goes: the browser's private storage, streamed, swept after an hour ---------- */
+/* Removes the Cutter's own working copies of exports: those older than maxAge ms (their names begin with the time they
+   were made), or every one of them with maxAge 0. Run before each export and when the page opens, so the last export of
+   a visit does not stay for good. Only the 'cutter' folder of the private storage is touched. Returns how many went. */
+export async function sweepExports(maxAge = 3600e3) {
+  let n = 0;
+  try {
+    const root = await navigator.storage.getDirectory(), dir = await root.getDirectoryHandle('cutter', { create: true }), now = Date.now(), names = [];
+    for await (const [k, h] of dir.entries()) if (h.kind === 'file') names.push(k);
+    for (const k of names) { const s = parseInt(k.split('-')[0].slice(0, -4), 36); if (!maxAge || (s && now - s > maxAge)) { try { await dir.removeEntry(k); n++; } catch (e) { /* being written by an export in another tab: left */ } } }
+  } catch (e) {}
+  return n;
+}
 async function opfsTarget(name) {
+  await sweepExports();
   const root = await navigator.storage.getDirectory(), dir = await root.getDirectoryHandle('cutter', { create: true }), stamp = Date.now(), fname = `${stamp.toString(36)}${Math.random().toString(36).slice(2, 6)}-${name}`;
-  try { for await (const [k] of dir.entries()) { const s = parseInt(k.split('-')[0].slice(0, -4), 36); if (s && stamp - s > 3600e3) await dir.removeEntry(k).catch(() => {}); } } catch (e) {}
   const fh = await dir.getFileHandle(fname, { create: true }), ws = await fh.createWritable({ keepExistingData: false }); let done; const closed = new Promise(r => { done = r; });
   const target = new M.StreamTarget(new WritableStream({ write: async c => { await ws.write({ type: 'write', position: c.position, data: c.data }); }, close: async () => { await ws.close(); done(); }, abort: async () => { try { await ws.abort(); } catch (e) {} done(); } }), { chunked: true });
   return { target, file: async () => { await closed; return fh.getFile(); }, remove: async () => { try { await dir.removeEntry(fname); } catch (e) {} } };
@@ -338,12 +350,13 @@ class SoundFeeder {
       }
       const s = n.value, sr = s.sampleRate, sch = s.numberOfChannels, buf = new Float32Array(s.numberOfFrames * sch); s.copyTo(buf, { planeIndex: 0, format: 'f32' }); const ts = s.timestamp; s.close();
       const from = Math.max(0, Math.round((r.t0 - ts) * sr)), to = Math.min(buf.length / sch, Math.round((r.t1 - ts) * sr)); if (to <= from) continue;
-      // to the output's rate and channels
-      let frames = to - from, data;
-      if (sr === this.sr && sch === this.ch) data = buf.subarray(from * sch, to * sch);
-      else { const outN = Math.max(0, Math.round(frames * this.sr / sr)); data = new Float32Array(outN * this.ch); for (let i = 0; i < outN; i++) { const x = from + i * sr / this.sr, i0 = Math.floor(x), f = x - i0, i1 = Math.min(to - 1, i0 + 1); for (let c = 0; c < this.ch; c++) { const cc = Math.min(c, sch - 1); data[i * this.ch + c] = buf[i0 * sch + cc] * (1 - f) + buf[i1 * sch + cc] * f; } } frames = outN; }
       // where it lands; a gap left by the decoder is filled with silence
       const at = this.rStart + Math.round(Math.max(0, ts + from / sr - r.t0) * this.sr);
+      // to the output's rate and channels. At another rate a piece runs to where the next one lands (its end rounded
+      // the same way as the next start): rounding its length on its own left one frame empty every few pieces, a tick.
+      let frames = to - from, data;
+      if (sr === this.sr && sch === this.ch) data = buf.subarray(from * sch, to * sch);
+      else { const outN = Math.max(0, this.rStart + Math.round(Math.max(0, ts + to / sr - r.t0) * this.sr) - at); data = new Float32Array(outN * this.ch); for (let i = 0; i < outN; i++) { const x = Math.min(to - 1, from + i * sr / this.sr), i0 = Math.floor(x), f = x - i0, i1 = Math.min(to - 1, i0 + 1); for (let c = 0; c < this.ch; c++) { const cc = Math.min(c, sch - 1); data[i * this.ch + c] = buf[i0 * sch + cc] * (1 - f) + buf[i1 * sch + cc] * f; } } frames = outN; }
       if (at > this.outFrames) await this.write(new Float32Array((at - this.outFrames) * this.ch), at - this.outFrames, rEndFrames);
       let skip = Math.max(0, this.outFrames - at); if (skip >= frames) continue;
       await this.write(skip ? data.subarray(skip * this.ch) : data, frames - skip, rEndFrames);

@@ -5,10 +5,15 @@ export const EPS = 1e-6;
 
 /* ---------- times ---------- */
 const pad = (n, w = 2) => String(Math.max(0, Math.floor(n))).padStart(w, '0');
-/* hh:mm:ss:ff for a video (ff = frame), hh:mm:ss.cc for sound (cc = hundredths). */
+/* hh:mm:ss:ff for a video (ff = frame), hh:mm:ss.cc for sound (cc = hundredths).
+   hh:mm:ss is always real time, also at 29.97, 23.976 and 59.94 fps, where a second holds 29 or 30 (23 or 24, 59 or 60)
+   frames: ff counts from the first frame at or after that second. Counting frames ÷ 30 instead ran 3.6 s an hour slow
+   against the ruler, and a time read back from its own box moved. frameTime is the way back, exact for every frame. */
+const firstFrame = (whole, fps) => Math.ceil(whole * fps - 1e-6);
+export const frameTime = (whole, ff, fps) => (firstFrame(whole, fps) + ff) / fps;
 export function fmtTime(s, fps = null) {
   s = Math.max(0, s || 0);
-  if (fps) { const f = Math.round(s * fps), per = Math.round(fps), ff = f % per, whole = Math.floor(f / per); return `${pad(whole / 3600)}:${pad(whole / 60 % 60)}:${pad(whole % 60)}:${pad(ff)}`; }
+  if (fps) { const f = Math.round(s * fps), whole = Math.floor(f / fps + 1e-6), ff = f - firstFrame(whole, fps); return `${pad(whole / 3600)}:${pad(whole / 60 % 60)}:${pad(whole % 60)}:${pad(ff)}`; }
   const cs = Math.round(s * 100), whole = Math.floor(cs / 100); return `${pad(whole / 3600)}:${pad(whole / 60 % 60)}:${pad(whole % 60)}.${pad(cs % 100)}`;
 }
 /* A short, friendly length: "2 h 05 min", "4 min 12 s", "12.4 s". */
@@ -24,7 +29,7 @@ export function parseTime(str, fps = null) {
   if (units && (units[1] || units[2] || units[3])) return (+units[1] || 0) * 3600 + (+units[2] || 0) * 60 + (+units[3] || 0);
   if (!/^[\d:.]+$/.test(t)) return null;
   const parts = t.split(':'); if (parts.some(p => p === '' || isNaN(+p))) return null;
-  if (parts.length === 4) { const [h, m, s, f] = parts.map(Number); return h * 3600 + m * 60 + s + (fps ? f / Math.round(fps) : 0); }
+  if (parts.length === 4) { const [h, m, s, f] = parts.map(Number); return fps ? frameTime(h * 3600 + m * 60 + s, f, fps) : h * 3600 + m * 60 + s; }
   if (parts.length > 4) return null;
   return parts.reduce((acc, p) => acc * 60 + Number(p), 0);
 }
@@ -52,9 +57,14 @@ export function clampPart(p, duration, fps = null) {
 }
 export function addPart(parts, t0, t1, duration, fps = null, name = '') {
   const p = clampPart({ id: newId(), t0: Math.min(t0, t1), t1: Math.max(t0, t1), name }, duration, fps);
-  return sortParts([...parts, p]);
+  return inTimeOrder(parts) ? sortParts([...parts, p]) : [...parts, p]; // a list put in another order by hand keeps it: the new part goes last
 }
-export const sortParts = parts => parts.slice().sort((a, b) => a.t0 - b.t0 || a.t1 - b.t1);
+const byTime = (a, b) => a.t0 - b.t0 || a.t1 - b.t1;
+export const sortParts = parts => parts.slice().sort(byTime);
+/* The list order is the join order. While it is still time order, edits keep it so; once it was changed by hand
+   (↑ ↓), nothing puts it back. */
+export const inTimeOrder = parts => parts.every((p, i) => !i || byTime(parts[i - 1], p) <= 0);
+export const keepOrder = (before, after) => inTimeOrder(before) ? sortParts(after) : after;
 export function updatePart(parts, id, change, duration, fps = null) {
   return parts.map(p => p.id === id ? clampPart({ ...p, ...change }, duration, fps) : p);
 }
@@ -77,7 +87,7 @@ export const removePart = (parts, id) => parts.filter(p => p.id !== id);
 export function splitPartAt(parts, t, duration, fps = null) {
   t = snapFrame(t, fps); const m = minPart(fps), p = parts.find(x => t > x.t0 + m / 2 && t < x.t1 - m / 2); if (!p) return parts;
   const a = { ...p, t1: t }, b = { ...p, id: newId(), t0: t, name: p.name ? `${p.name} (2)` : '' };
-  return sortParts([...parts.filter(x => x.id !== p.id), a, b]);
+  return parts.flatMap(x => x.id === p.id ? [a, b] : [x]); // the two halves stay where the part was in the list
 }
 /* Moves a part in the output order (for joining), without changing its times. */
 export function movePart(parts, id, to) {

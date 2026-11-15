@@ -18,6 +18,15 @@ ok(C.parseTime('abc') === null && C.parseTime('1::2') === null && C.parseTime(''
 ok(C.fmtLength(12.4) === '12.4 s' && C.fmtLength(252) === '4 min 12 s' && C.fmtLength(7500) === '2 h 05 min', 'friendly lengths');
 ok(C.snapFrame(1.019, 24) === 1 && near(C.snapFrame(1.03, 24), 25 / 24), 'times snap to the frame grid');
 
+// 29.97, 23.976 and 59.94 fps: the clock part is real time and every frame reads back as itself
+const NTSC = 30000 / 1001, frames = [0, 1, 29, 30, 31, 1797, 1798, 1799, 1800, 17981, 17982, 107891, 107892, 107893, 215784, 1078921];
+ok(C.fmtTime(3600, NTSC) === '00:59:59:29' && C.fmtTime(3600.03, NTSC) === '01:00:00:00', 'at 29.97 fps an hour of real time shows as an hour (not 00:59:56:12)');
+ok(frames.every(n => near(C.parseTime(C.fmtTime(n / NTSC, NTSC), NTSC), n / NTSC, 1e-9)), 'at 29.97 fps a time read back from its own box is the same frame');
+ok([24000 / 1001, 60000 / 1001, 120000 / 1001].every(f => frames.every(n => near(C.parseTime(C.fmtTime(n / f, f), f), n / f, 1e-9))), 'the same holds at 23.976, 59.94 and 119.88 fps');
+ok(frames.every(n => { const t = n / NTSC, [h, m, s] = C.fmtTime(t, NTSC).split(':').map(Number); return Math.abs(h * 3600 + m * 60 + s - t) < 1; }), 'at 29.97 fps hh:mm:ss is within a second of the real time, an hour in and ten hours in');
+ok([24, 25, 30, 60].every(f => frames.every(n => C.fmtTime(n / f, f) === `${String(Math.floor(n / f / 3600)).padStart(2, '0')}:${String(Math.floor(n / f / 60) % 60).padStart(2, '0')}:${String(Math.floor(n / f) % 60).padStart(2, '0')}:${String(n % f).padStart(2, '0')}`)), 'whole frame rates show exactly as before');
+{ const t0 = 107892 / NTSC, t1 = 215784 / NTSC, b = C.partsFromCsv(C.partsToCsv([{ t0, t1, name: 'x' }], NTSC), 9000, NTSC); ok(b.length === 1 && near(b[0].t0, t0, 1e-9) && near(b[0].t1, t1, 1e-9), 'a 29.97 fps list saved and loaded again does not move (it used to shift 3.6 s an hour)'); }
+
 // copy range snaps outward to keyframes
 const keys = [0, 2, 4, 6, 8];
 ok(eq(C.copyRange(3, 5, keys, 9), { t0: 2, t1: 6, moved: true }), 'an untouched cut widens to the keyframes around it');
@@ -44,6 +53,13 @@ Q = C.splitPartAt(P, 15, 100, 24);
 ok(Q.length === 3 && Q[1].t1 === 15 && Q[2].t0 === 15 && Q[2].t1 === 20, 'split at the playhead makes two parts');
 ok(C.splitPartAt(P, 50, 100, 24).length === 2, 'split outside any part changes nothing');
 ok(eq(C.movePart(Q, Q[2].id, 0).map(p => p.t0), [15, 2, 10]), 'parts can be reordered for joining');
+// an order set by hand (for joining) survives every edit; a list still in time order stays in time order
+const hand = C.movePart([{ id: 'a', t0: 10, t1: 20, name: '' }, { id: 'b', t0: 30, t1: 40, name: '' }, { id: 'c', t0: 50, t1: 60, name: '' }], 'c', 0), ids = l => l.map(p => p.id).join('');
+ok(ids(hand) === 'cab' && !C.inTimeOrder(hand) && C.inTimeOrder(C.sortParts(hand)), 'a list reordered by hand is known as such');
+ok(ids(C.keepOrder(hand, C.setEnd(hand, 'a', 25, 100, 24))) === 'cab', 'dragging an edge keeps a hand-set order');
+{ const added = C.addPart(hand, 0, 5, 100, 24); ok(added.length === 4 && ids(added.slice(0, 3)) === 'cab' && added[3].t0 === 0, 'a new part in a hand-ordered list goes last, the rest stay put'); }
+{ const sp = C.splitPartAt(hand, 15, 100, 24); ok(sp.length === 4 && sp[0].id === 'c' && sp[1].id === 'a' && sp[1].t1 === 15 && sp[2].t0 === 15 && sp[3].id === 'b', 'splitting a part in a hand-ordered list leaves its halves in its place'); }
+{ const timeList = C.sortParts(hand), moved = C.updatePart(timeList, 'a', { t0: 70, t1: 80 }, 100, 24); ok(ids(C.keepOrder(timeList, moved)) === 'bca', 'a list in time order stays in time order when a part is dragged past another'); }
 
 // ranges
 ok(eq(C.mergeRanges([{ t0: 5, t1: 8 }, { t0: 1, t1: 3 }, { t0: 2, t1: 4 }, { t0: 8, t1: 9 }]), [{ t0: 1, t1: 4 }, { t0: 5, t1: 9 }]), 'overlapping and touching ranges merge');

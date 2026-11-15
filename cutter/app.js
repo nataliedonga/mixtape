@@ -1,7 +1,7 @@
 /* Cutter's interface. The model (model.js) holds the rules; the engine (engine.js) touches the media; this file is the
    room: files, parts, the timeline, playback, splitting and export. */
 import * as C from './model.js';
-import { Media, Player, writeCut, writableTargets, sameTracks, isMediaFile } from './engine.js';
+import { Media, Player, writeCut, writableTargets, sameTracks, isMediaFile, sweepExports } from './engine.js';
 import { isOldAudio, decodeOld } from './olddecode.js';
 
 const $ = s => document.querySelector(s);
@@ -29,7 +29,8 @@ function timeBox(inp, { onValue, getFps = fps, onEnter }) {
   const sep = () => getFps() ? ':' : '.';
   const digits = () => (inp.value.replace(/\D/g, '') + '00000000').slice(0, 8);
   const show = d => { d = (String(d).replace(/\D/g, '') + '00000000').slice(0, 8); inp.value = `${d.slice(0, 2)}:${d.slice(2, 4)}:${d.slice(4, 6)}${sep()}${d.slice(6, 8)}`; };
-  const secondsOf = d => { const f = getFps(), last = +d.slice(6, 8); return +d.slice(0, 2) * 3600 + Math.min(59, +d.slice(2, 4)) * 60 + Math.min(59, +d.slice(4, 6)) + (f ? Math.min(Math.round(f) - 1, last) / Math.round(f) : last / 100); };
+  // read the way fmtTime writes: hh:mm:ss is real time and ff the frame within that second, so 29.97 fps does not drift
+  const secondsOf = d => { const f = getFps(), last = +d.slice(6, 8), whole = +d.slice(0, 2) * 3600 + Math.min(59, +d.slice(2, 4)) * 60 + Math.min(59, +d.slice(4, 6)); return f ? C.frameTime(whole, Math.min(Math.round(f) - 1, last), f) : whole + last / 100; };
   const select = () => { const p = SLOTS[slot]; try { inp.setSelectionRange(p, p + 1); } catch (e) {} };
   const commit = d => { show(d); onValue(secondsOf(digits())); };
   const typeDigit = ch => { const d = digits().split(''), f = getFps(); let v = +ch; if (slot === 2 || slot === 4) v = Math.min(5, v); if (slot === 6 && f) v = Math.min(Math.floor((Math.round(f) - 1) / 10), v); d[slot] = String(v); commit(d.join('')); slot = Math.min(7, slot + 1); select(); };
@@ -44,7 +45,7 @@ function timeBox(inp, { onValue, getFps = fps, onEnter }) {
     else if (e.key === 'Delete') { d[slot] = '0'; commit(d.join('')); select(); }
     else if (e.key === 'ArrowLeft') { slot = Math.max(0, slot - 1); select(); }
     else if (e.key === 'ArrowRight') { slot = Math.min(7, slot + 1); select(); }
-    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const v = secondsOf(digits()) + (e.key === 'ArrowUp' ? 1 : -1) * (slot >= 6 ? (getFps() ? 1 / Math.round(getFps()) : 0.01) : [36000, 3600, 600, 60, 10, 1][slot]); const nv = Math.max(0, v); show(C.fmtTime(nv, getFps()).replace(/\D/g, '')); onValue(nv); select(); }
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const v = secondsOf(digits()) + (e.key === 'ArrowUp' ? 1 : -1) * (slot >= 6 ? (getFps() ? 1 / getFps() : 0.01) : [36000, 3600, 600, 60, 10, 1][slot]); const nv = Math.max(0, v); show(C.fmtTime(nv, getFps()).replace(/\D/g, '')); onValue(nv); select(); }
     else if (e.key === 'Home') { slot = 0; select(); } else if (e.key === 'End') { slot = 7; select(); }
     else if (e.key === 'Enter') { inp.blur(); onEnter && onEnter(); }
     else if (e.key === 'Escape') inp.blur();
@@ -57,47 +58,61 @@ function timeBox(inp, { onValue, getFps = fps, onEnter }) {
 }
 
 /* ---------- files ---------- */
-async function openFiles(list, { show = false } = {}) {
+/* closeGen: Close all (and Forget everything) stop the files still waiting to open. chose: you opened or picked a file
+   yourself this visit, so coming back to last time's session does not switch away from it. restored: the files a
+   session restore found again; they have their record already and are not written a second time. */
+let closeGen = 0, chose = false;
+async function openFiles(list, { show = false, restored = null } = {}) {
   const add = [...list].filter(f => isMediaFile(f) || !f.type); if (!add.length) return toast('Those are not sound or video files.');
+  const gen = closeGen; if (!restored) chose = true;
   for (const f of add) {
-    let media = new Media(f); if (files.some(x => x.id === media.id || x.origId === media.id)) continue;
+    if (gen !== closeGen) break; // everything was closed while these were opening: the rest stay closed
+    let media = new Media(f); const have = files.find(x => x.id === media.id || x.origId === media.id); if (have) { if (show && have.state === 'ok' && have !== cur) select(have); continue; }
     const entry = { id: media.id, media, state: 'opening', parts: [], undo: [], redo: [] }; files.push(entry); renderFiles();
+    const gone = () => !files.includes(entry); /* closed (✕, Close all) while it was still opening: it must not come back */
     try {
       if (isOldAudio(f)) { // WMA, AMR, AC3, AIFF: unpacked here in the browser into a WAV, then cut like anything else
         entry.origId = media.id; toast(`Unpacking “${f.name}” here in the browser (it stays on this computer)…`, 60000);
-        const wav = await decodeOld(f, sec => { entry.note = `unpacking… ${C.fmtLength(sec)}`; renderFiles(); });
+        const wav = await decodeOld(f, sec => { entry.note = `unpacking… ${C.fmtLength(sec)}`; if (!gone()) renderFiles(); });
+        if (gone()) continue;
         if (f.__src) withSrc(wav, f.__src); // found again the same way as the original
         media = entry.media = new Media(wav); entry.id = media.id; delete entry.note; toast(wav.skipped ? `“${f.name}” unpacked, but ${wav.skipped} damaged bit${wav.skipped > 1 ? "s were" : " was"} passed over (a few milliseconds each). Cut it as usual.` : `“${f.name}” unpacked: cut it as usual.`, 6000);
       }
-      await media.open(); entry.state = 'ok'; remember(entry); entry.parts = (LS.get('cutter:parts:' + media.id, []) || []).map(p => C.clampPart(p, media.duration, media.fps));
+      await media.open(); if (gone()) continue;
+      entry.state = 'ok'; if (!(restored && restored.has(f))) remember(entry); entry.parts = (LS.get('cutter:parts:' + media.id, []) || []).map(p => C.clampPart(p, media.duration, media.fps));
       media.keyframes().then(k => { entry.keys = k; if (entry === cur) dirty(); }).catch(() => {});
       if (show || !cur || cur.state !== 'ok') select(entry); else renderFiles();
       loadPeaks(entry);
-    } catch (e) { entry.state = 'error'; entry.error = e.message || String(e); renderFiles(); if (files.length === 1) toast(entry.error, 6000); }
+    } catch (e) { if (gone()) continue; entry.state = 'error'; entry.error = e.message || String(e); renderFiles(); if (files.length === 1) toast(entry.error, 6000); }
   }
 }
 function loadPeaks(entry) {
   const m = entry.media, n = Math.min(30000, Math.max(1500, Math.round(m.duration * 25)));
-  let last = 0; m.peaks(n, 0, m.duration, p => { entry.peaks = p; if (entry === cur && performance.now() - last > 250) { last = performance.now(); dirty(); drawOverview(); } }).then(p => { if (p) { entry.peaks = p; if (entry === cur) { dirty(); drawOverview(); } } });
+  let last = 0; m.peaks(n, 0, m.duration, p => { entry.peaks = p; if (entry === cur && performance.now() - last > 250) { last = performance.now(); dirty(); drawOverview(); } }, () => !files.includes(entry) /* closed: stop reading its sound */).then(p => { if (p) { entry.peaks = p; if (entry === cur) { dirty(); drawOverview(); } } });
 }
-// Close all asks once more before it does it: the button changes to "Close all 120?" for a few seconds
-let closeArmT = 0; function armClose(on) { const b = $('#closeAll'); clearTimeout(closeArmT); b.dataset.armed = on ? '1' : ''; b.textContent = on ? `Close all ${files.length}?` : 'Close all'; if (on) closeArmT = setTimeout(() => armClose(false), 4000); }
-$('#closeAll').addEventListener('click', () => {
-  if (exporting) return; if (!$('#closeAll').dataset.armed) return armClose(true);
-  player.stop(); for (const f of files.splice(0)) forget(f.id); cur = null; select(null); renderFiles(); toast('All files closed. Parts you marked come back when a file is opened again.', 5000);
+/* Two presses for anything that throws work away: the first changes the button to a question ("Close all 120?") for
+   4 seconds, the second does it. The second must come at least 0.6 s after the first, so a double-click is not a yes. */
+function twoPress(b, ask, go) {
+  const rest = b.textContent; let at = 0, t = 0; const off = () => { clearTimeout(t); if (at) { at = 0; b.dataset.armed = ''; b.textContent = rest; } };
+  b.addEventListener('click', () => { if (!at) { at = performance.now(); b.dataset.armed = '1'; b.textContent = ask(); t = setTimeout(off, 4000); return; } if (performance.now() - at < 600) return; off(); go(); });
+  return off;
+}
+const disarmClose = twoPress($('#closeAll'), () => `Close all ${files.length}?`, () => {
+  if (exporting) return;
+  closeGen++; player.stop(); for (const f of files.splice(0)) forget(f.id); cur = null; select(null); renderFiles(); toast('All files closed. Parts you marked come back when a file is opened again.', 5000);
 });
 function renderFiles() {
-  const el = $('#fileList'); $('#filesHint').hidden = files.length > 0; $('#closeAll').hidden = files.length < 2; if (files.length < 2) armClose(false); $('#joinBtn').disabled = files.filter(f => f.state === 'ok').length < 2;
+  const el = $('#fileList'); $('#filesHint').hidden = files.length > 0; $('#closeAll').hidden = files.length < 2; if (files.length < 2) disarmClose(); $('#joinBtn').disabled = files.filter(f => f.state === 'ok').length < 2;
   el.innerHTML = files.map((f, i) => `<div class="fi${f === cur ? ' on' : ''}" data-i="${i}" title="${esc(f.media.file.name)}"><span class="k">${f.state === 'ok' ? (f.media.v ? '▣' : '♪') : f.state === 'error' ? '!' : '…'}</span><span class="n">${esc(f.media.file.name)}</span><button class="x" data-x="${i}" title="Close this file" aria-label="Close ${esc(f.media.file.name)}">✕</button>${f.state === 'ok' ? `<span class="d">${C.fmtTime(f.media.duration, f.media.fps)}</span>` : f.state === 'error' ? `<span class="err">${esc(f.error)}</span>` : `<span class="d">${esc(f.note || 'opening…')}</span>`}</div>`).join('');
 }
 $('#fileList').addEventListener('click', e => {
   const x = e.target.closest('[data-x]'); if (x) { const i = +x.dataset.x, f = files[i]; files.splice(i, 1); forget(f.id); if (f === cur) { player.stop(); cur = null; select(files.find(z => z.state === 'ok') || null); } renderFiles(); return; }
-  const row = e.target.closest('.fi'); if (row) { const f = files[+row.dataset.i]; if (f.state === 'ok') select(f); }
+  const row = e.target.closest('.fi'); if (row) { const f = files[+row.dataset.i]; if (f.state === 'ok') { chose = true; select(f); } }
 });
 function select(entry) {
   player.stop(); cur = entry; sel = null; ph = 0; renderFiles();
   $('#empty').hidden = !!cur; $('#exportBtn').disabled = !cur;
-  if (!cur) { $('#pills').innerHTML = ''; renderParts(); dirty(); return; }
+  if (!cur) { $('#pills').innerHTML = ''; updateExportBar(); renderParts(); dirty(); return; }
   const m = cur.media; view = { t0: 0, t1: m.duration }; $('#zoom').value = 0;
   const v = m.video, a = m.audio;
   $('#pills').innerHTML = [`<span class="pill name">${esc(m.file.name)}</span>`, `<span class="pill">${m.family.toUpperCase()}${v ? ' · ' + v.codec.toUpperCase() : ''}${a ? ' · ' + a.codec.toUpperCase() : ''}</span>`, v ? `<span class="pill">${v.w}×${v.h} · ${+v.fps.toFixed(3)} fps</span>` : `<span class="pill">${(a.sr / 1000).toFixed(1)} kHz · ${a.ch === 1 ? 'mono' : a.ch === 2 ? 'stereo' : a.ch + ' ch'}</span>`, `<span class="pill">${C.fmtLength(m.duration)} · ${fmtBytes(m.file.size)}</span>`].join('');
@@ -241,6 +256,8 @@ function setView(a, b, fromSlider = false) {
 }
 function zoomAt(t, factor) { const a = t - (t - view.t0) * factor, b = t + (view.t1 - t) * factor; setView(a, b); }
 $('#zoom').addEventListener('input', e => { if (!cur) return; const D = dur(), z = +e.target.value / 1000, span = D / Math.pow(D / minSpan(), z), c = player.playing || (ph >= view.t0 && ph <= view.t1) ? ph : (view.t0 + view.t1) / 2; setView(c - span / 2, c + span / 2, true); });
+// a slider, tick box or list that was just used lets go of the keyboard, so Space, I, O, N and the arrows work again
+for (const id of ['#zoom', '#showKeys', '#fmtSel']) $(id).addEventListener('change', e => e.target.blur());
 $('#zoomIn').addEventListener('click', () => zoomAt(ph, 0.5));
 $('#zoomOut').addEventListener('click', () => zoomAt(ph, 2));
 $('#zoomFit').addEventListener('click', () => setView(0, dur()));
@@ -344,7 +361,7 @@ tl.addEventListener('pointerup', e => {
   if (!drag) return; const d = drag; drag = null;
   if (d.kind === 'new' && !d.made) { movePH(d.t0); return; }
   if (d.kind === 'move' && !d.moved) { const r = tl.getBoundingClientRect(); movePH(tOf(e.clientX - r.left, r.width)); return; }
-  if (d.base && d.base !== cur.parts) { const now = cur.parts; cur.parts = d.base; commit(C.sortParts(now)); if (d.kind === 'new') { rows.get(sel)?.el.scrollIntoView({ block: 'nearest' }); } }
+  if (d.base && d.base !== cur.parts) { const now = cur.parts; cur.parts = d.base; commit(C.keepOrder(d.base, now)); /* an order set by hand for joining is kept; only a list still in time order is re-sorted */ if (d.kind === 'new') { rows.get(sel)?.el.scrollIntoView({ block: 'nearest' }); } }
 });
 tl.addEventListener('pointerleave', () => { hoverT = null; $('#tlAt').textContent = ''; dirty(); });
 tl.addEventListener('wheel', e => {
@@ -422,7 +439,7 @@ async function startExport(jobsIn, title) {
       st.innerHTML = `${esc(res.note)} <span style="color:var(--faint)">${fmtBytes(res.file.size)} · ${C.fmtLength(res.length)} · took ${C.fmtLength((performance.now() - t0) / 1000)} · saved to ${esc(saved.where)}</span>`;
       const lk = row.querySelector('.lk'); lk.hidden = false; lk.innerHTML = '<button class="sm" data-open>Open it here to check</button>' + (host ? `<button class="sm" data-lib>Add to my ${esc(host.name)} library</button>` : '');
       if (host) lk.querySelector('[data-lib]').addEventListener('click', async ev => { const b = ev.currentTarget; b.disabled = true; b.textContent = 'Adding…'; try { await host.addToLibrary(res.file, saved.name, { duration: res.length, video: !!j.spec.ranges[0].media.v && (j.spec.tracks || 'both') !== 'audio' && !(TARGET_SOUND[j.spec.format]) }); b.textContent = `In your ${host.name} library ✓`; } catch (err) { b.disabled = false; b.textContent = `Add to my ${host.name} library`; toast(`Could not add it: ${err.message || err}`, 6000); } });
-      lk.querySelector('[data-open]').addEventListener('click', () => { closeSheet(); openFiles([new File([res.file], saved.name, { type: res.file.type, lastModified: Date.now() })], { show: true }); });
+      lk.querySelector('[data-open]').addEventListener('click', () => { closeSheet(); openFiles([withSrc(new File([res.file], saved.name, { type: res.file.type, lastModified: Date.now() }), { temp: true })], { show: true }); }); /* temp: opened only to check it, so no copy of it is kept for next time */
       if (j.clips) { // joined files: a list of where each one begins, saved beside the joined file
         try { const listName = saved.name.replace(/\.[a-z0-9]+$/i, '') + ' (clip list).txt', ls = await saveFile(new File([clipList(saved.name, j.clips)], listName, { type: 'text/plain' }), listName); st.innerHTML += ` <span style="color:var(--faint)">· where each clip begins: “${esc(ls.name)}”</span>`; window.__lastClipList = clipList(saved.name, j.clips); }
         catch (err) { st.innerHTML += ' <span style="color:var(--warn)">· the clip list could not be saved</span>'; }
@@ -481,7 +498,8 @@ $('#joinBtn').addEventListener('click', () => {
 
 /* ---------- split the whole file ---------- */
 $('#splitBtn').addEventListener('click', () => {
-  if (!cur) return toast('Open a file first.'); const m = cur.media, video = !!m.v;
+  if (!cur) return toast('Open a file first.'); const entry = cur, m = cur.media, video = !!m.v;
+  let busy = null; // a scan that is running; however the sheet closes (Close, Esc, a click outside), the scan stops
   const sh = openSheet(`<h3>Split the file into parts</h3><p class="lead">This replaces the parts you have (Ctrl Z brings them back).</p>
     <div class="opts">
       <label class="opt"><input type="radio" name="how" value="equal" checked><span class="t">Into equal parts</span><span class="s"><input type="number" id="spN" min="2" max="999" value="3"> parts of about <b id="spNl"></b></span></label>
@@ -489,18 +507,18 @@ $('#splitBtn').addEventListener('click', () => {
       <label class="opt"><input type="radio" name="how" value="silence" ${m.a ? '' : 'disabled'}><span class="t">At the silences</span><span class="s">quieter than <input type="number" id="spDb" min="-80" max="-10" value="-40"> dB for at least <input type="number" id="spMin" min="0.1" max="30" step="0.1" value="0.8"> s. The silences are left out.</span></label>
       ${video ? `<label class="opt"><input type="radio" name="how" value="scene"><span class="t">At the scene changes</span><span class="s">sensitivity <input type="range" id="spSens" min="0" max="100" value="50" style="width:140px;accent-color:var(--accent)"> (reads every frame; a long video takes a while)</span></label>` : ''}
     </div><div class="bar" id="spBar" hidden><i></i></div><div class="hint" id="spSt"></div>
-    <div class="acts"><button id="spClose">Close</button><span class="sp"></span><button class="primary" id="spGo">Make the parts</button></div>`);
+    <div class="acts"><button id="spClose">Close</button><span class="sp"></span><button class="primary" id="spGo">Make the parts</button></div>`, { onClose: () => { if (busy) busy.cancel = true; } });
   const ev = timeBox(sh.querySelector('#spEvery'), { onValue: () => {} });
   const nl = () => { sh.querySelector('#spNl').textContent = C.fmtLength(dur() / Math.max(2, +sh.querySelector('#spN').value || 2)); }; nl(); sh.querySelector('#spN').addEventListener('input', nl);
   for (const el of sh.querySelectorAll('.opt input:not([type=radio])')) el.addEventListener('focus', () => { el.closest('.opt').querySelector('input[type=radio]').checked = true; });
-  let busy = null; sh.querySelector('#spClose').addEventListener('click', () => { if (busy) busy.cancel = true; closeSheet(); });
+  sh.querySelector('#spClose').addEventListener('click', closeSheet);
   sh.querySelector('#spGo').addEventListener('click', async () => {
     const how = sh.querySelector('input[name=how]:checked').value, D = dur(), F = fps(), st = sh.querySelector('#spSt'), barW = sh.querySelector('#spBar'), bar = barW.querySelector('i');
-    let parts = null;
+    let parts = null, my = null;
     if (how === 'equal') parts = C.splitEqual(0, D, Math.max(2, Math.min(999, +sh.querySelector('#spN').value || 2)), F);
     else if (how === 'every') { const e = C.parseTime(sh.querySelector('#spEvery').value, F); if (!(e > 0)) return toast('Type how long each part should be.'); if (D / e > 2000) return toast('That would make more than 2,000 parts.'); parts = C.splitEvery(0, D, e, F); }
     else {
-      busy = { cancel: false }; const my = busy; sh.querySelector('#spGo').disabled = true; barW.hidden = false;
+      busy = my = { cancel: false }; sh.querySelector('#spGo').disabled = true; barW.hidden = false;
       try {
         if (how === 'silence') {
           st.textContent = 'Listening for silences…'; const minS = Math.max(0.1, +sh.querySelector('#spMin').value || 0.8);
@@ -514,7 +532,8 @@ $('#splitBtn').addEventListener('click', () => {
         }
       } finally { busy = null; const g = sh.querySelector('#spGo'); if (g) g.disabled = false; }
     }
-    if (!parts || !parts.length) return; closeSheet(); commit(parts, `${parts.length} parts made.`); sel = null; setView(0, D);
+    // a scan that was closed, or whose file is no longer the one on screen, changes nothing: its times belong to that file
+    if (!parts || !parts.length || (my && my.cancel) || cur !== entry) return; closeSheet(); commit(parts, `${parts.length} parts made.`); sel = null; setView(0, D);
   });
 });
 
@@ -563,19 +582,25 @@ function help() {
     <p class="lead" style="margin-top:14px"><b>Mouse:</b> drag across the timeline to mark a part; drag a part's edges to change it (they stick to the playhead and to keyframes; hold Alt to stop that); the wheel zooms, Shift + wheel moves along.</p>
     <p class="lead"><b>Exact or untouched.</b> Exact cuts where you marked: for H.264 video only the few frames at each edge are re-encoded and the rest is copied as it is. Untouched re-encodes nothing, in any format, but a video cut can only start and end on keyframes (the orange ticks), so it widens to them.</p>
     <p class="lead">Nothing leaves this computer: files are read and written in the browser. Built on mediabunny (MPL-2.0).</p>
-    <div class="acts"><span class="sp"></span><button class="primary" id="hClose">Close</button></div>`);
+    <p class="lead"><b>Kept on this computer</b>, so you can pick up where you left off: the list of open files (where the browser cannot find a file on your disk again, a copy of the file itself), the parts you marked for each file, your settings, and a working copy of each export for about an hour. “Forget everything” removes all of that. It does not touch files you saved${host ? `, your ${esc(host.name)} library` : ''} or anything else.</p>
+    <div class="acts"><button id="hForget" title="Remove everything the Cutter keeps in this browser">Forget everything on this device</button><span class="sp"></span><button class="primary" id="hClose">Close</button></div>`);
   sh.querySelector('#hClose').addEventListener('click', closeSheet);
+  twoPress(sh.querySelector('#hForget'), () => 'Forget everything? Press again', async () => {
+    const r = await forgetEverything(); if (!r) return; closeSheet();
+    toast(r.ok ? `Forgotten: ${r.files ? `the ${r.files === 1 ? 'file' : `${r.files} files`} kept from your session` : 'your session'}, the parts lists, your settings${r.exports ? ` and ${r.exports} working cop${r.exports === 1 ? 'y' : 'ies'} of exports` : ''}. Files you saved${host ? ` and your ${host.name} library` : ''} are untouched.` : 'Not everything could be removed: the browser refused. Close other Cutter tabs and try again.', 8000);
+  });
 }
 
 /* ---------- keys ---------- */
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { if (menuEl) closeMenu(); else if (!$('#sheet').hidden) closeSheet(); return; }
+  if (e.key === 'Escape') { const a = document.activeElement; if (menuEl) closeMenu(); else if (!$('#sheet').hidden) closeSheet(); else if (a && a.matches('select, input[type=range], input[type=checkbox]')) a.blur(); /* Esc on the Step or Format list hands the keys back */ return; }
   // Tab plays and pauses from anywhere, even while typing a time or a name, as in Transcripts; Shift + Tab goes back
   // 3 seconds (it keeps playing if it was). Inside a sheet or a menu Tab still moves between its controls.
   if (e.key === 'Tab' && cur && $('#sheet').hidden && !menuEl && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault(); if (e.shiftKey) { movePH(ph - 3); revealT(ph); } else togglePlay(); return;
   }
-  const tag = e.target.tagName; if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || !$('#sheet').hidden) return;
+  // typing goes to the field; a slider or tick box that still has the focus is not typing, so the shortcuts stay alive
+  const tag = e.target.tagName; if ((tag === 'INPUT' && !/^(range|checkbox)$/.test(e.target.type)) || tag === 'SELECT' || tag === 'TEXTAREA' || !$('#sheet').hidden) return;
   if (e.key === '?') { help(); e.preventDefault(); return; }
   if (!cur) return; const k = e.key, ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && (k === 'z' || k === 'Z')) { e.shiftKey ? redo() : undo(); e.preventDefault(); return; }
@@ -649,37 +674,68 @@ function withSrc(f, src) { try { Object.defineProperty(f, '__src', { value: src 
 const sessDB = () => new Promise((res, rej) => { const r = indexedDB.open('cutter-session', 1); r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('files', { keyPath: 'id' }); d.createObjectStore('state', { keyPath: 'k' }); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 async function sessTx(store, mode, fn) { const d = await sessDB(); return new Promise((res, rej) => { let out; const t = d.transaction(store, mode), r = fn(t.objectStore(store)); if (r) r.onsuccess = () => { out = r.result; }; t.oncomplete = () => { d.close(); res(out); }; t.onerror = () => { d.close(); rej(t.error); }; t.onabort = () => { d.close(); rej(t.error); }; }); }
 let restoring = false;
+const fileId = f => `${f.name}|${f.size}|${f.lastModified}`; // as Media.id
 async function remember(entry) {
-  if (restoring) return; const f = entry.media.file, src = f.__src || {};
-  const rec = { id: entry.id, name: f.name, size: f.size, at: Date.now() };
+  const f = entry.media.file, src = f.__src || {}; if (src.temp) return;
+  // srcId: the file as it was on disk when opened (for WMA and the like, the original, not the unpacked WAV); a restore
+  // compares it with the file the handle gives now, to see that the file changed
+  const rec = { id: entry.id, srcId: entry.origId || entry.id, name: f.name, size: f.size, at: Date.now() };
   if (src.handle) rec.handle = src.handle; else if (src.lib) rec.lib = src.lib; else if (f.size <= SESS_COPY_MAX) rec.file = f; else rec.lost = true;
   try { await sessTx('files', 'readwrite', o => o.put(rec)); }
   catch (e) { if (rec.file) { delete rec.file; rec.lost = true; await sessTx('files', 'readwrite', o => o.put(rec)).catch(() => {}); } } // no room for a copy: listed, asked for again
+  if (!files.includes(entry)) forget(entry.id); // closed while its record was being written: the record goes too
 }
 function forget(id) { sessTx('files', 'readwrite', o => o.delete(id)).catch(() => {}); saveState(); }
-function saveState() { if (restoring) return; sessTx('state', 'readwrite', o => o.put({ k: 'state', cur: cur ? cur.id : null, ph, t0: view.t0, t1: view.t1 })).catch(() => {}); }
+/* Forget everything on this device: all that the Cutter itself keeps in this browser, and nothing else.
+   - the session ('cutter-session' in IndexedDB): the list of open files, with whole-file copies where the browser gave
+     no handle; where you were; the folder chosen for cuts
+   - the working copies of exports (the 'cutter' folder of the browser's private storage)
+   - the settings and the parts list of every file ever opened ('cutter:…' in localStorage)
+   Files on disk, files already saved and the host's library (Mixtape's 'mixtape-player') are not touched.
+   Returns false when an export is running (nothing is done), else { ok, files, exports }. */
+async function forgetEverything() {
+  if (exporting) { toast('An export is running. Let it finish, or cancel it, then forget.', 5000); return false; }
+  closeGen++; player.stop(); files.splice(0); cur = null; select(null); clearTimeout(saveT); destDir = null; $('#destBtn').textContent = 'To Downloads'; document.querySelector('.reopen')?.remove();
+  let ok = true, kept = 0;
+  try {
+    const d = await sessDB();
+    try { await new Promise((res, rej) => { const t = d.transaction(['files', 'state'], 'readwrite'), fs = t.objectStore('files'), n = fs.count(); n.onsuccess = () => { kept = n.result; }; fs.clear(); t.objectStore('state').clear(); t.oncomplete = res; t.onerror = t.onabort = () => rej(t.error); }); } finally { d.close(); }
+  } catch (e) { ok = false; }
+  const exports = await sweepExports(0);
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith('cutter:')) localStorage.removeItem(k); } catch (e) { ok = false; }
+  return { ok, files: kept, exports };
+}
+// with no file open there is nothing to come back to, so nothing is written (and nothing reappears after a forget)
+function saveState() { if (restoring || !files.length) return; sessTx('state', 'readwrite', o => o.put({ k: 'state', cur: cur ? cur.id : null, ph, t0: view.t0, t1: view.t1 })).catch(() => {}); }
 addEventListener('pagehide', saveState);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveState(); });
-function goBack(st) { const back = st && files.find(f => f.id === st.cur && f.state === 'ok'); if (back) { select(back); if (st.t1 > st.t0) setView(st.t0, st.t1); movePH(st.ph || 0); } }
+/* A file a handle found again. If it changed on disk since (another size or date) it opens under a new id, so the old
+   record is removed and a fresh one written; left alone, the old one brought the file back on every visit. */
+async function fromHandle(r, known) { const f = withSrc(await r.handle.getFile(), { handle: r.handle }), was = r.srcId || (isOldAudio(f) ? null : r.id); if (was && fileId(f) !== was) forget(r.id); else known.add(f); return f; }
+function goBack(st) { if (chose) return; /* you opened or picked a file meanwhile (a song sent from the library, a drop): stay on it */ const back = st && files.find(f => f.id === st.cur && f.state === 'ok'); if (back) { select(back); if (st.t1 > st.t0) setView(st.t0, st.t1); movePH(st.ph || 0); } }
 async function restoreSession() {
   // the folder you chose for cuts: kept too (the browser may ask once, at the next export, before writing into it again)
   sessTx('state', 'readonly', o => o.get('dest')).then(d => { if (d && d.handle && !destDir) { destDir = d.handle; $('#destBtn').textContent = `To “${destDir.name}”`; } }).catch(() => {});
   let recs, st; try { [recs, st] = await Promise.all([sessTx('files', 'readonly', o => o.getAll()), sessTx('state', 'readonly', o => o.get('state'))]); } catch (e) { return; }
   if (!recs || !recs.length) return; recs.sort((a, b) => a.at - b.at);
-  const ready = [], ask = [], lost = [];
+  const ready = [], ask = [], lost = [], known = new Set();
   for (const r of recs) {
     try {
-      if (r.handle) { if ((await r.handle.queryPermission({ mode: 'read' })) === 'granted') ready.push(withSrc(await r.handle.getFile(), { handle: r.handle })); else ask.push(r); }
-      else if (r.lib && host) { const f = await host.getSong(r.lib); if (f) ready.push(withSrc(f, { lib: r.lib })); else lost.push(r); }
-      else if (r.file) ready.push(r.file);
+      if (r.handle) { if ((await r.handle.queryPermission({ mode: 'read' })) === 'granted') ready.push(await fromHandle(r, known)); else ask.push(r); }
+      else if (r.lib && host) { const f = await host.getSong(r.lib); if (f) { ready.push(withSrc(f, { lib: r.lib })); known.add(f); } else lost.push(r); }
+      else if (r.file) { ready.push(r.file); known.add(r.file); }
       else lost.push(r);
     } catch (e) { lost.push(r); }
   }
-  restoring = true;
-  try { if (ready.length) await openFiles(ready); } finally { restoring = false; }
+  restoring = true; // (saveState waits: a half-restored list must not overwrite where you were)
+  const gen = closeGen;
+  try { if (ready.length) await openFiles(ready, { restored: known }); } finally { restoring = false; }
+  // Close all while last time's files were still coming back closes those not reached yet as well: none of them returns
+  if (gen !== closeGen) { for (const r of recs) if (!files.some(f => f.id === r.id)) forget(r.id); return; }
   goBack(st);
   if (ask.length) offerReopen(ask, st);
-  if (lost.length) toast(`${lost.length === 1 ? `“${lost[0].name}” was` : `${lost.length} files were`} too big to keep a copy of: open ${lost.length === 1 ? 'it' : 'them'} again and the parts come back.`, 7000);
+  // said once, then forgotten: a record that can never be opened again used to bring this message back on every visit
+  if (lost.length) { const one = lost.length === 1, big = lost.every(r => r.lost); toast(`${one ? `“${lost[0].name}”` : `${lost.length} files`} ${big ? `${one ? 'was' : 'were'} too big to keep a copy of` : 'from last time could not be found again (moved, renamed or removed)'}: open ${one ? 'it' : 'them'} again and the parts come back.`, 7000); for (const r of lost) forget(r.id); }
   else if (ready.length && !ask.length) toast(`Back where you were: ${ready.length} file${ready.length > 1 ? 's' : ''}.`);
 }
 /* the browser asks once before a page may read a file again (Chrome then offers "allow on every visit") */
@@ -689,10 +745,10 @@ function offerReopen(recs, st) {
   document.body.appendChild(bar);
   bar.querySelector('[data-no]').addEventListener('click', () => { recs.forEach(r => forget(r.id)); bar.remove(); });
   bar.querySelector('[data-go]').addEventListener('click', async () => {
-    const got = [];
-    for (const r of recs) { try { if ((await r.handle.requestPermission({ mode: 'read' })) === 'granted') got.push(withSrc(await r.handle.getFile(), { handle: r.handle })); } catch (e) {} }
+    const got = [], known = new Set();
+    for (const r of recs) { try { if ((await r.handle.requestPermission({ mode: 'read' })) === 'granted') got.push(await fromHandle(r, known)); } catch (e) {} }
     bar.remove(); if (!got.length) return toast('The browser was not allowed to read them. Open them again with Open files.');
-    restoring = true; try { await openFiles(got); } finally { restoring = false; }
+    restoring = true; try { await openFiles(got, { restored: known }); } finally { restoring = false; }
     goBack(st);
   });
 }
@@ -700,6 +756,7 @@ function offerReopen(recs, st) {
 /* ---------- start ---------- */
 writableTargets().then(t => { targets = t; updateExportBar(); }).catch(() => {});
 updateExportBar(); renderParts(); sizeCanvases(); restoreSession();
+sweepExports(); // working copies of exports older than an hour go when the page opens, not only at the next export
 if ('serviceWorker' in navigator && !host && !document.querySelector('base') && location.protocol !== 'file:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) navigator.serviceWorker.register('sw.js').catch(() => {});
 // for tests on this computer only
-if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) window.__cutter = { files, openFiles, withSrc, get cur() { return cur; }, get ph() { return ph; }, movePH, get sel() { return sel; }, set sel(v) { sel = v; markSel(); dirty(); }, commit, C, get view() { return view; }, setView, S };
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) window.__cutter = { files, openFiles, withSrc, forgetEverything,get cur() { return cur; }, get ph() { return ph; }, movePH, get sel() { return sel; }, set sel(v) { sel = v; markSel(); dirty(); }, commit, C, get view() { return view; }, setView, S };
