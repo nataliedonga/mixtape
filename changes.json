@@ -1,5 +1,13 @@
 [
   {
+    "version": 93,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts: when a transcript is to follow a website, you can list stretches the website leaves out that your recording still has. They are not written down, the clock does not count them, and playback jumps over them.",
+      "With Backup Track following the website, choosing Yes fills in the start, the website's length and the left-out stretches by itself. Nothing to type."
+    ]
+  },
+  {
     "version": 92,
     "date": "2026-11-15",
     "items": [

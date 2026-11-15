@@ -18,3 +18,9 @@
 .partbox .partrow label { color: var(--muted, inherit); font-size: 13px; }
 .partbox .partrow input { width: 108px; height: 32px; border: 1px solid var(--faint, #888); border-radius: 8px; background: var(--sheet, transparent); color: inherit; font: 600 14px var(--f-mono, ui-monospace, monospace); text-align: center; }
 .partbox .partrow input:focus-visible { outline: 2px solid var(--accent, currentColor); outline-offset: 1px; }
+.partbox .partnote { margin: 8px 0 4px 26px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: color-mix(in srgb, var(--accent, currentColor) 14%, transparent); }
+.partbox .partsub { margin: 14px 0 2px 26px; font-weight: 600; font-size: 13.5px; }
+.partbox .partsub .parthint { font-weight: 400; }
+.partbox .partskips { list-style: none; margin: 4px 0 4px 26px; padding: 0; font: 13px var(--f-mono, ui-monospace, monospace); }
+.partbox .partskips li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.partbox .partskips button { width: 26px; height: 26px; border: 1px solid var(--line, #8884); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }

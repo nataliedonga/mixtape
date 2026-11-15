@@ -108,6 +108,7 @@ export async function startReverb() {
         const words = got.words.map(w => ({ t: String(w.t), s: at(w.s), e: at(w.e), ...(w.p ? { p: true } : {}), ...(w.c != null && isFinite(+w.c) ? { c: +w.c } : {}) })); if (words[0]) words[0].p = true;
         if (!words.length) throw new Error('Reverb heard no words in this recording');
         cur.tr = { id: cur.track.id, mode: 'heard', words, upTo: dur, done: true, duration: whole, updated: Date.now(), speakers: false, engine: 'Reverb ASR v1 (Rev)', use: 'personal', ...(pt ? { part: pt } : {}) };
+        if (api.partTrim) api.partTrim(cur.tr); // what the website leaves out is not kept
         await api.save(); await clean();
         api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb. Personal use only. Click any word to hear it.`, 7000); return;
       }

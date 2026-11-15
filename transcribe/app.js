@@ -7,7 +7,7 @@
 import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
 import { initReverb, reverbChosen, startReverb } from './reverb.js';
 import { initFollow } from './follow.js';
-import { initPart, partChosen, partClock, partSeek, partShow, partExport } from './part.js';
+import { initPart, partChosen, partClock, partSeek, partShow, partExport, partTrim } from './part.js';
 const T = window.TranscriptCore;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -546,6 +546,7 @@ async function start(mode, text) {
       if (tr.done || job.stop) break;
     }
     if (tr.mode === 'text' && tr.done) { const up = T.timedUpTo(tr.words); if (up < tr.words.length) toast(`The recording ended before the text did: the last ${(tr.words.length - up).toLocaleString()} words were not heard.`, 7000); }
+    if (tr.done && tr.mode === 'heard') partTrim(tr); // what the website leaves out is not kept
     toast(tr.done ? (tr.mode === 'text' ? 'Read-along ready. Click any word to hear it.' : 'Transcript ready. Click any word to hear it.') : `Paused at ${T.short(tr.upTo)}. Continue any time.`, 5000);
   } catch (e) { toast(`Stopped: ${e.message || e}`, 7000); console.error(e); }
   finally { if (worker) worker.terminate(); if (spkWorker) spkWorker.terminate(); job = null; $('#run').hidden = true; await save().catch(() => {}); drawAll(); }
@@ -598,7 +599,7 @@ const Legal = await import('./legal.js').then(m => m.initLegal({ get cur() { ret
 window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dirtyEdit(), keys: { open: keysHelp, host: '#menu', match: 'table.keys' } });
 initFollow({ toast, get cur() { return cur; } });
 initPart({ toast, drawAll, get cur() { return cur; } });
-initReverb({ M, toast, save, drawAll, window16k, partChosen, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
+initReverb({ M, toast, save, drawAll, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */
 await loadLib(); loadShelf();
 const want = new URLSearchParams(location.search).get('song'); if (want) select(want);
