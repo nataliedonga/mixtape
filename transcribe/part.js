@@ -12,6 +12,8 @@
    With Backup Track (the browser extension that plays your recording in step with the site) installed, none of this
    has to be typed: it already knows the start, the website's length and the stretches it skips, and they are taken
    from it. Without the extension this page cannot see the website at all, so the times are typed or picked by ear. */
+import { render as renderTags } from '../tags-core.js';
+import { styleOf } from './matter.js';
 const $ = s => document.querySelector(s), KEY = 'mixtape-part-clock';
 let api, sel = { id: null, on: false, skips: [], touched: false }, zero = true, inSheet = false; // inSheet: the form is open for a transcript that already exists
 try { zero = localStorage.getItem(KEY) !== '0'; } catch (e) {}
@@ -42,7 +44,10 @@ export function partClock(cur, t, d) { const p = counting() ? part() : null; if 
 export function partSeek(cur, f, d) { const p = counting() ? part() : null; return p ? Math.max(p.a, recAt(p, f * siteAt(p, p.b))) : f * d; }
 export function partShow(t) { const p = counting() ? part() : null; return p ? Math.max(0, siteAt(p, t)) : t; }
 // the text files saved from a part count the same way as the clock does (the .json keeps the recording's own times, so it still opens with its recording)
-export function partExport(r) {
+/* what is saved: the part only (if one is shown), and the tags in the wording of the matter's style (tags-core.js).
+   opts: { silence, unsure } from "Choose what goes in the file". The transcript itself is not touched. */
+export function partExport(r, opts = {}) { const x = partOnly(r); return { ...x, words: renderTags(x.words, styleOf(r), opts) }; }
+function partOnly(r) {
   const p = part(); if (!p) return r; const z = counting(); // only the part is saved; its times count like the clock does
   return { ...r, words: r.words.filter(w => w.s == null || !partHides(w.s)).map(w => !z || w.s == null ? w : { ...w, s: Math.max(0, siteAt(p, w.s)), e: w.e == null ? w.e : Math.max(0, siteAt(p, w.e)) }) };
 }

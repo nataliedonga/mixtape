@@ -104,7 +104,7 @@ export function initRoles(a) {
   api = a; const st = document.createElement('style'); st.textContent = STYLE; document.head.appendChild(st);
   bar = document.createElement('section'); bar.id = 'rolesBar'; bar.hidden = true; bar.setAttribute('aria-label', 'What was set from the words: check each one'); $('#text').before(bar);
   bar.addEventListener('click', click);
-  let timer = 0; new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(draw, 250); }).observe($('#text'), { childList: true });
+  new MutationObserver(draw).observe($('#text'), { childList: true }); // at once, before the page is painted, so the text does not jump down a moment later
   if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__roles = { draw, state, suggest };
   draw();
 }

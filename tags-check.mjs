@@ -1,0 +1,23 @@
+// node tags-check.mjs : tags in each style's wording, on invented words
+import { render, mark, instead, after, offered, clock } from './tags-core.js';
+let pass = 0, fail = 0; const check = (name, ok, got) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : '  |  got: ' + JSON.stringify(got)}`); ok ? pass++ : fail++; };
+const make = lines => { const out = []; let t = 1800; for (const [sp, text] of lines) text.split(' ').forEach((w, k) => out.push({ t: w, s: +(t += 0.4).toFixed(2), e: +(t + 0.3).toFixed(2), ...(k === 0 ? { p: true, sp } : {}) })); return out; };
+const text = ws => { const ps = []; for (const w of ws) { if (w.p) ps.push([]); ps[ps.length - 1].push(w.t); } return ps.map(p => p.join(' ')).join(' / '); };
+let w = make([['A', 'I met him at the corner of Vasquez and something street, I think.'], ['B', 'Okay. And then?'], ['A', 'We talked.']]);
+const n0 = w.length, plain = text(w);
+w = mark(w, 7, 7, 'guess'); w = mark(w, 9, 10, 'inaudible'); w = mark(w, 13, 13, 'laughter'); w = mark(w, 15, 15, 'foreign');
+check('marking changes no word and adds none', w.length === n0 && w.map(x => x.t).join(' ') === make([['A', 'I met him at the corner of Vasquez and something street, I think.'], ['B', 'Okay. And then?'], ['A', 'We talked.']]).map(x => x.t).join(' '), w.length);
+check('Mixtape’s own and TranscribeMe: a guess, one tag for a run, laughter and foreign after the word', text(render(w, '')) === 'I met him at the corner of [Vasquez?] and [inaudible], I think. / Okay [laughter]. And then [foreign]? / We talked.' && text(render(w, 'tm-clean')) === text(render(w, '')), text(render(w, '')));
+check('Rev legal: the time in the inaudible tag, (phonetic) for a guess, no laughter, its own words for foreign speech', text(render(w, 'rev')) === 'I met him at the corner of Vasquez (phonetic) and [inaudible 00:30:04], I think. / Okay. And then (foreign language spoken)? / We talked.', text(render(w, 'rev')));
+check('the punctuation that closed the run closes the tag', render(w, '').find(x => x.tagged === 'inaudible').t === '[inaudible],', render(w, '').find(x => x.tagged === 'inaudible'));
+check('the transcript itself is not touched by showing or saving', text(w) === plain && w.length === n0, text(w));
+const x = mark(make([['A', 'yes yes no'], ['B', 'what']]), 1, 2, 'crosstalk');
+check('crosstalk: a tag in TranscribeMe, the heard words in Rev (it has no such tag)', text(render(x, 'tm-full')) === 'yes [crosstalk] / what' && text(render(x, 'rev')) === 'yes yes no / what', [text(render(x, 'tm-full')), text(render(x, 'rev'))]);
+check('pressing the same tag again takes it off', text(render(mark(x, 1, 2, 'crosstalk'), '')) === 'yes yes no / what' && !mark(mark(w, 13, 13, 'laughter'), 0, 0, 'x')[13].ta, text(render(mark(x, 1, 2, 'crosstalk'), '')));
+const q = make([['A', 'i was there'], ['B', 'and then']]); for (const k of [3, 4]) { q[k].s += 14; q[k].e += 14; } q[1].c = 0.31;
+check('saving: ten seconds of nothing gets a line of its own (not in Rev), an unsure word is saved as a guess', text(render(q, 'tm-clean', { silence: 10, unsure: 0.5 })) === 'i [was?] there / [silence] / and then' && text(render(q, 'rev', { silence: 10, unsure: 0.5 })) === 'i was there / and then', [text(render(q, 'tm-clean', { silence: 10, unsure: 0.5 })), text(render(q, 'rev', { silence: 10, unsure: 0.5 }))]);
+const n = [{ t: '(Recess.)', s: 1, e: 1, p: true, lg: { k: 'n' } }, { t: 'yes', s: 2, e: 2.2, p: true, sp: 'A', tg: 'inaudible' }];
+check('a legal notation is never tagged over', render(n, '')[0].t === '(Recess.)' && render(n, '')[1].t === '[inaudible]' && mark(n, 0, 1, 'guess')[0].tg === undefined, render(n, ''));
+check('each style offers its own tags', offered('rev').map(o => o[0]).join() === 'inaudible,guess,foreign,sic,noresponse' && offered('tm-clean').map(o => o[0]).join() === 'inaudible,guess,crosstalk,laughter,foreign,music,applause,noresponse' && offered('rev')[0][1] === '[inaudible time]', [offered('rev').map(o => o[0]).join(), offered('tm-clean').map(o => o[0]).join()]);
+check('the clock is hours:minutes:seconds', clock(1804.4) === '00:30:04' && clock(3725) === '01:02:05', clock(1804.4));
+console.log(`${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -10,10 +10,11 @@ const KEY = 'mixtape-export-as';
 const LEAVES = { '': 'ums and uhs, a word said twice in a row, and openers like “So,” and “Well,”', rev: '“um” and “uh”, and cut-off part-words (Rev’s legal guide keeps everything else)', 'tm-clean': 'fillers (unless one is the whole answer) and a word said twice in a row', 'tm-full': 'nothing: full verbatim keeps every word' };
 let api, dlg;
 const T = () => window.TranscriptCore;
-const saved = () => { try { return Object.assign({ speakers: true, times: true, clean: false, kind: 'txt' }, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { return { speakers: true, times: true, clean: false, kind: 'txt' }; } };
+const DEF = { speakers: true, times: true, clean: false, silence: false, unsure: false, kind: 'txt' };
+const saved = () => { try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { return { ...DEF }; } };
 
 function make(o) { // the file's text and name, from the choices
-  const cur = api.cur, r = partExport(cur.tr), sens = api.sensitive(cur.track.id), words = r.words.map(w => (w.s == null ? { ...w, s: 0 } : w));
+  const cur = api.cur, r = partExport({ ...cur.tr, styleFor: o.style }, { silence: o.silence ? 10 : 0, unsure: o.unsure ? 0.5 : 0 }), sens = api.sensitive(cur.track.id), words = r.words.map(w => (w.s == null ? { ...w, s: 0 } : w));
   const base = (cur.track.title || 'transcript').replace(/[\\/:*?"<>|]+/g, '-') + (sens ? ' (SENSITIVE)' : ''), tag = [o.clean ? 'clean' : '', !o.speakers && o.kind === 'txt' ? 'no speakers' : '', !o.times && o.kind === 'txt' ? 'no times' : ''].filter(Boolean).join(', ');
   const was = T().cleanStyle(); T().setCleanStyle(o.style); let text;
   try {
@@ -22,17 +23,18 @@ function make(o) { // the file's text and name, from the choices
   } finally { T().setCleanStyle(was); }
   return { text, name: `${base}${tag ? ` (${tag})` : ''}.${o.kind}` };
 }
-const read = () => ({ style: $('#xaStyle').value, speakers: $('#xaSpeakers').checked, times: $('#xaTimes').checked, clean: $('#xaClean').checked, kind: dlg.querySelector('input[name=xaKind]:checked').value });
+const read = () => ({ style: $('#xaStyle').value, speakers: $('#xaSpeakers').checked, times: $('#xaTimes').checked, clean: $('#xaClean').checked, silence: $('#xaSilence').checked, unsure: $('#xaUnsure').checked, kind: dlg.querySelector('input[name=xaKind]:checked').value });
 function show() {
   const o = read(), sub = o.kind !== 'txt';
   $('#xaSpeakers').disabled = $('#xaTimes').disabled = sub; $('#xaSubNote').hidden = !sub;
   $('#xaLeaves').textContent = `Leaves out ${LEAVES[o.style] || LEAVES['']}.`;
+  $('#xaTagNote').textContent = o.style === 'rev' ? 'Rev’s legal guide has no tag for a guess or for silence, so these two do nothing in this style. Tags you put in yourself are written its way.' : 'Tags you put in yourself are always written, in this style’s wording.';
   let m; try { m = make(o); } catch (e) { $('#xaPreview').textContent = 'This cannot be made: ' + (e.message || e); return; }
   $('#xaName').textContent = m.name; $('#xaPreview').textContent = m.text.split('\n').slice(0, 14).join('\n') + (m.text.split('\n').length > 14 ? '\n…' : '');
 }
 export function exportAs() {
   const cur = api.cur; if (!cur || !cur.tr) return; const o = saved(), st = styleOf(cur.tr);
-  $('#xaStyle').value = st; $('#xaSpeakers').checked = o.speakers; $('#xaTimes').checked = o.times; $('#xaClean').checked = o.clean;
+  $('#xaStyle').value = st; $('#xaSpeakers').checked = o.speakers; $('#xaTimes').checked = o.times; $('#xaClean').checked = o.clean; $('#xaSilence').checked = o.silence; $('#xaUnsure').checked = o.unsure;
   (dlg.querySelector(`input[name=xaKind][value="${o.kind}"]`) || dlg.querySelector('input[name=xaKind]')).checked = true;
   show(); dlg.showModal(); $('#xaSave').focus();
 }
@@ -56,6 +58,8 @@ export function initExportAs(a) {
       <label><input type="checkbox" id="xaSpeakers"> The speakers’ names</label>
       <label><input type="checkbox" id="xaTimes"> A time stamp on each paragraph</label>
       <label><input type="checkbox" id="xaClean"> Clean version: leave out what the style leaves out</label><small id="xaLeaves"></small>
+      <label><input type="checkbox" id="xaUnsure"> Mark words the recogniser was unsure of as guesses</label>
+      <label><input type="checkbox" id="xaSilence"> Mark silences of ten seconds or more</label><small id="xaTagNote"></small>
     </fieldset>
     <fieldset><legend>Kind of file</legend><div class="xrow">
       <label><input type="radio" name="xaKind" value="txt"> Text (.txt)</label><label><input type="radio" name="xaKind" value="srt"> Subtitles (.srt)</label><label><input type="radio" name="xaKind" value="vtt"> Web subtitles (.vtt)</label></div>
@@ -67,7 +71,7 @@ export function initExportAs(a) {
   $('#xaCancel').addEventListener('click', () => dlg.close());
   $('#xaSave').addEventListener('click', () => {
     const o = read(); let m; try { m = make(o); } catch (e) { return api.toast('The file could not be made: ' + (e.message || e), 7000); }
-    try { localStorage.setItem(KEY, JSON.stringify({ speakers: o.speakers, times: o.times, clean: o.clean, kind: o.kind })); } catch (e) {}
+    try { localStorage.setItem(KEY, JSON.stringify({ speakers: o.speakers, times: o.times, clean: o.clean, silence: o.silence, unsure: o.unsure, kind: o.kind })); } catch (e) {}
     const a = document.createElement('a'), u = URL.createObjectURL(new Blob([m.text], { type: 'text/plain' })); a.href = u; a.download = m.name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 60e3);
     dlg.close(); api.toast(`Saved “${m.name}”.`, 5000);
   });

@@ -11,6 +11,7 @@ import { initRemove } from './remove.js';
 import { initRoles } from './roles.js';
 import { initMatter } from './matter.js';
 import { initExportAs, exportAs } from './exportas.js';
+import { initTags } from './tags.js';
 import { initPart, partChosen, partClock, partSeek, partShow, partExport, partTrim, partHides, partRecForSite } from './part.js';
 const T = window.TranscriptCore;
 const $ = s => document.querySelector(s);
@@ -71,7 +72,7 @@ async function openPicked(fs, extra = {}) {
   // a narration's read-along (mode text), or a transcript made elsewhere (mode heard, e.g. Reverb on your own computer):
   // either way every word has its moment; a transcript keeps the recogniser's confidence, so unsure words show lighter
   const heard = ra.mode === 'heard', num = v => { const n = +v; return v == null || !isFinite(n) ? null : n; }; // a time that is not a number is no time
-  const words = ra.words.map(w => ({ t: String(w.t), s: num(w.s), e: num(w.e), ...(w.p ? { p: true } : {}), ...(w.sp ? { sp: w.sp } : {}), ...(heard && w.c != null ? { c: +w.c } : {}) }));
+  const words = ra.words.map(w => ({ t: String(w.t), s: num(w.s), e: num(w.e), ...(w.p ? { p: true } : {}), ...(w.sp ? { sp: w.sp } : {}), ...(heard && w.c != null ? { c: +w.c } : {}), ...(typeof w.tg === 'string' ? { tg: w.tg } : {}), ...(Array.isArray(w.ta) && w.ta.length ? { ta: w.ta.map(String) } : {}) }));
   if (heard && words[0]) words[0].p = true;
   cur.tr = { id, mode: heard ? 'heard' : 'text', words, upTo: ra.duration || cur.track.duration || 0, done: true, duration: ra.duration || cur.track.duration || 0, updated: Date.now(), voice: ra.voice || '' }; Legal.imported(cur.tr, ra);
   if (ra.sensitive) { const f = { id, sensitive: true, at: Date.now() }; flags.set(id, f); cur.tr.sensitive = true; await putFlag(f).catch(() => {}); } // a transcript saved as sensitive stays sensitive
@@ -607,6 +608,7 @@ initFollow({ toast, siteToRec: partRecForSite, get cur() { return cur; } });
 initRemove({ toast, get cur() { return cur; }, get job() { return job; }, reload: async () => { await loadLib(); drawLib(); } });
 initMatter({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
 initExportAs({ toast, sensitive, sensLine: SENS_LINE, get cur() { return cur; } });
+initTags({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
 initRoles({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
 initPart({ toast, drawAll, save, get cur() { return cur; } });
 initReverb({ M, toast, save, drawAll, remember, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });

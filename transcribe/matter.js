@@ -15,7 +15,7 @@ let api, row, lastKey = '', busy = false;
 const all = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
 const put = m => { try { localStorage.setItem(KEY, JSON.stringify(m)); return true; } catch (e) { api.toast('The matter could not be saved on this device (its storage may be full).', 8000); return false; } };
 const mine = () => { const c = api.cur, n = c && c.tr && c.tr.matter; return n ? all()[n] || null : null; };
-export const styleOf = tr => { const m = tr && tr.matter ? all()[tr.matter] : null; return (m && m.style) || ''; };
+export const styleOf = tr => { if (tr && typeof tr.styleFor === 'string') return tr.styleFor; /* a file being saved in a style chosen for it */ const m = tr && tr.matter ? all()[tr.matter] : null; return (m && m.style) || ''; };
 const T = () => window.TranscriptCore;
 /* names that say a role, not a person: they are never remembered as a voice, and a recognised voice may replace them */
 const generic = n => /^Speaker \d+$/i.test(n) || /^(THE WITNESS|EXAMINING COUNSEL)( \d+)?$/.test(n);
@@ -111,7 +111,7 @@ export function initMatter(a) {
   const make = async () => { const v = ($('#matterNew') ? $('#matterNew').value : '').trim(); if (!v) return $('#matterNew').focus(); const ms = all(); if (!ms[v]) { ms[v] = { style: '', remember: false, voices: [], people: [], roles: {} }; if (!put(ms)) return; } api.cur.tr.matter = v; try { await api.save(); } catch (err) { return; } lastKey = ''; draw(); api.drawAll(); };
   row.addEventListener('keydown', e => { if (e.target.id === 'matterNew') { if (e.key === 'Enter') make(); else if (e.key === 'Escape') { lastKey = ''; draw(); } e.stopPropagation(); } });
   row.addEventListener('click', e => { if (e.target.id === 'matterMake') return make(); if (e.target.id === 'matterCancel') { lastKey = ''; return draw(); } if (e.target.id !== 'matterForget') return; const ms = all(), m = ms[api.cur.tr.matter]; if (!m) return; const n = (m.voices || []).length; m.voices = []; m.remember = false; /* otherwise the open recording would put its named voices straight back */ put(ms); lastKey = ''; draw(); api.toast(`${n} voiceprint${n === 1 ? '' : 's'} removed from this matter, and remembering is switched off. Names already in transcripts stay.`, 7000); });
-  let timer = 0; new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(draw, 300); }).observe($('#text'), { childList: true });
+  new MutationObserver(draw).observe($('#text'), { childList: true }); // at once, before the page is painted, so the text does not jump down a moment later
   if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__matter = { all, put, known, draw, SAME };
   draw();
 }
