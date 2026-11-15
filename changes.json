@@ -1,5 +1,12 @@
 [
   {
+    "version": 108,
+    "date": "2026-11-16",
+    "items": [
+      "Transcripts: “Choose what goes in the file” can now save a Word document (.docx) or a PDF, with the same choices: style, speakers’ names, time stamps, clean or every word, tags. Both are made on this computer."
+    ]
+  },
+  {
     "version": 107,
     "date": "2026-11-16",
     "items": [

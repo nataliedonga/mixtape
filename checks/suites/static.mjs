@@ -13,7 +13,9 @@ const THIRD_PARTY = ['vendor/', 'stems/demucs/', 'stems/ort/'];        // other 
 const NOT_SHIPPED = /(^|\/)(check\.mjs|[\w-]+-check\.(cjs|mjs|js))$/;   // the node suites
 const CODE = /\.(html|js|mjs|css)$/i;
 const URL_RE = /\bhttps?:\/\/[^\s"'`<>)\\]*/g;
-const W3C = /^https?:\/\/www\.w3\.org\//; // xmlns and other W3C constants: names, never fetched
+// Names, never fetched: xmlns and other W3C constants, and the namespace names a Word document (.docx) must carry inside
+// its XML (transcribe/exportdoc.js writes them into the file; nothing is requested from them).
+const W3C = /^https?:\/\/(www\.w3\.org|schemas\.openxmlformats\.org)\//;
 // References that are known to point at nothing here, each with its reason. Anything else that is missing fails.
 const EXPECTED_MISSING = [
   { file: 'cutter/app.js', ref: 'sw.js', why: 'only reached in the standalone Cutter (never when Mixtape hosts it), which has a service worker of its own' },
