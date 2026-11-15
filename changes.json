@@ -1,5 +1,12 @@
 [
   {
+    "version": 104,
+    "date": "2026-11-16",
+    "items": [
+      "Transcripts: Personal transcripts can now get punctuation and capitals, added by a small language model in the Reverb helper on this computer. Tick “Add punctuation and capitals afterwards” under Personal, or press “Add them on this computer” above a transcript that has none. No word is changed; it takes about as long as the recording."
+    ]
+  },
+  {
     "version": 103,
     "date": "2026-11-16",
     "items": [

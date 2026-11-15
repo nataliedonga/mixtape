@@ -606,7 +606,7 @@ initRemove({ toast, get cur() { return cur; }, get job() { return job; }, reload
 initMatter({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
 initRoles({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
 initPart({ toast, drawAll, save, get cur() { return cur; } });
-initReverb({ M, toast, save, drawAll, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
+initReverb({ M, toast, save, drawAll, remember, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */
 await loadLib(); loadShelf();
 const want = new URLSearchParams(location.search).get('song'); if (want) select(want);

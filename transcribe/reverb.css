@@ -45,6 +45,9 @@
 .partbox.insheet { border: 0; padding: 0; margin: 6px 0 0; }
 .partbox.insheet > legend, .partbox.insheet > .eng, .partbox.insheet .partall { display: none; }
 .partbox .partall { margin: 10px 0 0 26px; }
+.engine .engsub { margin: 8px 0 0 26px; }
+#punctRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 10px; padding: 8px 12px; border: 1px dashed var(--faint, #888); border-radius: 10px; font: 14px/1.4 var(--f-ui, system-ui, sans-serif); }
+#punctRow[hidden] { display: none; } #punctRow small { color: var(--muted, inherit); flex-basis: 100%; }
 .partbox.insheet .partrow, .partbox.insheet .partplay, .partbox.insheet .partstep, .partbox.insheet .partseg, .partbox.insheet .partmore, .partbox.insheet .partready, .partbox.insheet .partnote, .partbox.insheet #partFromBT { margin-left: 0; }
 #partBtn { margin-left: 8px; }
 @media (max-width: 860px) { .partsheet { right: 8px; left: 8px; width: auto; bottom: 84px; } }

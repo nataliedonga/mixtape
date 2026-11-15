@@ -28,6 +28,8 @@ function draw() {
   const box = $('#engineBox'); if (!box) return; const can = 'showDirectoryPicker' in window, personal = reverbChosen();
   box.querySelector('#engPaid').checked = !personal; box.querySelector('#engPersonal').checked = personal; box.querySelector('#engPersonal').disabled = !can;
   const s = box.querySelector('#engStatus'), pick = box.querySelector('#engPick'); s.hidden = pick.hidden = !personal;
+  const pr = box.querySelector('#engPunctRow'); if (pr) { pr.hidden = !(personal && canPunct()); box.querySelector('#engPunct').checked = wantPunct(); }
+  punctRow();
   if (!can) { box.querySelector('#engNo').hidden = false; return; }
   if (!personal) return;
   pick.textContent = dir ? `Folder: “${home ? home + ' › ' : ''}${dir.name}” (change)` : 'Choose the Reverb folder…';
@@ -50,9 +52,10 @@ function build() {
     <label class="eng"><input type="radio" name="engine" id="engPersonal" value="personal"><span><b>Personal</b><small>Rev’s Reverb: better on speech like court audio. Rev’s licence allows personal use only, never paid or client work. Runs in a helper on this computer.</small></span></label>
     <p class="engstatus" id="engNo" hidden>Personal needs Chrome or Edge on a computer; this browser cannot share a folder with the helper.</p>
     <p class="engstatus" id="engStatus" role="status" hidden></p>
-    <button type="button" class="btn sm" id="engPick" hidden></button>`;
+    <button type="button" class="btn sm" id="engPick" hidden></button>
+    <label class="eng engsub" id="engPunctRow" hidden><input type="checkbox" id="engPunct"><span><b>Add punctuation and capitals afterwards</b><small>By a small language model in the helper, on this computer. Takes about as long as the recording again. No word is changed.</small></span></label>`;
   go.parentNode.insertBefore(f, go);
-  f.addEventListener('change', e => { if (e.target.name !== 'engine') return; try { localStorage.setItem(KEY, e.target.value); } catch (err) {} lastStatus = null; draw(); refresh(); });
+  f.addEventListener('change', e => { if (e.target.id === 'engPunct') { try { localStorage.setItem(PKEY, e.target.checked ? '1' : '0'); } catch (err) {} return; } if (e.target.name !== 'engine') return; try { localStorage.setItem(KEY, e.target.value); } catch (err) {} lastStatus = null; draw(); refresh(); });
   f.querySelector('#engPick').addEventListener('click', async () => {
     try { const d = await showDirectoryPicker({ id: 'reverb-inbox', mode: 'readwrite' }); dir = d; home = ''; await kv('readwrite', s => s.put(d, 'inbox')).catch(() => {}); await inbox(); lastStatus = null; await refresh(); }
     catch (e) { if (e.name !== 'AbortError') api.toast('That folder could not be opened. Choose your reverb-personal folder.', 6000); }
@@ -85,6 +88,70 @@ async function addSpeakers(track, words, from, dur, tick, job) {
     }
   } finally { w.terminate(); }
   return failed && !voices.length ? null : { words: out, voices };
+}
+/* ---- punctuation and capitals, by the helper's language model ----
+   Reverb gives lower-case words with no marks. The helper can add them (punctuate.py beside watch.py): this page hands
+   over the words, one list per speaker turn, and gets the same words back with marks and capitals. Nothing is taken on
+   trust: a word comes back into the transcript only if its letters are exactly the ones that were heard, so the model
+   can add a full stop or a capital and nothing else. Legal notations are not sent. Ctrl + Z undoes the whole step. */
+const PKEY = 'mixtape-reverb-punct', pkey = x => String(x).toLowerCase().replace(/[^a-z0-9']/g, '');
+const wantPunct = () => { try { return localStorage.getItem(PKEY) !== '0'; } catch (e) { return true; } };
+const canPunct = () => !!(dir && lastStatus && lastStatus.punct && lastStatus.alive && Date.now() / 1000 - lastStatus.alive < 8);
+const bare = words => { let n = 0, m = 0; for (const w of words) { if (w.lg) continue; n++; if (/[.?!,]$/.test(w.t) || /^[A-Z]/.test(w.t)) m++; } return n > 20 && m / n < 0.03; }; // hardly a mark or a capital in it
+function speechTurns(words) { // [[word numbers]]: one list per speaker turn, without notations
+  const out = []; let cur = null, sp = '', skip = 0, note = false;
+  words.forEach((w, i) => {
+    if (i === 0 || w.p) { note = !!(w.lg && w.lg.k === 'n'); if (note) { cur = null; return; } const who = w.sp || sp; if (!cur || who !== sp) { cur = []; out.push(cur); } sp = who; }
+    if (note) return;
+    if (w.lg && w.lg.len) skip = w.lg.len; if (skip > 0) { skip--; return; }
+    if (cur) cur.push(i);
+  });
+  return out.filter(t => t.length);
+}
+async function punctCore(cur, job, st, bar) {
+  const r = cur.tr, id = String(cur.track.id).replace(/[^\w-]/g, '_'), jobF = id + '.punctjob.json', outF = id + '.punct.json', errF = id + '.puncterr.json';
+  const turns = speechTurns(r.words), n = turns.reduce((a, t) => a + t.length, 0); if (!n) return 0;
+  const clean = async () => { for (const f of [jobF, outF, errF]) await drop(f); };
+  try {
+    await clean(); bar.style.width = '0%'; st.textContent = 'Adding punctuation on this computer: starting the language model…';
+    const jw = await (await dir.getFileHandle(jobF, { create: true })).createWritable(); await jw.write(JSON.stringify({ turns: turns.map(t => t.map(i => r.words[i].t)), name: cur.track.title || '' })); await jw.close();
+    let quiet = 0;
+    for (;;) {
+      await new Promise(res => setTimeout(res, 1500));
+      if (job.stop) throw Object.assign(new Error('stopped'), { stopped: true });
+      const bad = await readJSON(errF); if (bad) throw new Error(bad.error || 'no reason given');
+      const got = await readJSON(outF);
+      if (got && Array.isArray(got.turns)) {
+        api.remember(); let marked = 0; const words = r.words.slice();
+        got.turns.forEach((t, k) => { const ix = turns[k]; if (!ix || !Array.isArray(t) || t.length !== ix.length) return; t.forEach((neu, j) => { const w = words[ix[j]]; neu = String(neu); if (neu !== w.t && pkey(neu) && pkey(neu) === pkey(w.t)) { words[ix[j]] = { ...w, t: neu }; marked++; } }); });
+        r.words = words; r.punct = { at: Date.now(), by: String(got.engine || 'the helper’s language model'), marked };
+        await api.save(); return marked;
+      }
+      const s = await readJSON('status.json'), alive = s && s.alive && Date.now() / 1000 - s.alive < 8; quiet = alive ? 0 : quiet + 1;
+      if (quiet > 8) throw new Error('the helper stopped answering');
+      const mine = alive && s.file === id;
+      st.textContent = mine ? `Adding punctuation on this computer: ${s.note || 'working'} · about as long as the recording` : alive ? `Waiting for the helper to finish “${s.name || 'another recording'}”…` : 'Waiting for the helper to answer…';
+      bar.style.width = Math.round((mine ? (s.progress || 0) : 0) * 100) + '%';
+    }
+  } finally { await clean(); }
+}
+/* the button: for a transcript that is already there */
+async function punctuateNow() {
+  const cur = api.cur; if (!cur || !cur.tr || !cur.tr.done) return; if (api.job) return api.toast('Wait for what is running to finish first.', 4000);
+  if (!dir || !(await allowed(true))) return api.toast('Choose your reverb-personal folder first (under Personal, in “Write down what is said”).', 7000);
+  lastStatus = (await readJSON('status.json')) || false;
+  if (!canPunct()) return api.toast(lastStatus && lastStatus.alive && Date.now() / 1000 - lastStatus.alive < 8 ? 'The helper that is running is an older one and cannot add punctuation. Close it and start it again from your reverb-personal folder.' : 'Reverb’s helper is not running. Start it from your reverb-personal folder, then press the button again.', 9000);
+  const job = { stop: false }; api.setJob(job); $('#run').hidden = false;
+  try { const n = await punctCore(cur, job, $('#runSt'), $('#runBar')); api.toast(`Punctuation and capitals added to ${n.toLocaleString()} words, on this computer. No word was changed. Ctrl + Z undoes it.`, 8000); }
+  catch (e) { if (e.stopped) api.toast('Stopped. The transcript is as it was.', 4000); else { api.toast(`Punctuation could not be added (${e.message || e}). The transcript is as it was.`, 9000); console.error(e); } }
+  finally { api.setJob(null); $('#run').hidden = true; api.drawAll(); }
+}
+function punctRow() {
+  let row = $('#punctRow'); const t = $('#text'); if (!t) return;
+  if (!row) { row = document.createElement('section'); row.id = 'punctRow'; row.hidden = true; t.before(row); row.addEventListener('click', e => { if (e.target.closest('button')) punctuateNow(); }); }
+  const cur = api.cur, r = cur && cur.tr, show = !!(r && r.done && r.mode === 'heard' && !r.punct && !api.job && reverbChosen() && canPunct() && bare(r.words));
+  if (show === !row.hidden) return; row.hidden = !show;
+  if (show) row.innerHTML = '<span>This transcript has no punctuation or capitals.</span><button type="button" class="btn sm">Add them on this computer</button><small>Takes about as long as the recording. No word is changed, and nothing leaves the computer.</small>';
 }
 async function writeWav(name, track, t0, dur, tick) { // from t0 to dur: the whole recording, or only the part asked for
   const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); let frames = 0;
@@ -141,7 +208,9 @@ export async function startReverb() {
         if (who && who.words.length === words.length) { cur.tr.words = who.words; cur.tr.voices = who.voices; cur.tr.speakers = true; }
         if (api.partTrim) api.partTrim(cur.tr); // what the website leaves out is not kept
         await api.save(); await clean();
-        api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb${who && cur.tr.speakers ? `, ${who.voices.length} speaker${who.voices.length === 1 ? '' : 's'} found (click a name to rename it everywhere)` : ', without speakers (they could not be found this time)'}. Personal use only.`, 9000); return;
+        let marks = -1; lastStatus = (await readJSON('status.json')) || lastStatus;
+        if (wantPunct() && canPunct()) { try { marks = await punctCore(cur, job, st, bar); } catch (e) { if (!e.stopped) { console.warn('punctuation:', e); api.toast(`The words are ready, but punctuation could not be added (${e.message || e}). You can add it later from the transcript.`, 9000); } } }
+        api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb${who && cur.tr.speakers ? `, ${who.voices.length} speaker${who.voices.length === 1 ? '' : 's'} found (click a name to rename it everywhere)` : ', without speakers (they could not be found this time)'}${marks > 0 ? ', punctuation and capitals added' : ''}. Personal use only.`, 9000); return;
       }
       const s = await readJSON('status.json'), alive = s && s.alive && Date.now() / 1000 - s.alive < 8; quiet = alive ? 0 : quiet + 1;
       if (quiet > 8) throw new Error('Reverb’s helper stopped answering. Start it again from your reverb-personal folder, then press Transcribe');
@@ -165,5 +234,5 @@ export function initReverb(a) {
   api = a; build();
   const m = $('#meta'); if (m) new MutationObserver(badge).observe(m, { childList: true, characterData: true, subtree: true });
   kv('readonly', s => s.get('inbox')).then(d => { if (d) { dir = d; refresh(); } }).catch(() => {});
-  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__reverb = { setDir(d) { dir = d; lastStatus = null; return refresh(); }, startReverb, reverbChosen, async speakersFor(words) { const cur = api.cur, input = new api.M.Input({ source: new api.M.BlobSource(cur.blob), formats: api.M.ALL_FORMATS }), a = await input.getPrimaryAudioTrack(); return addSpeakers(a, words, 0, await a.computeDuration(), null, null); } }; // for checks on this computer only
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__reverb = { setDir(d) { dir = d; lastStatus = null; return refresh(); }, startReverb, reverbChosen, punctuateNow, speechTurns, async speakersFor(words) { const cur = api.cur, input = new api.M.Input({ source: new api.M.BlobSource(cur.blob), formats: api.M.ALL_FORMATS }), a = await input.getPrimaryAudioTrack(); return addSpeakers(a, words, 0, await a.computeDuration(), null, null); } }; // for checks on this computer only
 }
