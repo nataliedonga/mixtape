@@ -266,6 +266,7 @@ async function run(output, tgt, fn) { try { await fn(); } catch (e) { try { awai
 async function copyJob(ranges, opts) {
   const J = job(opts), m0 = ranges[0].media, tracks = opts.tracks || 'both';
   const useV = tracks !== 'audio' && !!m0.v, useA = tracks !== 'video' && !!m0.a;
+  for (const r of ranges) if (useA && r.media.a && !r.media.audio.codec) throw new Error(`The sound in “${r.media.file.name}” is a kind this tool does not know, so it cannot be cut here. Convert the file to MP3, M4A or WAV in another program first.`);
   const family = copyFamily(m0, tracks), ext = extFor(m0, family), name = opts.fileName(ext);
   const plan = []; let total = 0;
   for (const r of ranges) {
@@ -373,7 +374,16 @@ async function soundSource(codec, ch, sr) {
 }
 
 /* ---------- 2. exact sound on its own ---------- */
+// Sound this browser cannot decode would be written as silence: refuse, and say what does work.
+function needSound(ranges, alsoPicture) {
+  for (const r of ranges) if (r.media.a && !r.media.audio.canDecode) {
+    const nm = r.media.file.name, c = r.media.audio.codec;
+    if (!c) throw new Error(`The sound in “${nm}” is a kind this tool does not know, so it cannot be cut here. Convert the file to MP3, M4A or WAV in another program first.`);
+    throw new Error(`This browser cannot decode the sound in “${nm}” (${c}), so an exact cut would come out silent. Choose “Untouched”, which copies the sound without decoding it${alsoPicture ? ', or “Picture only”' : ''}.`);
+  }
+}
 async function exactSoundJob(ranges, opts) {
+  needSound(ranges, false);
   const J = job(opts), m0 = ranges[0].media, joined = ranges.length > 1;
   let family = opts.family, codec = opts.codec, lossless = false;
   if (!codec) { family ||= audioFamily(m0.audio.codec); const x = await exactSoundCodec(m0, family === 'm4a' ? 'mp4' : family); codec = x.codec; lossless = x.lossless; if (PCM.has(codec)) family = 'wav'; else if (!supports(family === 'm4a' ? 'mp4' : family === 'mka' ? 'mkv' : family, null, codec)) family = 'm4a'; }
@@ -419,6 +429,7 @@ async function encodeStretch(media, t0, t1, cfg, J, fit) {
 async function smartJob(ranges, opts) {
   const J = job(opts), m0 = ranges[0].media, withSound = opts.tracks !== 'video' && ranges.some(r => r.media.a && r.media.audio.canDecode);
   for (const r of ranges) { if (!r.media.v) throw new Error(`“${r.media.file.name}” has no picture.`); if (!r.media.video.canDecode) throw new Error(`This browser cannot decode the picture in “${r.media.file.name}” (${r.media.video.codec}). Try “Untouched”, which copies it without decoding.`); }
+  if (opts.tracks !== 'video') needSound(ranges, true);
   const W = m0.video.codedW, H = m0.video.codedH, rot = m0.video.rotation || 0;
   for (const r of ranges) if ((r.media.video.rotation || 0) !== rot) throw new Error(`“${r.media.file.name}” is turned differently from “${m0.file.name}”, so they cannot be joined here yet.`);
   let family = opts.family || (['mp4', 'mov', 'mkv'].includes(m0.family) ? m0.family : 'mp4');
@@ -555,6 +566,6 @@ export async function writeCut(spec) {
 }
 /* Can these files be joined untouched (same codecs, same settings)? */
 export function sameTracks(medias) {
-  const a = medias[0], key = m => JSON.stringify([m.video && [m.video.codec, m.video.codedW, m.video.codedH, m.video.config?.description && Array.from(new Uint8Array(m.video.config.description.buffer || m.video.config.description)).join(',')], m.audio && [m.audio.codec, m.audio.sr, m.audio.ch]]);
+  const a = medias[0], key = m => JSON.stringify([m.video && [m.video.codec, m.video.codedW, m.video.codedH, m.video.config?.description && Array.from(new Uint8Array(m.video.config.description.buffer || m.video.config.description)).join(',')], m.audio && [m.audio.codec, m.audio.sr, m.audio.ch, m.audio.config?.description ? Array.from(new Uint8Array(m.audio.config.description.buffer || m.audio.config.description)).join(',') : '']]); // the sound's own settings too: same codec with other settings joined untouched comes out as noise
   return medias.every(m => key(m) === key(a));
 }

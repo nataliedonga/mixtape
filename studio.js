@@ -28,8 +28,9 @@ function req(store, mode, fn) {
     try { const t = db.transaction(store, mode); const r = fn(t.objectStore(store)); r.onsuccess = () => { out = r.result; };
       t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); } catch (e) { rej(e); } });
 }
+let libOK = false; // the library was really read (an empty answer after a failure is not "you have no songs")
 async function loadLibrary() {
-  const all = db ? await req('tracks', 'readonly', o => o.getAll()).catch(() => []) : [];
+  const all = db ? await req('tracks', 'readonly', o => o.getAll()).then(a => { libOK = true; return a; }).catch(() => []) : [];
   lib = all.map(t => { if (!t.blob && t.buf) { t.blob = new Blob([t.buf], { type: t.type || '' }); delete t.buf; } return t; })
     .filter(t => t.blob).sort((a, b) => b.added - a.added);
 }
@@ -4811,7 +4812,11 @@ $('#busyCancel').addEventListener('click', () => { if (busyCancel) busyCancel();
   await loadLibrary(); renderLibrary();
   const gone = c => !['midi', 'pattern', 'riser'].includes(c.kind) && !libTrack(c.trackId); // instrument and drum machine parts have no song to lose
   const missing = P.clips.filter(gone);
-  if (missing.length) { P.clips = P.clips.filter(c => !gone(c)); last = JSON.stringify(P); persist(); toast(`${missing.length} part${missing.length === 1 ? ' was' : 's were'} removed because the song is no longer in your library.`, 5000); }
+  // Parts are only dropped when the library was read and the song is truly not in it. If the library could not be
+  // read (storage blocked, a passing database error), nothing is removed and nothing is saved: one bad start used
+  // to strip every sound part from the mix for good.
+  if (missing.length && !libOK) toast(`Your song library could not be read just now, so ${missing.length} part${missing.length === 1 ? ' has' : 's have'} no sound. Nothing was removed. Reload the page to try again.`, 12000);
+  else if (missing.length) { P.clips = P.clips.filter(c => !gone(c)); last = JSON.stringify(P); persist(); toast(`${missing.length} part${missing.length === 1 ? ' was' : 's were'} removed because the song is no longer in your library.`, 5000); }
   if (!P.clips.length && !P.video) UI.lib = true;
   if (P.video) { ensureVideoEl().then(() => { scrubVideo(playhead); makeThumbs(); }); }
   if (P.link) { try { const d = await linkStore('readonly', s => s.get('score')); if (d && (await d.queryPermission({ mode: 'readwrite' })) === 'granted') { linkDir = d; startWatch(); syncPackage(false); renderInspector(); } } catch (e) {} }

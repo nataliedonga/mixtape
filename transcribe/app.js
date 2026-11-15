@@ -33,8 +33,9 @@ let lib = [], trs = new Map(), flags = new Map(), cur = null; // cur: { track, b
 let job = null, hits = [], hitAt = -1, lit = -1, editing = null;
 
 /* ---------- the library rail ---------- */
+let flagsLost = false; // the list of sensitive recordings could not be read: treat every recording as sensitive
 async function loadLib() {
-  const [ts, rs, fs] = await Promise.all([allTracks().catch(() => []), allTr().catch(() => []), allFlags().catch(() => [])]);
+  const [ts, rs, fs] = await Promise.all([allTracks().catch(() => []), allTr().catch(() => []), allFlags().then(f => { flagsLost = false; return f; }).catch(() => { if (!flagsLost) toast('Could not read which recordings are marked sensitive, so every recording is treated as sensitive for now. Reload the page to try again.', 10000); flagsLost = true; return []; })]);
   flags = new Map(fs.map(f => [f.id, f]));
   lib = ts.filter(t => !t.stemOf && (t.blob || t.buf)).sort((a, b) => (b.added || 0) - (a.added || 0)); trs = new Map(rs.map(r => [r.id, r])); drawLib(); drawShelf();
 }
@@ -56,15 +57,17 @@ async function openPicked(fs, extra = {}) {
   if (!json) return addFile(media[0]);
   let ra; try { ra = JSON.parse(await json.text()); } catch (e) { return toast('That .json is not a read-along file.'); }
   if (!ra || !Array.isArray(ra.words) || !ra.words.length) return toast('That .json has no words with times in it.');
+  if (job) return toast('Pause the current transcript first.');
   const audio = media.find(f => f.name === ra.audio) || media[0];
   if (!audio) return toast(`Pick the recording too: ${ra.audio || 'its .mp3'} together with the .json.`, 6000);
   const id = await addFile(audio, { quiet: true, extra }); if (!id) return;
   // a narration's read-along (mode text), or a transcript made elsewhere (mode heard, e.g. Reverb on your own computer):
   // either way every word has its moment; a transcript keeps the recogniser's confidence, so unsure words show lighter
-  const heard = ra.mode === 'heard';
-  const words = ra.words.map(w => ({ t: String(w.t), s: w.s == null ? null : +w.s, e: w.e == null ? null : +w.e, ...(w.p ? { p: true } : {}), ...(w.sp ? { sp: w.sp } : {}), ...(heard && w.c != null ? { c: +w.c } : {}) }));
+  const heard = ra.mode === 'heard', num = v => { const n = +v; return v == null || !isFinite(n) ? null : n; }; // a time that is not a number is no time
+  const words = ra.words.map(w => ({ t: String(w.t), s: num(w.s), e: num(w.e), ...(w.p ? { p: true } : {}), ...(w.sp ? { sp: w.sp } : {}), ...(heard && w.c != null ? { c: +w.c } : {}) }));
   if (heard && words[0]) words[0].p = true;
   cur.tr = { id, mode: heard ? 'heard' : 'text', words, upTo: ra.duration || cur.track.duration || 0, done: true, duration: ra.duration || cur.track.duration || 0, updated: Date.now(), voice: ra.voice || '' };
+  if (ra.sensitive) { const f = { id, sensitive: true, at: Date.now() }; flags.set(id, f); cur.tr.sensitive = true; await putFlag(f).catch(() => {}); } // a transcript saved as sensitive stays sensitive
   await save(); drawAll(); toast(`Ready: ${words.length.toLocaleString()} words, each with its moment${ra.voice ? `, read by ${String(ra.voice).replace(/^[a-z]{2}-[A-Z]{2}-/, '').replace(/:.*/, '')}` : ''}. Click any word.`, 6000);
 }
 async function addFile(f, { quiet = false, extra = {} } = {}) {
@@ -221,8 +224,12 @@ function askName(anchor, title, value, done) {
   m.onclick = ev => { if (ev.target.closest('[data-ok]')) ok(); };
 }
 /* undo: every change to the words is a step back (Ctrl Z) */
-const undoStack = []; function remember() { if (cur && cur.tr) { undoStack.push(JSON.stringify({ words: cur.tr.words, review: cur.tr.review || null, notes: cur.tr.notes || [] })); if (undoStack.length > 60) undoStack.shift(); } }
-async function undo() { if (!undoStack.length || !cur || !cur.tr) return toast('Nothing to undo.'); const u = JSON.parse(undoStack.pop()); cur.tr.words = u.words; cur.tr.notes = u.notes || []; if (u.review) cur.tr.review = u.review; else delete cur.tr.review; await save(); drawText(); toast('Undone.'); }
+const undoStack = []; function remember() { if (cur && cur.tr) { undoStack.push({ id: cur.tr.id, upTo: cur.tr.upTo, snap: JSON.stringify({ words: cur.tr.words, review: cur.tr.review || null, notes: cur.tr.notes || [] }) }); if (undoStack.length > 60) undoStack.shift(); } }
+async function undo() {
+  if (job) return toast('Wait for the transcript or the check to finish, then undo.');
+  // a change made in another recording, or before more of this one was written down, is not this recording's to undo
+  while (undoStack.length && (!cur || !cur.tr || undoStack[undoStack.length - 1].id !== cur.tr.id || undoStack[undoStack.length - 1].upTo !== cur.tr.upTo)) undoStack.pop();
+  if (!undoStack.length || !cur || !cur.tr) return toast('Nothing to undo.'); const u = JSON.parse(undoStack.pop().snap); cur.tr.words = u.words; cur.tr.notes = u.notes || []; if (u.review) cur.tr.review = u.review; else delete cur.tr.review; await save(); drawText(); toast('Undone.'); }
 $('#tools').addEventListener('change', e => { const k = e.target.dataset.v; if (!k) return; V[k] = e.target.checked; saveV(); drawText(); });
 $('#tools').addEventListener('click', e => { if (aiClick(e)) return; const nl = e.target.closest('[data-notes]'); if (nl) return notesList(nl); const c = e.target.closest('[data-ren]'); if (c) return askName(c, `Rename “${c.dataset.ren}” everywhere`, c.dataset.ren, n => renameAll(c.dataset.ren, n)); if (e.target.closest('#keysBtn')) keysHelp(); });
 
@@ -230,11 +237,11 @@ $('#tools').addEventListener('click', e => { if (aiClick(e)) return; const nl = 
    Court, client, medical, HR… A recording marked sensitive has the AI check locked (the only thing on this page that
    sends anything out: its words, to Claude through the studio), is marked in exports, and is never used for training.
    Recognising, speakers, cutting and exports all run here in the browser either way. */
-const sensitive = id => !!(flags.get(id) || {}).sensitive;
+const sensitive = id => flagsLost || !!(flags.get(id) || {}).sensitive || !!(trs.get(id) || {}).sensitive; // the transcript's own copy of the mark counts too
 $('#sensBtn').addEventListener('click', async () => {
   if (!cur) return; const id = cur.track.id, on = !sensitive(id);
   if (!on && !confirm(`Unmark “${cur.track.title}” as sensitive? The AI check will then be able to send its words to Claude through the studio.`)) return;
-  const f = { id, sensitive: on, at: Date.now() }; await putFlag(f); flags.set(id, f);
+  const f = { id, sensitive: on, at: Date.now() }; flags.set(id, f); if (cur.tr && !on) delete cur.tr.sensitive; await putFlag(f); // in force before anything is awaited
   if (cur.tr) { if (on) cur.tr.sensitive = true; else delete cur.tr.sensitive; await save(); }
   drawLib(); drawAll(); toast(on ? 'Marked sensitive: nothing from this recording leaves this computer.' : 'No longer marked sensitive.');
 });
@@ -292,6 +299,7 @@ async function runReview(notes) {
   let failed = '';
   try {
     for (let k = 0; k < stretches.length; k++) {
+      if (sensitive(cur.track.id)) { failed = 'it was stopped because the recording is now marked sensitive'; break; }
       rv.running = stretches.length > 1 ? `Reading part ${k + 1} of ${stretches.length}…` : 'Reading it…'; drawTools();
       const res = await fetch(reviewURL(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paras: stretches[k], speakers, context: notes, title: cur.track.title }) });
       const out = await res.json().catch(() => ({}));
@@ -425,6 +433,7 @@ function notesMD() {
   return `# Notes on “${cur.track.title}”\n\n${ns.length} note${ns.length === 1 ? '' : 's'}, ${new Date().toLocaleString()}\n\n` + ns.map((n, k) => `## ${k + 1}. At ${T.short(noteTime(n))}\n\n> ${quoteOf(n)}\n\n${n.text}\n`).join('\n');
 }
 async function sendNotes() {
+  if (sensitive(cur.track.id)) return toast('This recording is marked sensitive: its notes and the words they quote are not sent anywhere. Save them as a file instead.', 7000);
   const ns = [...(cur.tr.notes || [])].sort((a, b) => a.i0 - b.i0);
   try {
     const res = await fetch('/studio/api/narrations/notes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: cur.track.studio || cur.track.title, notes: ns.map(n => ({ at: noteTime(n), quote: quoteOf(n), text: n.text })), md: notesMD() }) });
@@ -486,7 +495,7 @@ async function docxText(file) {
 }
 $('#contBtn').addEventListener('click', () => start(cur.tr.mode));
 $('#stopBtn').addEventListener('click', () => { if (job) { job.stop = true; $('#runSt').textContent = 'Pausing after this part…'; } });
-async function save() { cur.tr.updated = Date.now(); await putTr(cur.tr); trs.set(cur.tr.id, cur.tr); drawLib(); }
+async function save() { cur.tr.updated = Date.now(); try { await putTr(cur.tr); } catch (e) { toast('This change could not be saved on this device (its storage may be full). Save the transcript as a file now, so it is not lost.', 12000); throw e; } trs.set(cur.tr.id, cur.tr); drawLib(); }
 async function start(mode, text) {
   if (job) return; const d = cur.track.duration || cur.media.duration || 0;
   if (!cur.tr) cur.tr = { id: cur.track.id, mode, words: mode === 'text' ? T.fromText(text) : [], upTo: 0, done: false, duration: d, updated: Date.now() };
@@ -574,4 +583,4 @@ addEventListener('beforeunload', e => { if (job) { e.preventDefault(); e.returnV
 /* ---------- start ---------- */
 await loadLib(); loadShelf();
 const want = new URLSearchParams(location.search).get('song'); if (want) select(want);
-if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__tr = { get cur() { return cur; }, select, start, T, get job() { return job; }, openPicked, docxText };
+if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__tr = { get cur() { return cur; }, select, start, T, get job() { return job; }, openPicked, docxText, sendNotes, undo, remember, save, sensitive };

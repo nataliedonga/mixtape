@@ -1,5 +1,5 @@
 // Mixtape offline cache. Bump VERSION whenever app files change so installed copies pick up the new version.
-const VERSION = 'mixtape-v74';
+const VERSION = 'mixtape-v75';
 const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', './dsp-worker.js', './dsp-shared.js', './midi.js', './long-mp3.js', './media-cut.js', './vendor/mediabunny/mediabunny.min.mjs', './lofi-worklet.js', './vendor/tone/Tone.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './cutter/', './cutter/index.html', './cutter/app.js', './cutter/engine.js', './cutter/model.js', './cutter/h264.js', './cutter/style.css', './cutter/host-mixtape.js', './cutter/olddecode.js', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.wasm',
   './lyrics-core.js', './lyrics.js', './lyrics.css', './asr-worker.js', './speaker-worker.js',
@@ -9,7 +9,10 @@ const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', 
 // The AI stem splitter is large and changes rarely, so it lives in its own caches that app updates don't clear.
 const STEMS_RUNTIME = 'mixtape-stems-runtime-v1';   // ONNX Runtime + splitter code, saved on first use
 const LYRICS_RUNTIME = 'mixtape-lyrics-runtime-v1'; // the lyrics recogniser's runtime (transformers.js + ONNX Runtime), saved on first use
-const KEEP = k => k === VERSION || k.startsWith('mixtape-stems-') || k.startsWith('mixtape-orch-') || k.startsWith('mixtape-lyrics-');
+// Only older copies of the app's own pages are cleared on an update. Everything else on this site address is left
+// alone: the downloaded recognisers (speech, speakers, stems, orchestra), and other apps that share the address
+// (Scanline lives beside Mixtape on the same GitHub Pages site, and each used to wipe the other's offline copy).
+const KEEP = k => k === VERSION || !/^mixtape-v\d+$/.test(k);
 const ORCH_CACHE = 'mixtape-orch-v1'; // the orchestra's recordings, saved on first use
 
 self.addEventListener('install', e => {
