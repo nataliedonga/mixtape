@@ -19,7 +19,7 @@
     tabs.innerHTML = '<button role="tab" data-ltab="up">Up next</button><button role="tab" data-ltab="lyr">Lyrics</button>';
     h3.before(tabs); const view = document.createElement('div'); view.id = 'lyrView'; view.className = 'lyrview'; view.setAttribute('aria-live', 'off'); up.appendChild(view);
     tabs.addEventListener('click', e => { const b = e.target.closest('[data-ltab]'); if (b) { b.blur(); tab = b.dataset.ltab; lsSet('mixtape-lyrics-tab', tab); paintTab(); } });
-    view.addEventListener('click', e => { const l = e.target.closest('[data-lt]'); if (l) { audio.currentTime = +l.dataset.lt; if (audio.paused) audio.play().catch(() => {}); return; } const b = e.target.closest('[data-lact]'); if (b && A.curId) edit(A.curId, b.dataset.lact === 'time' ? { autoStart: false } : {}); });
+    view.addEventListener('click', e => { const l = e.target.closest('[data-lt]'); if (l) { const at = +l.dataset.lt; if (!isFinite(at)) return; audio.currentTime = at; if (audio.paused) audio.play().catch(() => {}); return; } const b = e.target.closest('[data-lact]'); if (b && A.curId) edit(A.curId, b.dataset.lact === 'time' ? { autoStart: false } : {}); });
     view.addEventListener('wheel', () => { userScrolled = performance.now(); }, { passive: true }); view.addEventListener('touchmove', () => { userScrolled = performance.now(); }, { passive: true });
   }
   function paintTab() {
@@ -31,9 +31,10 @@
     const v = $('#lyrView'), t = A.tracks.get(A.curId), ly = t && t.lyrics; shown = -2;
     if (!t) { v.innerHTML = '<p class="lyrnone">Play a song to see its lyrics.</p>'; return; }
     if (!ly || !ly.lines || !ly.lines.length) { v.innerHTML = `<div class="lyrnone"><p>No lyrics for “${esc(t.title)}” yet.</p><button class="btn primary" data-lact="add">Add lyrics</button></div>`; return; }
-    const isTimed = L.timed(ly.lines);
-    v.innerHTML = (isTimed ? '' : `<div class="lyrnote">These words are not timed yet, so they cannot follow the song. <button class="btn sm" data-lact="time">Time them</button></div>`) +
-      `<ol class="lyrlines${isTimed ? ' timed' : ''}">${ly.lines.map((l, i) => `<li${l.gap ? ' class="gap"' : ''}${isTimed ? ` data-lt="${l.t}" data-li="${i}" tabindex="0"` : ''}>${esc(l.text)}</li>`).join('')}</ol>` +
+    /* a line's time and words can come from a songs file made elsewhere: both are escaped, and only real numbers count as times */
+    const isTimed = L.timed(ly.lines) && ly.lines.every(l => typeof l.t === 'number' && isFinite(l.t));
+    v.innerHTML = (isTimed ? '': `<div class="lyrnote">These words are not timed yet, so they cannot follow the song. <button class="btn sm" data-lact="time">Time them</button></div>`) +
+      `<ol class="lyrlines${isTimed ? ' timed' : ''}">${ly.lines.map((l, i) => `<li${l.gap ? ' class="gap"' : ''}${isTimed ? ` data-lt="${esc(l.t)}" data-li="${i}" tabindex="0"` : ''}>${esc(l.text)}</li>`).join('')}</ol>` +
       `<div class="lyrfoot"><button class="btn sm" data-lact="edit">Edit lyrics</button></div>`;
     follow(true);
   }
@@ -55,7 +56,8 @@
   let E = null; // the open editor: { id, t, lines, el, source }
   function edit(id, opts = {}) {
     const t = A.tracks.get(id); if (!t) return; if (E) close(true);
-    const lines = t.lyrics && t.lyrics.lines ? t.lyrics.lines.map(l => ({ ...l })) : [];
+    /* lines saved from a songs file made elsewhere may not be what the editor expects: a time that is not a number is no time */
+    const lines = t.lyrics && Array.isArray(t.lyrics.lines) ? t.lyrics.lines.filter(l => l && typeof l.text === 'string').map(l => ({ ...l, t: typeof l.t === 'number' && isFinite(l.t) ? l.t : null })) : [];
     const wrap = document.createElement('div'); wrap.className = 'lyrwrap'; wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-label', 'Lyrics');
     wrap.innerHTML = `<div class="lyr">
       <header class="lyr-h"><div><h3>Lyrics</h3><p>${esc(t.title)}${t.artist ? ' · ' + esc(t.artist) : ''}</p></div><span class="sp"></span><button class="ib" data-e="close" aria-label="Close the lyrics editor" title="Close (Esc)">✕</button></header>
@@ -74,9 +76,10 @@
     document.body.appendChild(wrap);
     E = { id, t, lines, el: wrap, source: (t.lyrics && t.lyrics.source) || 'text', dirty: false };
     const ta = wrap.querySelector('#lyrText'); ta.value = L.toText(lines);
-    ta.addEventListener('input', () => { clearTimeout(E.ti); E.ti = setTimeout(() => { E.lines = keepTimes(E.lines, L.fromText(ta.value)); E.dirty = true; drawLines(); }, 250); });
+    const ed = E; /* this editor: the delayed and awaited steps below must not write into whichever editor is open later */
+    ta.addEventListener('input', () => { clearTimeout(ed.ti); ed.ti = setTimeout(() => { if (E !== ed) return; ed.lines = keepTimes(ed.lines, L.fromText(ta.value)); ed.dirty = true; drawLines(); }, 250); });
     wrap.addEventListener('click', onClick);
-    wrap.querySelector('#lyrFile').addEventListener('change', async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; const r = L.parseAny(await f.text(), f.name); if (!r.lines.length) return A.toast('No words were found in that file.'); E.lines = r.lines; E.source = r.kind === 'text' ? 'text' : 'file'; E.dirty = true; ta.value = L.toText(E.lines); drawLines(); status(r.kind === 'text' ? `${r.lines.length} lines loaded. Now time them.` : `${r.lines.length} timed lines loaded from the ${r.kind.toUpperCase()} file.`); });
+    wrap.querySelector('#lyrFile').addEventListener('change', async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; const r = L.parseAny(await f.text(), f.name); if (E !== ed) return; if (!r.lines.length) return A.toast('No words were found in that file.'); E.lines = r.lines; E.source = r.kind === 'text' ? 'text' : 'file'; E.dirty = true; ta.value = L.toText(E.lines); drawLines(); status(r.kind === 'text' ? `${r.lines.length} lines loaded. Now time them.` : `${r.lines.length} timed lines loaded from the ${r.kind.toUpperCase()} file.`); });
     wrap.querySelector('#lyrLines').addEventListener('change', ev => { const i = ev.target.closest('[data-i]'); if (!i || !ev.target.matches('input')) return; const v = L.parseClock(ev.target.value); E.lines[+i.dataset.i].t = v; E.lines[+i.dataset.i].conf = v == null ? 0 : 1; E.dirty = true; drawLines(); });
     audio.addEventListener('timeupdate', tick); audio.addEventListener('play', tick); audio.addEventListener('pause', tick);
     drawLines(); tick(); if (!lines.length) setTimeout(() => ta.focus(), 0);
@@ -90,7 +93,7 @@
   function drawLines() {
     const ol = E.el.querySelector('#lyrLines'), now = audio.currentTime, k = L.timed(E.lines) ? L.lineAt(E.lines, now) : -1;
     if (!E.lines.length) { ol.innerHTML = '<li class="lyr-empty">The lines appear here once there are words.</li>'; return; }
-    ol.innerHTML = E.lines.map((l, i) => `<li data-i="${i}" class="${l.gap ? 'gap ' : ''}${l.t != null && l.conf != null && l.conf < 0.5 ? 'check ' : ''}${i === k ? 'on' : ''}"><input class="lt" value="${l.t == null ? '' : clock(l.t)}" placeholder="--:--.--" aria-label="Start of line ${i + 1}" inputmode="decimal"><button class="ib sm" data-e="from" title="Play from this line" aria-label="Play from this line">▶</button><button class="ib sm" data-e="now" title="This line starts now (at the playing time)" aria-label="Starts now">⤓</button><span class="lx">${esc(l.text)}${l.t != null && l.conf != null && l.conf < 0.5 ? '<em>check</em>' : ''}</span></li>`).join('');
+    ol.innerHTML = E.lines.map((l, i) => `<li data-i="${i}" class="${l.gap ? 'gap ' : ''}${l.t != null && l.conf != null && l.conf < 0.5 ? 'check ' : ''}${i === k ? 'on' : ''}"><input class="lt" value="${l.t == null ? '' : esc(clock(l.t))}" placeholder="--:--.--" aria-label="Start of line ${i + 1}" inputmode="decimal"><button class="ib sm" data-e="from" title="Play from this line" aria-label="Play from this line">▶</button><button class="ib sm" data-e="now" title="This line starts now (at the playing time)" aria-label="Starts now">⤓</button><span class="lx">${esc(l.text)}${l.t != null && l.conf != null && l.conf < 0.5 ? '<em>check</em>' : ''}</span></li>`).join('');
   }
   function tick() {
     if (!E) return; E.el.querySelector('#lyrClock').textContent = `${A.fmt(audio.currentTime)} / ${A.fmt(audio.duration || E.t.duration || 0)}`;
@@ -142,31 +145,40 @@
     return out;
   }
   async function autoTime(draft) {
-    if (!draft && !E.lines.length) return A.toast('Paste the words first, or use “Write them from the song”.', 4500);
-    if (draft && E.lines.length && !(await A.ask({ title: 'Replace the words?', text: 'The recogniser’s draft takes the place of the words in the box. You can correct it afterwards.', ok: 'Write a draft' }))) return;
-    const btns = E.el.querySelectorAll('[data-e="auto"],[data-e="draft"],[data-e="tap"]'); btns.forEach(x => x.disabled = true);
+    /* ed is the editor this run belongs to. Decoding and recognising take a while, and by the time they finish the editor
+       may have been closed, or another song's editor opened in its place (E is whichever is open NOW). Everything below
+       works on ed, and stops the moment ed is no longer the open editor: one song's timings must never land in another's. */
+    const ed = E, mine = () => E === ed;
+    if (!draft && !ed.lines.length) return A.toast('Paste the words first, or use “Write them from the song”.', 4500);
+    if (draft && ed.lines.length && !(await A.ask({ title: 'Replace the words?', text: 'The recogniser’s draft takes the place of the words in the box. You can correct it afterwards.', ok: 'Write a draft' }))) return;
+    if (!mine()) return;
+    const btns = ed.el.querySelectorAll('[data-e="auto"],[data-e="draft"],[data-e="tap"]'); btns.forEach(x => x.disabled = true);
     // a split vocal stem, when the song has one, is far easier to hear than the full mix
-    const stem = [...A.tracks.values()].find(x => x.stemOf === E.id && x.stemName === 'vocals'), src = stem || E.t;
+    const stem = [...A.tracks.values()].find(x => x.stemOf === ed.id && x.stemName === 'vocals'), src = stem || ed.t;
     try {
       status(`Reading ${stem ? 'the vocals stem of ' : ''}the song…`); bar(0);
       const pcm = await pcm16k(src.blob);
+      if (!mine()) return; /* closed while the song was being read: do not even start the recogniser */
       const words = await new Promise((res, rej) => {
-        const w = new Worker('asr-worker.js', { type: 'module' }); E.worker = w; const files = {};
+        const w = new Worker('asr-worker.js', { type: 'module' }); ed.worker = w; const files = {};
         w.onmessage = m => { const d = m.data;
+          if (!mine()) { w.terminate(); return res(null); }
           if (d.type === 'load') { files[d.file] = d; const tot = Object.values(files).reduce((s, f) => s + (f.total || 0), 0), got = Object.values(files).reduce((s, f) => s + (f.loaded || 0), 0); status(`Getting the recogniser (one time only): ${Math.round(got / 1e6)} of ${Math.round(tot / 1e6)} MB`); bar(tot ? got / tot : 0); }
           else if (d.type === 'progress') { status(`Listening… ${Math.round(d.done * 100)}%`); bar(d.done); }
-          else if (d.type === 'done') { w.terminate(); E && (E.worker = null); res(d.words); }
-          else if (d.type === 'error') { w.terminate(); E && (E.worker = null); rej(new Error(d.message)); } };
-        w.onerror = e => { w.terminate(); rej(new Error(e.message || 'the recogniser could not start')); };
+          else if (d.type === 'done') { w.terminate(); ed.worker = null; res(d.words); }
+          else if (d.type === 'error') { w.terminate(); ed.worker = null; rej(new Error(d.message)); } };
+        w.onerror = e => { w.terminate(); ed.worker = null; rej(new Error(e.message || 'the recogniser could not start')); };
         status('Starting the recogniser…'); w.postMessage({ audio: pcm }, [pcm.buffer]);
       });
-      if (!E) return; bar(null);
+      if (!mine() || !words) return; bar(null);
       if (!words.length) { status('No words were heard in this song. Try tapping along instead.'); return; }
-      if (draft) { E.lines = L.draftFromWords(words); E.source = 'heard'; E.el.querySelector('#lyrText').value = L.toText(E.lines); E.dirty = true; drawLines(); status(`A draft of ${E.lines.length} lines, timed as heard. Correct the words in the box; the times stay with their lines.`); return; }
-      E.lines = L.align(E.lines, words, audio.duration || E.t.duration); E.source = 'auto'; E.dirty = true; drawLines();
-      const unsure = E.lines.filter(l => l.conf < 0.5).length;
-      status(unsure ? `Timed. ${unsure} of ${E.lines.length} lines are marked “check”: the recogniser did not hear them clearly, so their times are estimates. Play them and fix any that are off.` : `Timed all ${E.lines.length} lines. Play it through to check.`);
-    } catch (e) { bar(null); status(`Automatic timing failed: ${e.message || e}. Tapping along always works.`); console.error(e); }
+      /* the song's own length, not whatever is in the player now: the editor's song may no longer be the one loaded */
+      const dur = (A.curId === ed.id && isFinite(audio.duration) && audio.duration) || ed.t.duration;
+      if (draft) { ed.lines = L.draftFromWords(words); ed.source = 'heard'; ed.el.querySelector('#lyrText').value = L.toText(ed.lines); ed.dirty = true; drawLines(); status(`A draft of ${ed.lines.length} lines, timed as heard. Correct the words in the box; the times stay with their lines.`); return; }
+      ed.lines = L.align(ed.lines, words, dur); ed.source = 'auto'; ed.dirty = true; drawLines();
+      const unsure = ed.lines.filter(l => l.conf < 0.5).length;
+      status(unsure ? `Timed. ${unsure} of ${ed.lines.length} lines are marked “check”: the recogniser did not hear them clearly, so their times are estimates. Play them and fix any that are off.` : `Timed all ${ed.lines.length} lines. Play it through to check.`);
+    } catch (e) { if (mine()) { bar(null); status(`Automatic timing failed: ${e.message || e}. Tapping along always works.`); } console.error(e); }
     finally { btns.forEach(x => x.disabled = false); }
   }
 

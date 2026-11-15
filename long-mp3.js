@@ -18,9 +18,10 @@
   }
   const sideInfo = h => h.v1 ? (h.mono ? 17 : 32) : (h.mono ? 9 : 17);
 
-  /* Every frame's byte offset. onProgress(0..1). Returns { off (Float64Array, frames + 1 entries: the last is the end),
+  /* Every frame's byte offset. onProgress(0..1). cancelled() (optional) is asked while searching past a stretch that is
+     not sound; if it says yes, the answer is null. Returns { off (Float64Array, frames + 1 entries: the last is the end),
      frames, sr, spf, duration, first (byte where audio starts), xing (bytes of the original Xing/Info frame, if any) }. */
-  async function index(blob, onProgress) {
+  async function index(blob, onProgress, cancelled) {
     const CH = 8 << 20; let pos = 0;
     let head = new Uint8Array(await blob.slice(0, 10).arrayBuffer());
     if (head[0] === 0x49 && head[1] === 0x44 && head[2] === 0x33) // an ID3v2 tag: skip it
@@ -36,13 +37,22 @@
       let h = header(buf, pos - bufAt);
       if (h && fmt && (h.sr !== fmt.sr || h.spf !== fmt.spf)) h = null; // a false sync inside audio data
       if (!h) { // lost sync: step forward to the next header that is followed by another header
-        let found = false;
-        for (let p = pos + 1; p + 4 <= end; p++) {
+        /* Searched a chunk (8 MB) at a time with no waiting inside the chunk: one await per byte, as this used to do, froze
+           the page for minutes on a big file that is not really an MP3 or has a large non-audio block in it. Between chunks
+           the page gets a turn, progress is reported, and cancelled() is asked. */
+        let found = false, p = pos + 1;
+        scan: while (p + 4 <= end) {
           if (!(await need(p, 4))) break;
-          const g = header(buf, p - bufAt); if (!g || (fmt && (g.sr !== fmt.sr || g.spf !== fmt.spf))) continue;
-          if (p + g.len + 4 > end) { pos = end; break; }
-          if (!(await need(p, g.len + 4))) break;
-          if (header(buf, p + g.len - bufAt)) { pos = p; h = g; found = true; break; }
+          for (; p + 4 <= bufAt + buf.length; p++) {
+            if (buf[p - bufAt] !== 0xff) continue;
+            const g = header(buf, p - bufAt); if (!g || (fmt && (g.sr !== fmt.sr || g.spf !== fmt.spf))) continue;
+            if (p + g.len + 4 > end) { pos = end; break scan; }
+            if (!(await need(p, g.len + 4))) break scan; // only reads when the next header lies past this chunk
+            if (header(buf, p + g.len - bufAt)) { pos = p; h = g; found = true; break scan; }
+          }
+          if (onProgress) onProgress(Math.min(1, p / end));
+          await new Promise(r => setTimeout(r, 0));
+          if (cancelled && cancelled()) return null;
         }
         if (!found) break;
       }

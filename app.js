@@ -13,26 +13,52 @@ const LS_KEY = 'mixtape-player-v1';
 const lsGet = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; } };
 const lsSet = o => { try { localStorage.setItem(LS_KEY, JSON.stringify(o)); } catch (e) {} };
 let db = null;
+/* Where the library stands. A library that could not be read is NOT an empty one: the page must never say "you have no
+   songs" on that basis, and nothing saved may be overwritten from it.
+   store: 'opening' | 'slow' (still waiting after 6 s) | 'ok' | 'failed' (the songs could not be opened or read)
+   listsOk: favourites and playlists were read, so it is safe to write them back */
+let store = 'opening', listsOk = false, protectedStore = null;
+/* No deadline in here: an open that is merely slow still succeeds later, and that connection is the one to use.
+   (The old 6 s timeout gave up, showed an empty library, and left the late connection open and unused.) */
 function idbOpen() {
   return new Promise((res, rej) => {
     let r; try { r = indexedDB.open('mixtape-player', 1); } catch (e) { return rej(e); }
     r.onupgradeneeded = () => { const d = r.result;
       if (!d.objectStoreNames.contains('tracks')) d.createObjectStore('tracks', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('lists')) d.createObjectStore('lists', { keyPath: 'id' }); };
-    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error('blocked'));
-    setTimeout(() => rej(new Error('timeout')), 6000);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error || new Error('storage is not available'));
+    /* blocked = another tab holds an older copy open; the open goes through once that tab lets go, so keep waiting */
   });
 }
 function req(store, mode, fn) {
-  if (!db) return mode === 'readonly' ? Promise.resolve([]) : Promise.reject(new Error('no storage'));
+  if (!db) return Promise.reject(new Error('no storage'));
   return new Promise((res, rej) => { let out;
     try { const t = db.transaction(store, mode); const r = fn(t.objectStore(store)); r.onsuccess = () => { out = r.result; };
       t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
     } catch (e) { rej(e); } });
 }
-const dbAll = s => req(s, 'readonly', o => o.getAll()).catch(() => []);
+/* dbAll rejects when the read fails: the caller decides what that means, it is never quietly "nothing there" */
+const dbAll = s => req(s, 'readonly', o => o.getAll());
 const dbPut = (s, v) => req(s, 'readwrite', o => o.put(v));
-const dbDel = (s, k) => req(s, 'readwrite', o => o.delete(k)).catch(() => {});
+const dbDel = (s, k) => req(s, 'readwrite', o => o.delete(k));
+/* Favourites and playlists. Every write reports back: a change that did not reach storage is said out loud, not
+   shown as done and then gone on the next visit. Other open player windows are told to re-read. */
+let chan = null; try { chan = new BroadcastChannel('mixtape'); } catch (e) {}
+const tell = type => { try { chan && chan.postMessage({ type }); } catch (e) {} };
+const notSaved = what => toast(`${what} could not be saved, so it will be gone when you close this page. The device may be out of space: remove a few songs or free some space, then try again.`, 8000);
+const listsLocked = () => { if (listsOk) return false; toast(store === 'ok' ? 'Your favorites and playlists could not be read just now, so changing them is switched off to keep the saved ones safe. Reload the page to try again.' : 'Your library is not open, so favorites and playlists cannot be changed. Reload the page to try again.', 7000); return true; };
+function putList(l) { return dbPut('lists', l).then(() => { tell('lists'); return true; }, () => { notSaved(`The change to “${l.name}”`); return false; }); }
+/* Favourites are changed one song at a time inside a single transaction: read what is stored, add or take out that one
+   id, write it back. Writing the whole set from memory let an older window wipe out hearts given in a newer one. */
+function putFav(id, on) {
+  if (!db) { notSaved('That favorite'); return Promise.resolve(false); }
+  return new Promise(res => { let ids = null;
+    try { const t = db.transaction('lists', 'readwrite'), o = t.objectStore('lists'), g = o.get('__fav');
+      g.onsuccess = () => { const set = new Set((g.result && g.result.ids) || []); on ? set.add(id) : set.delete(id); ids = [...set]; try { o.put({ id: '__fav', ids }); } catch (e) { try { t.abort(); } catch (e2) {} } };
+      t.oncomplete = () => { favs = new Set(ids); tell('lists'); res(true); };
+      t.onerror = t.onabort = () => { notSaved('That favorite'); res(false); };
+    } catch (e) { notSaved('That favorite'); res(false); } });
+}
 async function saveTrack(t) {
   try { await dbPut('tracks', t); }
   catch (e) { const buf = await t.blob.arrayBuffer(); const copy = { ...t, buf }; delete copy.blob; await dbPut('tracks', copy); }
@@ -44,7 +70,7 @@ const S = Object.assign({ vol: 80, muted: false, shuffle: false, repeat: 'off', 
   lastId: null, pos: 0, queue: [], orig: [], qi: -1, ctx: 'All songs' }, lsGet());
 const save = () => lsSet(S);
 let query = '', curId = null, curUrl = null, seeking = false, lastSave = 0, booted = false;
-let sleepAt = 0, sleepEnd = false, sleepT = null;
+let sleepAt = 0, sleepEnd = false, sleepT = null, seekOnLoad = null;
 const audio = $('#audio');
 
 /* ---------- artwork ---------- */
@@ -84,16 +110,16 @@ function setView(v) { S.view = v; save(); render(); window.scrollTo({ top: 0 });
 /* ---------- render ---------- */
 function renderNav() {
   const chip = (type, id, label, n) => { const on = S.view.type === type && (type !== 'list' || S.view.id === id);
-    return `<button class="chip" data-act="view" data-type="${type}" data-id="${id || ''}" aria-current="${on}">${esc(label)} <span class="n">${n}</span></button>`; };
+    return `<button class="chip" data-act="view" data-type="${type}" data-id="${esc(id || '')}" aria-current="${on}">${esc(label)} <span class="n">${n}</span></button>`; };
   const live = ids => ids.filter(id => tracks.has(id)).length;
   $('#nav').innerHTML = chip('all', '', 'All songs', songIds().length) + chip('fav', '', 'Favorites', live([...favs]))
     + lists.map(l => chip('list', l.id, l.name, live(l.ids))).join('')
     + `<button class="chip ghost" data-act="newlist">+ New playlist</button>`;
-  $('#libCount').textContent = booted ? `${plural(songIds().length, 'song')} · ${plural(lists.length, 'playlist')}` : 'Loading your library…';
+  $('#libCount').textContent = booted && store === 'failed' ? 'Your library could not be opened' : booted ? `${plural(songIds().length, 'song')}${listsOk ? ' · ' + plural(lists.length, 'playlist') : ''}` : store === 'slow' ? 'Still opening your library…' : 'Loading your library…';
 }
 function rowHTML(t, n) {
   const cur = t.id === curId;
-  return `<li class="row${cur ? ' is-cur' : ''}" data-id="${t.id}" tabindex="0">
+  return `<li class="row${cur ? ' is-cur' : ''}" data-id="${esc(t.id)}" tabindex="0">
     <span class="idx">${cur ? '<span class="eq"><i></i><i></i><i></i></span>' : n}</span>
     <span class="art sm">${artHTML(t)}</span>
     <span class="meta"><b>${esc(t.title)}</b><span>${esc(t.artist || 'Unknown artist')}${t.album ? ' · ' + esc(t.album) : ''}</span></span>
@@ -114,13 +140,21 @@ function renderList() {
   $('#sort').options[0].textContent = S.view.type === 'list' ? 'Playlist order' : 'Recently added';
   const touch = matchMedia('(pointer:coarse)').matches;
   let html = '';
-  if (!booted) html = '';
+  /* slow or failed is not "no songs": say what happened and what to do, and never show the empty-library welcome */
+  if (!booted) html = store === 'slow' ? `<h3>Your library is taking a while to open</h3>
+      <p>Your songs have not been removed. This usually clears by itself. If it does not, close any other Mixtape tabs or windows and reload this page.</p>
+      <div class="btns"><button class="btn primary" data-act="reload">Reload the page</button></div>` : '';
+  else if (store === 'failed' && !tracks.size) html = `<h3>Your library could not be opened</h3>
+      <p>This browser did not let the player read its saved songs just now. Nothing has been removed or changed. Close any other Mixtape tabs or windows, then try again. In a private window storage is switched off, so songs you add last only until you close the page.</p>
+      <div class="btns"><button class="btn primary" data-act="retry">Try again</button>
+      <button class="btn" data-act="add"><svg class="i"><use href="#i-plus"/></svg>Add songs for now</button></div>`;
   else if (!tracks.size) html = `<h3>Your songs live here</h3>
       <p>Add the music files you have on this ${touch ? 'phone' : 'computer'}. They're saved in this browser, so they're still here the next time you open the player.${touch ? '' : ' You can also drag files or a whole folder onto this page.'}</p>
       <div class="btns"><button class="btn primary" data-act="add"><svg class="i"><use href="#i-plus"/></svg>Add songs</button>
       ${touch ? '' : '<button class="btn" data-act="folder"><svg class="i"><use href="#i-folder"/></svg>Add folder</button>'}
       <button class="btn" data-act="demo">Try a demo track</button></div>`;
   else if (!ids.length && query) html = `<h3>No songs match “${esc(query)}”</h3><p>Try part of a title, artist or album name.</p>`;
+  else if (!ids.length && !listsOk && S.view.type !== 'all') html = `<h3>Your favorites and playlists could not be read</h3><p>They have not been changed. Reload the page to try again.</p><div class="btns"><button class="btn primary" data-act="reload">Reload the page</button></div>`;
   else if (!ids.length && S.view.type === 'fav') html = `<h3>No favorites yet</h3><p>Tap the heart on any song and it shows up here.</p>`;
   else if (!ids.length) html = `<h3>This playlist is empty</h3><p>Open a song's ⋯ menu and choose Add to playlist.</p>`;
   empty.innerHTML = html; empty.hidden = !html;
@@ -169,7 +203,11 @@ function loadTrack(id, autoplay, startAt = 0) {
   if (curUrl) URL.revokeObjectURL(curUrl);
   curUrl = URL.createObjectURL(t.blob);
   audio.src = curUrl; audio.defaultPlaybackRate = S.speed; audio.playbackRate = S.speed;
-  if (startAt > 0) audio.addEventListener('loadedmetadata', () => { try { audio.currentTime = Math.min(startAt, Math.max(0, audio.duration - 1)); } catch (e) {} }, { once: true });
+  /* The saved position belongs to this song only. If the song never loads (a file the browser cannot play), its listener
+     must not wait around and move the NEXT song to that position: the old one is taken off here, and it checks the song too. */
+  if (seekOnLoad) { audio.removeEventListener('loadedmetadata', seekOnLoad); seekOnLoad = null; }
+  if (startAt > 0) { const h = seekOnLoad = () => { if (seekOnLoad === h) seekOnLoad = null; if (curId !== id) return; try { audio.currentTime = Math.min(startAt, Math.max(0, audio.duration - 1)); } catch (e) {} };
+    audio.addEventListener('loadedmetadata', h, { once: true }); }
   setSeekUI(0, startAt);
   if (autoplay) { const p = audio.play(); if (p) p.catch(err => { if (err.name !== 'AbortError') toast(`Couldn't start “${t.title}”. Tap play to try again.`); }); }
   setMeta(t); renderList(); renderPlayer(); save();
@@ -288,30 +326,35 @@ audio.addEventListener('error', () => {
 
 /* ---------- library edits ---------- */
 function toggleFav(id) {
-  const t = tracks.get(id); if (!t) return;
-  if (favs.has(id)) { favs.delete(id); toast('Removed from favorites'); } else { favs.add(id); toast('Added to favorites'); }
-  dbPut('lists', { id: '__fav', ids: [...favs] }).catch(() => {});
-  renderNav(); renderList(); renderTransport();
+  const t = tracks.get(id); if (!t || listsLocked()) return;
+  const on = !favs.has(id);
+  if (on) { favs.add(id); toast('Added to favorites'); } else { favs.delete(id); toast('Removed from favorites'); }
+  const paint = () => { renderNav(); renderList(); renderTransport(); };
+  paint(); putFav(id, on).then(ok => { if (ok) paint(); }); /* painted again: the stored set may hold hearts from another window */
 }
 async function newList(addId) {
+  if (listsLocked()) return;
   const name = await ask({ title: 'New playlist', input: '', placeholder: 'Name it, e.g. Morning run', ok: 'Create playlist' });
   if (!name) return;
   const l = { id: uid(), name, ids: addId ? [addId] : [], created: Date.now() };
-  lists.push(l); dbPut('lists', l).catch(() => {});
+  lists.push(l); putList(l);
   if (addId) { toast(`Added to ${name}`); renderNav(); } else setView({ type: 'list', id: l.id });
 }
 function addToList(l, id) {
+  if (listsLocked()) return;
   if (l.ids.includes(id)) return toast(`Already in ${l.name}`);
-  l.ids.push(id); dbPut('lists', l).catch(() => {}); toast(`Added to ${l.name}`); renderNav(); if (curList() === l) renderList();
+  l.ids.push(id); putList(l); toast(`Added to ${l.name}`); renderNav(); if (curList() === l) renderList();
 }
-function removeFromList(l, id) { l.ids = l.ids.filter(x => x !== id); dbPut('lists', l).catch(() => {}); toast(`Removed from ${l.name}`); renderNav(); renderList(); }
+function removeFromList(l, id) { if (listsLocked()) return; l.ids = l.ids.filter(x => x !== id); putList(l); toast(`Removed from ${l.name}`); renderNav(); renderList(); }
 async function renameList(l) {
+  if (listsLocked()) return;
   const name = await ask({ title: 'Rename playlist', input: l.name, ok: 'Save' }); if (!name) return;
-  l.name = name; dbPut('lists', l).catch(() => {}); render();
+  l.name = name; putList(l); render();
 }
 async function deleteList(l) {
   const ok = await ask({ title: `Delete “${l.name}”?`, text: 'The playlist goes away. The songs stay in your library.', ok: 'Delete playlist', danger: true });
-  if (!ok) return; lists = lists.filter(x => x !== l); dbDel('lists', l.id); setView({ type: 'all' }); toast('Playlist deleted');
+  if (!ok || listsLocked()) return; lists = lists.filter(x => x !== l); setView({ type: 'all' }); toast('Playlist deleted');
+  dbDel('lists', l.id).then(() => tell('lists'), () => toast(`“${l.name}” could not be deleted from storage, so it will be back the next time you open the player. Reload the page and try again.`, 7000));
 }
 async function deleteTrack(id) {
   const t = tracks.get(id); if (!t) return;
@@ -322,11 +365,14 @@ async function deleteTrack(id) {
   const before = S.queue.slice(0, S.qi).filter(x => x === id).length;
   S.queue = S.queue.filter(x => x !== id); S.orig = S.orig.filter(x => x !== id); S.qi -= before;
   if (wasCur) { if (S.queue.length) { S.qi = Math.min(Math.max(S.qi, 0), S.queue.length - 1); loadTrack(S.queue[S.qi], wasPlaying); } else S.qi = -1; }
-  tracks.delete(id); favs.delete(id); dbPut('lists', { id: '__fav', ids: [...favs] }).catch(() => {});
-  lists.forEach(l => { if (l.ids.includes(id)) { l.ids = l.ids.filter(x => x !== id); dbPut('lists', l).catch(() => {}); } });
+  /* favourites and playlists are written only when they were read (listsOk): an unread set is empty in memory, and
+     saving that would wipe the stored one. A leftover id for a song that is gone is harmless; it is skipped on display. */
+  tracks.delete(id); if (favs.delete(id) && listsOk) putFav(id, false);
+  lists.forEach(l => { if (l.ids.includes(id)) { l.ids = l.ids.filter(x => x !== id); putList(l); } });
   const u = artUrls.get(id); if (u) { URL.revokeObjectURL(u); artUrls.delete(id); }
-  for (const s of [...tracks.values()].filter(x => x.stemOf === id)) { tracks.delete(s.id); dbDel('tracks', s.id); }
-  dbDel('tracks', id); save(); render(); updateStorage(); toast('Song removed');
+  for (const s of [...tracks.values()].filter(x => x.stemOf === id)) { tracks.delete(s.id); dbDel('tracks', s.id).catch(() => {}); }
+  save(); render(); toast('Song removed');
+  dbDel('tracks', id).then(updateStorage, () => toast(`“${t.title}” could not be removed from storage, so it will be back the next time you open the player. Reload the page and try again.`, 7000));
 }
 
 /* ---------- importing ---------- */
@@ -422,6 +468,7 @@ function buildPack() {
     head.tracks.push({ ...meta, offset: off, bytes: blob.size, artType: art ? art.type : null, artBytes: art ? art.size : 0 });
     parts.push(blob); off += blob.size; if (art) { parts.push(art); off += art.size; }
   }
+  head.bytes = off; /* how much sound and artwork follows the header: lets the other device see that the file arrived whole */
   const hb = new TextEncoder().encode(JSON.stringify(head)), len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, hb.length);
   return { blob: new Blob([PACK_MAGIC, len, hb, ...parts], { type: 'application/octet-stream' }), count: ids.length };
 }
@@ -431,39 +478,77 @@ function exportPack() {
   download(blob, `Mixtape songs ${new Date().toISOString().slice(0, 10)}.mixtape`);
   toast(`Put ${plural(count, 'song')} (${Math.max(1, Math.round(blob.size / 1048576))} MB) into one file. Send it to your other device and open it there with Move songs → Get songs from a file.`, 8000);
 }
+/* A songs file is someone else's data until it is checked: its words end up on the page and in storage. So the ids are
+   never taken from the file (each song gets a fresh one here), the details are forced to plain text and numbers, and
+   lyrics keep only lines with real text and a real time. */
+const txt = (v, max = 500) => (typeof v === 'string' ? v : v == null || typeof v === 'object' ? '' : String(v)).slice(0, max);
+const numOf = v => { v = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN; return isFinite(v) && v >= 0 ? v : 0; };
+function cleanLyrics(ly) {
+  if (!ly || !Array.isArray(ly.lines)) return null;
+  const lines = ly.lines.filter(l => l && typeof l.text === 'string').map(l => ({ text: l.text.slice(0, 2000), t: typeof l.t === 'number' && isFinite(l.t) && l.t >= 0 ? l.t : null,
+    ...(l.gap ? { gap: true } : {}), ...(typeof l.conf === 'number' && l.conf >= 0 && l.conf < 1 ? { conf: l.conf } : {}) }));
+  return lines.length ? { lines, source: txt(ly.source, 20) || 'text', updated: numOf(ly.updated) || Date.now() } : null;
+}
+const PACK_SHORT = 'That songs file is cut short: the copy or download did not finish, so some of the music is missing from it. Nothing was added. Copy the file across again, then open it once more. Keep the songs on the other device until they are all here.';
 async function importPack(file) {
+  if (importing) return toast('Still adding the last batch. Try again in a moment.');
+  importing = true; try { return await importPackBody(file); } finally { importing = false; }
+}
+async function importPackBody(file) {
   const ml = PACK_MAGIC.length;
   if (await file.slice(0, ml).text() !== PACK_MAGIC) return toast('That file is not a Mixtape songs file.', 4000);
+  if (file.size < ml + 4) return toast(PACK_SHORT, 12000);
   const hl = new DataView(await file.slice(ml, ml + 4).arrayBuffer()).getUint32(0), base = ml + 4 + hl;
-  let head; try { head = JSON.parse(await file.slice(ml + 4, base).text()); } catch (e) { return toast('That songs file is damaged.', 4000); }
-  if (head.format !== 'mixtape-pack/1') return toast('That songs file was made by a newer Mixtape. Update this one first.', 5000);
+  if (base > file.size) return toast(PACK_SHORT, 12000);
+  let head; try { head = JSON.parse(await file.slice(ml + 4, base).text()); } catch (e) { return toast('That songs file is damaged, so nothing was added. Make a fresh one on the other device (Move songs → Put all my songs into one file).', 8000); }
+  if (!head || head.format !== 'mixtape-pack/1') return toast('That songs file was made by a newer Mixtape. Update this one first.', 5000);
+  if (!Array.isArray(head.tracks)) return toast('That songs file is damaged, so nothing was added. Make a fresh one on the other device (Move songs → Put all my songs into one file).', 8000);
+  /* Is all of it here? Reading past the end of a file gives short or empty data with no error, and those would be saved
+     as songs that cannot play. So every song's place is checked against the real size BEFORE anything is added: a file
+     that is cut short is refused whole, because "Added 40 songs" with the last ten silent is how a library gets lost. */
+  const whole = n => Number.isInteger(n) && n >= 0;
+  let need = whole(head.bytes) ? head.bytes : 0;
+  for (const m of head.tracks) {
+    if (!m || !whole(m.offset) || !whole(m.bytes) || !whole(m.artBytes || 0)) return toast('That songs file is damaged, so nothing was added. Make a fresh one on the other device (Move songs → Put all my songs into one file).', 8000);
+    need = Math.max(need, m.offset + m.bytes + (m.artBytes || 0));
+  }
+  if (base + need > file.size) return toast(PACK_SHORT, 12000);
   const have = new Map([...tracks.values()].map(t => [t.name + '|' + t.size, t.id])), idMap = new Map();
-  let added = 0, dup = 0, lost = 0;
+  let added = 0, dup = 0, lost = 0, short = 0;
   for (const [i, m] of head.tracks.entries()) {
-    toast(`Getting ${i + 1} of ${head.tracks.length}: ${m.title}`, 0);
-    if (tracks.has(m.id)) { idMap.set(m.id, m.id); dup++; continue; }
-    const key = m.name + '|' + m.size; if (have.has(key)) { idMap.set(m.id, have.get(key)); dup++; continue; }
+    const name = txt(m.name), size = numOf(m.size), title = txt(m.title) || parseName(name || 'Untitled').title;
+    toast(`Getting ${i + 1} of ${head.tracks.length}: ${title}`, 0);
+    const key = name + '|' + size; if (have.has(key)) { idMap.set(m.id, have.get(key)); dup++; continue; }
     const s = base + m.offset;
-    // copied out of the file, so the songs stay after the file is deleted
-    const blob = new Blob([await file.slice(s, s + m.bytes).arrayBuffer()], { type: m.type || '' });
-    const art = m.artBytes ? new Blob([await file.slice(s + m.bytes, s + m.bytes + m.artBytes).arrayBuffer()], { type: m.artType || 'image/jpeg' }) : null;
-    const { offset, bytes, artType, artBytes, ...meta } = m; void offset; void bytes; void artType; void artBytes;
-    const t = { ...meta, blob, art };
-    tracks.set(t.id, t); idMap.set(m.id, t.id);
+    /* copied out of the file, so the songs stay after the file is deleted */
+    const blob = new Blob([await file.slice(s, s + m.bytes).arrayBuffer()], { type: txt(m.type, 100) });
+    const art = m.artBytes ? new Blob([await file.slice(s + m.bytes, s + m.bytes + m.artBytes).arrayBuffer()], { type: txt(m.artType, 100) || 'image/jpeg' }) : null;
+    /* the file changed or could not be read part-way (a card pulled out, a cloud file not fully fetched): not a song */
+    if (blob.size !== m.bytes || !blob.size || (art && art.size !== m.artBytes)) { short++; continue; }
+    const { offset, bytes, artType, artBytes, id, buf, stemOf, stemName, kind, lyrics, ...meta } = m; void offset; void bytes; void artType; void artBytes; void id; void buf; void stemOf; void stemName; void kind;
+    const ly = cleanLyrics(lyrics);
+    const t = { ...meta, id: uid(), name, size, type: txt(m.type, 100), title, artist: txt(m.artist), album: txt(m.album), track: Math.floor(numOf(m.track)), duration: numOf(m.duration), added: numOf(m.added) || Date.now(), ...(ly ? { lyrics: ly } : {}), blob, art };
+    tracks.set(t.id, t); idMap.set(m.id, t.id); have.set(key, t.id);
     try { await saveTrack(t); added++; } catch (e) { lost++; }
     if (i % 5 === 0) { renderNav(); renderList(); }
   }
-  for (const pl of head.lists || []) { // playlists join up by name
-    let l = lists.find(x => x.name === pl.name); if (!l) { l = { id: uid(), name: pl.name, ids: [], created: Date.now() }; lists.push(l); }
-    for (const id of pl.ids.map(x => idMap.get(x)).filter(Boolean)) if (!l.ids.includes(id)) l.ids.push(id);
-    await dbPut('lists', l).catch(() => {});
+  /* playlists and favourites are joined only onto ones that were read here; otherwise the saved ones could be overwritten */
+  let listFail = !listsOk && ((head.lists || []).length || (head.favs || []).length) ? 1 : 0;
+  if (listsOk) {
+    for (const pl of Array.isArray(head.lists) ? head.lists : []) { /* playlists join up by name */
+      if (!pl || !Array.isArray(pl.ids)) continue; const pname = txt(pl.name, 200) || 'Playlist';
+      let l = lists.find(x => x.name === pname); if (!l) { l = { id: uid(), name: pname, ids: [], created: Date.now() }; lists.push(l); }
+      for (const id of pl.ids.map(x => idMap.get(x)).filter(Boolean)) if (!l.ids.includes(id)) l.ids.push(id);
+      try { await dbPut('lists', l); } catch (e) { listFail++; }
+    }
+    for (const id of Array.isArray(head.favs) ? head.favs : []) { const n = idMap.get(id); if (n && !favs.has(n)) { favs.add(n); if (!(await putFav(n, true))) listFail++; } }
   }
-  for (const id of head.favs || []) { const n = idMap.get(id); if (n) favs.add(n); }
-  await dbPut('lists', { id: '__fav', ids: [...favs] }).catch(() => {});
-  render(); updateStorage();
-  try { new BroadcastChannel('mixtape').postMessage({ type: 'library' }); } catch (e) {}
-  const bits = [`Added ${plural(added, 'song')}`]; if (dup) bits.push(`${dup} you already had`); if ((head.lists || []).length) bits.push('playlists joined up'); if (lost) bits.push(`${lost} could not be saved on this device`);
-  toast(bits.join(' · '), lost ? 7000 : 4500);
+  render(); updateStorage(); tell('library'); tell('lists');
+  const bits = [`Added ${plural(added + lost, 'song')}`]; if (dup) bits.push(`${dup} you already had`); if ((head.lists || []).length && listsOk && !listFail) bits.push('playlists joined up');
+  if (lost) bits.push(`${lost} couldn't be saved here and will be gone when you close the page`);
+  if (short) bits.push(`${short} could not be read from the file and ${short === 1 ? 'was' : 'were'} left out: copy the file across again`);
+  if (listFail) bits.push('the playlists and favorites in the file could not be saved');
+  toast(bits.join(' · '), lost || short || listFail ? 10000 : 4500);
 }
 async function importFiles(list) {
   const files = [...list].filter(isAudio);
@@ -526,10 +611,16 @@ function makeDemoWav() {
 }
 async function updateStorage() {
   const el = $('#storeNote');
-  if (!db) { el.textContent = 'This browser is blocking storage, so songs stay only until you close the page.'; return; }
+  if (store === 'opening' || store === 'slow') { el.textContent = ''; return; }
+  if (!db || store === 'failed') { el.textContent = 'The saved library could not be opened, so songs you add now stay only until you close the page. Songs saved before are untouched.'; return; }
   let used = '';
   try { const e = await navigator.storage.estimate(); used = ` · ${Math.round(e.usage / 1048576)} MB used`; } catch (e) {}
-  el.textContent = `Songs are saved in this browser on this device${used}. Add them again on each phone or computer you use.`;
+  /* Has the browser promised to keep the songs? Unless it has, it may clear them by itself when the device runs low on
+     space (and Safari does after about a week without a visit, for sites not on the home screen). Say so, and say what to do. */
+  try { if (navigator.storage && navigator.storage.persisted) protectedStore = await navigator.storage.persisted(); } catch (e) {}
+  el.textContent = protectedStore === false
+    ? `Songs are saved in this browser on this device${used}, but the browser has not promised to keep them: it may clear them if the device runs low on space or the player is not opened for a while. Keep a copy with Move songs → Put all my songs into one file${installBtn.hidden ? '' : ', and install the player (the Install button) so they are kept'}.`
+    : `Songs are saved in this browser on this device${used}. Add them again on each phone or computer you use.`;
 }
 
 /* ---------- menus, dialogs, toast ---------- */
@@ -590,7 +681,7 @@ const acts = {
   fav: () => curId && toggleFav(curId), open: openNow, close: closeNow, speed: cycleSpeed,
   sleep: b => openMenu(b, [{ lbl: 'Stop the music after' }, ...[15, 30, 45, 60].map(m => ({ label: `${m} minutes`, act: () => setSleep(m) })),
     { label: 'End of this song', act: () => setSleep('end') }, ...((sleepAt || sleepEnd) ? [{ sep: 1 }, { label: 'Turn off timer', act: () => { setSleep(0); toast('Sleep timer off'); } }] : [])]),
-  add: () => $('#fileIn').click(), folder: () => $('#dirIn').click(),
+  add: () => $('#fileIn').click(), folder: () => $('#dirIn').click(), reload: () => location.reload(), retry: () => { if (store === 'failed') openLibrary(); },
   move: b => openMenu(b, [{ lbl: 'Move songs to your other device' }, { label: 'Put all my songs into one file', act: exportPack }, { label: 'Get songs from a file…', act: () => $('#packIn').click() }]),
   demo: () => importFiles([new File([makeDemoWav()], 'Example - Demo tune.wav', { type: 'audio/wav' })]),
   playall: () => playFrom(visibleIds()), shuffleall: () => { if (!S.shuffle) { S.shuffle = true; renderTransport(); } playFrom(visibleIds()); },
@@ -659,35 +750,63 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------- boot ---------- */
-(async () => {
-  applyVol(); renderTransport(); render();
-  try { db = await idbOpen(); try { navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {}); } catch (e) {} } catch (e) { db = null; }
-  for (const t of await dbAll('tracks')) { if (!t.blob && t.buf) { t.blob = new Blob([t.buf], { type: t.type || '' }); delete t.buf; } if (t.blob) tracks.set(t.id, t); }
-  for (const l of await dbAll('lists')) { if (l.id === '__fav') favs = new Set(l.ids || []); else lists.push(l); }
-  lists.sort((a, b) => a.created - b.created);
-  if (S.view.type === 'list' && !lists.some(l => l.id === S.view.id)) S.view = { type: 'all' };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+/* Favourites and playlists from storage. Throws when they cannot be read; the caller must then leave listsOk false. */
+async function readLists() {
+  const all = await dbAll('lists'), ls = []; let fv = new Set();
+  for (const l of all) { if (l.id === '__fav') fv = new Set(l.ids || []); else ls.push(l); }
+  ls.sort((a, b) => a.created - b.created); lists = ls; favs = fv; listsOk = true;
+}
+/* Open the library and read it. Three outcomes, kept apart on purpose:
+   - read: the songs (possibly none) are shown, and only then may the saved queue be tidied against them;
+   - slow: after 6 s the page says it is still opening and keeps waiting for the same connection;
+   - failed (after a second try): the page says the library could not be opened. It does NOT show the empty welcome, and
+     the saved queue, last song and position are left exactly as they were, so the next good launch still has them. */
+async function openLibrary() {
+  store = 'opening'; booted = false; render(); updateStorage();
+  let ok = false; const slow = setTimeout(() => { if (store === 'opening') { store = 'slow'; render(); } }, 6000);
+  for (let go = 0; go < 2 && !ok; go++) {
+    try {
+      if (go) await wait(700);
+      if (!db) { db = await idbOpen();
+        /* another tab deleted or upgraded the database: let go so it is not blocked, and stop writing to a dead connection */
+        db.onversionchange = () => { try { db.close(); } catch (e) {} db = null; store = 'failed'; listsOk = false; render(); updateStorage(); }; }
+      for (const t of await dbAll('tracks')) { if (!t.blob && t.buf) { t.blob = new Blob([t.buf], { type: t.type || '' }); delete t.buf; } if (t.blob && !tracks.has(t.id)) tracks.set(t.id, t); }
+      ok = true;
+    } catch (e) { console.warn('Mixtape: the library could not be opened', e); }
+  }
+  clearTimeout(slow);
+  if (ok) { try { await readLists(); } catch (e) { listsOk = false; console.warn('Mixtape: favourites and playlists could not be read', e); } }
+  store = ok ? 'ok' : 'failed';
+  if (ok) { try { if (navigator.storage && navigator.storage.persist) protectedStore = await navigator.storage.persist(); } catch (e) {} }
+  /* with the lists unread, a Favorites or playlist view would read as "nothing here yet", which is not known: show all songs */
+  if (listsOk ? S.view.type === 'list' && !lists.some(l => l.id === S.view.id) : S.view.type !== 'all') S.view = { type: 'all' };
   booted = true; bootDone();
   if (S.lastId && tracks.has(S.lastId)) {
     S.queue = S.queue.filter(id => tracks.has(id)); S.orig = S.orig.filter(id => tracks.has(id));
     let qi = S.qi >= 0 && S.queue[S.qi] === S.lastId ? S.qi : S.queue.indexOf(S.lastId);
     if (qi < 0) { S.queue = [S.lastId]; S.orig = [S.lastId]; qi = 0; }
-    S.qi = qi; loadTrack(S.lastId, false, S.pos || 0);
-  } else { S.queue = []; S.orig = []; S.qi = -1; S.lastId = null; render(); }
+    S.qi = qi; if (curId !== S.lastId) loadTrack(S.lastId, false, S.pos || 0); else render();
+  } else if (ok && !curId) { S.queue = []; S.orig = []; S.qi = -1; S.lastId = null; render(); } /* only a library that WAS read may clear these */
+  else render();
+  renderNav(); /* loadTrack paints the list and the player only: the song count and the playlist chips need this */
   updateStorage();
-})();
+  if (ok && !listsOk) toast('Your songs are here, but your favorites and playlists could not be read just now. They have not been changed. Reload the page to try again.', 9000);
+}
+(async () => { applyVol(); renderTransport(); await openLibrary(); })();
 
-/* songs saved in the Studio appear here straight away */
-try {
-  new BroadcastChannel('mixtape').onmessage = async e => {
-    if (!e.data || e.data.type !== 'library') return;
-    for (const t of await dbAll('tracks')) { if (tracks.has(t.id)) continue; if (!t.blob && t.buf) { t.blob = new Blob([t.buf], { type: t.type || '' }); delete t.buf; } if (t.blob) tracks.set(t.id, t); }
-    render(); updateStorage();
-  };
-} catch (e) {}
+/* songs saved in the Studio appear here straight away; favourites and playlists changed in another player window too */
+if (chan) chan.onmessage = async e => {
+  if (!e.data || store !== 'ok') return;
+  try {
+    if (e.data.type === 'library') { for (const t of await dbAll('tracks')) { if (tracks.has(t.id)) continue; if (!t.blob && t.buf) { t.blob = new Blob([t.buf], { type: t.type || '' }); delete t.buf; } if (t.blob) tracks.set(t.id, t); } render(); updateStorage(); }
+    else if (e.data.type === 'lists') { await readLists(); if (S.view.type === 'list' && !lists.some(l => l.id === S.view.id)) S.view = { type: 'all' }; render(); }
+  } catch (err) { /* a read that failed changes nothing here: what is on screen stays */ }
+};
 
 /* "Open with Mixtape" from Windows: add the song(s) to the library if new, then play */
 let bootDone; const bootReady = new Promise(r => { bootDone = r; });
-if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__player = { buildPack, importPack, get tracks() { return tracks; }, get lists() { return lists; }, get favs() { return favs; }, songIds };
+if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__player = { buildPack, importPack, get tracks() { return tracks; }, get lists() { return lists; }, get favs() { return favs; }, songIds, get store() { return store; }, get listsOk() { return listsOk; }, get db() { return db; }, get S() { return S; } };
 async function openLaunched(files) {
   await bootReady;
   const audio = files.filter(isAudio);
