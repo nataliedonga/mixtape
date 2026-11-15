@@ -65,43 +65,67 @@ function build() {
   const f = document.createElement('fieldset'); f.id = 'partBox'; f.className = 'engine partbox';
   f.innerHTML = `<legend>Is this to follow along with a website?</legend>
     <label class="eng"><input type="radio" name="partWhich" id="partAll" value="all" checked><span><b>No: write down the whole recording</b></span></label>
-    <label class="eng"><input type="radio" name="partWhich" id="partSome" value="part"><span><b>Yes: the website has only a part of it</b><small>Only what the website has is written down, and it then counts from 0:00, the same as the website.</small></span></label>
+    <label class="eng"><input type="radio" name="partWhich" id="partSome" value="part"><span><b>Yes: the website has only a part of it</b><small>Find where that part starts in your recording. Only that part is written down.</small></span></label>
     <div id="partRow" hidden>
       <p class="partnote" id="partBTNote" hidden></p>
+      <p class="partstep"><b>1.</b> Play your recording to the first words of the part.</p>
       <div class="partplay" role="group" aria-label="Play the recording to find the place">
         <button type="button" class="btn sm" data-pskip="-10" title="Back 10 seconds">−10 s</button><button type="button" class="btn sm" data-pskip="-5" title="Back 5 seconds">−5 s</button>
         <button type="button" class="btn sm primary" id="partPlay" title="Play or pause the recording, to find a place in it">▶ Play</button>
         <button type="button" class="btn sm" data-pskip="5" title="Forward 5 seconds">+5 s</button><button type="button" class="btn sm" data-pskip="10" title="Forward 10 seconds">+10 s</button>
         <span class="partnow" id="partNow" aria-live="off">00:00:00</span>
       </div>
-      <div class="partrow"><label for="partFrom">Starts at</label><input id="partFrom" type="text" inputmode="numeric" value="00:00:00" placeholder="00:00:00" autocomplete="off" aria-label="The part starts at (hours:minutes:seconds)"><button type="button" class="btn sm" id="partFromNow" title="The place the player is at becomes the start of the part">This part starts here</button></div>
-      <div class="partrow"><label for="partTo">Ends at</label><input id="partTo" type="text" inputmode="numeric" placeholder="the end" autocomplete="off" aria-label="The part ends at (hours:minutes:seconds); empty means the end of the recording"><button type="button" class="btn sm" id="partToNow" title="The place the player is at becomes the end of the part">It ends here</button></div>
-      <div class="partrow"><label for="partLen">or it is</label><input id="partLen" type="text" inputmode="numeric" placeholder="00:32:46" autocomplete="off" aria-label="How long the part is on the website (hours:minutes:seconds)"><span class="parthint">long on the website</span></div>
-      <p class="partsub">Stretches the website leaves out <span class="parthint">(that your recording still has; if any)</span></p>
-      <ul class="partskips" id="partSkips" aria-label="Stretches the website leaves out"></ul>
-      <div class="partrow"><label for="skipFrom">From</label><input id="skipFrom" type="text" inputmode="numeric" placeholder="00:00:00" autocomplete="off" aria-label="The left-out stretch starts at"><button type="button" class="btn sm" id="skipFromNow" title="The left-out stretch starts where the player is">Starts here</button></div>
-      <div class="partrow"><label for="skipTo">to</label><input id="skipTo" type="text" inputmode="numeric" placeholder="00:00:00" autocomplete="off" aria-label="The left-out stretch ends at"><button type="button" class="btn sm" id="skipToNow" title="The left-out stretch ends where the player is">Ends here</button><button type="button" class="btn sm primary" id="skipAdd">Leave this out</button></div>
-      <button type="button" class="btn sm" id="partFromBT" hidden title="Backup Track knows where this part starts, how long the website’s part is, and what the website skips">Take it all from Backup Track again</button>
+      <div class="partrow"><button type="button" class="btn sm primary" id="partFromNow" title="The place the player is at becomes the start of the part">This part starts here</button><label for="partFrom">or type it</label><input id="partFrom" type="text" inputmode="numeric" value="00:00:00" placeholder="hh:mm:ss" autocomplete="off" aria-label="The part starts at (hours:minutes:seconds)"></div>
+      <div id="partAfter" hidden>
+        <p class="partstep"><b>2.</b> How should the clock count?</p>
+        <div class="partseg" role="group" aria-label="How the clock counts">
+          <button type="button" data-pzero="0" title="The clock and the times show the time in your own recording">My file’s time</button>
+          <button type="button" data-pzero="1" title="The start of the part counts as 0:00, so the clock reads the same as the website’s">This part’s time, like the site</button>
+        </div>
+        <p class="partstep"><b>3.</b> How long is the part on the website?</p>
+        <div class="partrow"><input id="partLen" type="text" inputmode="numeric" placeholder="hh:mm:ss" autocomplete="off" aria-label="How long the part is on the website (hours:minutes:seconds)"><span class="parthint" id="partLenHint">Type the length the website shows (for example 00:32:46).</span></div>
+        <details class="partmore"><summary>Or say where it ends in your recording</summary>
+          <div class="partrow"><label for="partTo">Ends at</label><input id="partTo" type="text" inputmode="numeric" placeholder="the end" autocomplete="off" aria-label="The part ends at (hours:minutes:seconds); empty means the end of the recording"><button type="button" class="btn sm" id="partToNow" title="The place the player is at becomes the end of the part">It ends here</button></div>
+        </details>
+        <details class="partmore" id="partSkipBox"><summary>The website leaves stretches out</summary>
+          <p class="parthint">Stretches your recording still has but the website skips. They are not written down.</p>
+          <ul class="partskips" id="partSkips" aria-label="Stretches the website leaves out"></ul>
+          <div class="partrow"><label for="skipFrom">From</label><input id="skipFrom" type="text" inputmode="numeric" placeholder="hh:mm:ss" autocomplete="off" aria-label="The left-out stretch starts at"><button type="button" class="btn sm" id="skipFromNow" title="The left-out stretch starts where the player is">Starts here</button></div>
+          <div class="partrow"><label for="skipTo">to</label><input id="skipTo" type="text" inputmode="numeric" placeholder="hh:mm:ss" autocomplete="off" aria-label="The left-out stretch ends at"><button type="button" class="btn sm" id="skipToNow" title="The left-out stretch ends where the player is">Ends here</button><button type="button" class="btn sm primary" id="skipAdd">Leave this out</button></div>
+        </details>
+        <button type="button" class="btn sm" id="partFromBT" hidden title="Backup Track knows where this part starts, how long the website’s part is, and what the website skips">Take it all from Backup Track</button>
+        <p class="partready" id="partReady" role="status"></p>
+      </div>
     </div>`;
   ($('#engineBox') || go).before(f);
   const media = () => (api.cur && api.cur.media) || null, now = () => (media() ? media().currentTime : 0);
   const tidy = el => { const v = parseTime(el.value); if (v != null) el.value = hms(v); return v; };
   // "it is 32:46 long on the website": the end is the start plus that, plus any stretches left out on the way
-  const lenToEnd = () => { const a = parseTime($('#partFrom').value), l = parseTime($('#partLen').value); if (a != null && l != null && l > 0) $('#partTo').value = hms(recAt({ a, skips: cleanSkips(sel.skips, a, Infinity) }, l)); };
+  const lenToEnd = () => { const a = parseTime($('#partFrom').value), l = parseTime($('#partLen').value); if (a != null && l != null && l > 0) $('#partTo').value = hms(recAt({ a, skips: cleanSkips(sel.skips, a, Infinity) }, l)); ready(); };
+  const drawSeg = () => { for (const b of f.querySelectorAll('[data-pzero]')) { const on = (b.dataset.pzero === '1') === zero; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); } };
+  // the line that says what will be written down, so it is plain that the part is set and Transcribe can be pressed
+  const ready = () => {
+    const el = $('#partReady'), a = parseTime($('#partFrom').value), d = media() ? media().duration || 0 : 0, bRaw = $('#partTo').value.trim(), b = bRaw ? parseTime(bRaw) : d; if (a == null) { el.textContent = ''; return; }
+    const ks = cleanSkips(sel.skips, a, b || Infinity), left = ks.reduce((n, k) => n + (k.b - k.a), 0);
+    el.textContent = !b || b - a < 1 ? `Set: from ${hms(a)}. Say how long it is on the website (or where it ends), then press Transcribe.`
+      : `Ready: from ${hms(a)} to ${bRaw ? hms(b) : 'the end'} of your recording${bRaw ? ` (${hms(b - a - left)} on the website${ks.length ? `, ${ks.length} stretch${ks.length === 1 ? '' : 'es'} left out` : ''})` : ''}. ${zero ? 'It will count from 0:00, like the website.' : 'It will show your recording’s own time.'} Press Transcribe.`;
+  };
+  const started = () => { $('#partAfter').hidden = false; drawSeg(); ready(); lenFromBT(); };
   const drawSkips = () => {
     const ul = $('#partSkips'); ul.textContent = '';
     sel.skips.forEach((k, i) => { const li = document.createElement('li'), sp = document.createElement('span'), x = document.createElement('button'); sp.textContent = `${hms(k.a)} to ${hms(k.b)} (${hms(k.b - k.a)})`; x.type = 'button'; x.textContent = '✕'; x.title = 'Keep this stretch after all'; x.setAttribute('aria-label', `Remove the left-out stretch from ${hms(k.a)}`); x.addEventListener('click', () => { sel.skips.splice(i, 1); sel.touched = true; drawSkips(); lenToEnd(); }); li.append(sp, x); ul.appendChild(li); });
+    if (sel.skips.length) $('#partSkipBox').open = true;
   };
   const note = t => { const n = $('#partBTNote'); n.textContent = t; n.hidden = !t; };
   f.addEventListener('change', e => {
     if (e.target.name === 'partWhich') { sel.on = e.target.value === 'part'; $('#partRow').hidden = !sel.on; if (sel.on) { document.dispatchEvent(new CustomEvent('backup-track:listen', { detail: 'probe' })); fromBT(true); } return; }
-    if (e.target.id === 'partFrom') { sel.touched = true; const a = tidy(e.target); if (a != null && media()) media().currentTime = Math.min(a, media().duration || a); /* the player goes there, so you can hear that it is the right place */ lenToEnd(); }
-    else if (e.target.id === 'partTo') { sel.touched = true; tidy(e.target); $('#partLen').value = ''; }
-    else if (e.target.id === 'partLen') { sel.touched = true; tidy(e.target); lenToEnd(); }
+    if (e.target.id === 'partFrom') { sel.touched = true; const a = tidy(e.target); if (a != null && media()) media().currentTime = Math.min(a, media().duration || a); /* the player goes there, so you can hear that it is the right place */ if (a != null) started(); lenToEnd(); }
+    else if (e.target.id === 'partTo') { sel.lenSet = true; tidy(e.target); $('#partLen').value = ''; ready(); }
+    else if (e.target.id === 'partLen') { sel.lenSet = true; tidy(e.target); $('#partLenHint').textContent = 'Typed by you.'; lenToEnd(); }
     else if (e.target.id === 'skipFrom' || e.target.id === 'skipTo') tidy(e.target);
   });
-  $('#partFromNow').addEventListener('click', () => { sel.touched = true; $('#partFrom').value = hms(now()); lenToEnd(); });
-  $('#partToNow').addEventListener('click', () => { sel.touched = true; $('#partTo').value = hms(now()); $('#partLen').value = ''; });
+  $('#partFromNow').addEventListener('click', () => { sel.touched = true; $('#partFrom').value = hms(now()); if (media()) media().pause(); started(); lenToEnd(); });
+  $('#partToNow').addEventListener('click', () => { sel.lenSet = true; $('#partTo').value = hms(now()); $('#partLen').value = ''; ready(); });
   $('#skipFromNow').addEventListener('click', () => { $('#skipFrom').value = hms(now()); });
   $('#skipToNow').addEventListener('click', () => { $('#skipTo').value = hms(now()); });
   $('#skipAdd').addEventListener('click', () => {
@@ -110,34 +134,45 @@ function build() {
     sel.touched = true; sel.skips = cleanSkips([...sel.skips, { a, b }], 0, Infinity); $('#skipFrom').value = ''; $('#skipTo').value = ''; drawSkips(); lenToEnd();
   });
   $('#partPlay').addEventListener('click', () => { const m = media(); if (!m) return; if (m.paused) m.play().catch(() => {}); else m.pause(); });
-  f.addEventListener('click', e => { const b = e.target.closest('[data-pskip]'), m = media(); if (b && m) m.currentTime = Math.max(0, Math.min(m.duration || 1e9, m.currentTime + +b.dataset.pskip)); });
-  setInterval(() => { const m = media(); if ($('#partRow').hidden || !m) return; $('#partNow').textContent = hms(m.currentTime); $('#partPlay').textContent = m.paused ? '▶ Play' : '❚❚ Pause'; }, 250);
+  f.addEventListener('click', e => {
+    const b = e.target.closest('[data-pskip]'), m = media(); if (b && m) m.currentTime = Math.max(0, Math.min(m.duration || 1e9, m.currentTime + +b.dataset.pskip));
+    const z = e.target.closest('[data-pzero]'); if (z) { zero = z.dataset.pzero === '1'; try { localStorage.setItem(KEY, zero ? '1' : '0'); } catch (err) {} const box = $('#partClock'); if (box) box.checked = zero; drawSeg(); ready(); }
+  });
+  // the little clock beside the buttons: your recording's time, or counted from the start you set
+  setInterval(() => { const m = media(); if ($('#partRow').hidden || !m) return; const a = parseTime($('#partFrom').value), rel = zero && !$('#partAfter').hidden && a != null; $('#partNow').textContent = rel ? (m.currentTime < a ? '−' : '') + hms(Math.abs(m.currentTime - a)) : hms(m.currentTime); $('#partNow').title = rel ? 'Counted from the start of the part, like the website' : 'The time in your recording'; $('#partPlay').textContent = m.paused ? '▶ Play' : '❚❚ Pause'; }, 250);
 
-  /* Backup Track, when it is installed: the start, the website's length and what the website skips come from it, so
-     nothing has to be typed. Asked by itself when "Yes" is chosen (unless you have already typed something), and again
-     with the button. */
+  /* Backup Track, when it is installed and following the website: the website's length always comes from it (unless
+     you typed one), so it is shown without typing; the start and the skips come from it too if you have not set a start
+     yourself, or when you press the button. */
   let hasBT = false;
-  function fromBT(auto) {
+  const askBT = use => { let done = false; const got = e => { let s; try { s = JSON.parse(e.detail); } catch (err) { return; } if (done || s.begin == null) return; done = true; document.removeEventListener('backup-track:state', got); use(s); };
+    document.addEventListener('backup-track:state', got); document.dispatchEvent(new CustomEvent('backup-track:listen', { detail: 'once' })); setTimeout(() => { if (!done) { document.removeEventListener('backup-track:state', got); use(null); } }, 2500); };
+  function lenFromBT() { // only the length: after you have set the start yourself
+    if (!hasBT || sel.lenSet || !sel.on) return;
+    askBT(s => { if (!s || sel.lenSet || !(s.siteLen > 0)) { if (hasBT && !sel.lenSet) $('#partLenHint').textContent = 'Backup Track is installed: press play on the website once and the length appears here. Or type it.'; return; }
+      $('#partLen').value = hms(s.siteLen); $('#partLenHint').textContent = 'Taken from the website, through Backup Track.'; lenToEnd(); });
+  }
+  function fromBT(auto) { // everything: the start, the length and the skips
     if (auto && (sel.touched || !sel.on)) return;
-    let done = false; const got = e => {
-      let s; try { s = JSON.parse(e.detail); } catch (err) { return; } if (done || s.begin == null) return; done = true; document.removeEventListener('backup-track:state', got);
-      if (auto && (sel.touched || !s.loaded || !(s.siteLen > 0))) { if (hasBT && !sel.touched) note('Backup Track is installed. Once it is following the website (press play there once), press “Take it all from Backup Track again” and nothing needs typing.'); return; }
+    askBT(s => {
+      if (!s) { if (!auto) api.toast('Backup Track did not answer. Open its panel and choose your recording there first.', 6000); return; }
+      if (auto && (sel.touched || !s.loaded || !(s.siteLen > 0))) { if (hasBT && !sel.touched) note('Backup Track is installed. Once it is following the website (press play there once), the length appears by itself, or press “Take it all from Backup Track”.'); return; }
       const pts = Array.isArray(s.pts) ? s.pts : [], skips = [];
       for (let i = 1; i < pts.length; i++) { const jump = (pts[i].m - pts[i - 1].m) - (pts[i].p - pts[i - 1].p); if (jump >= 0.2) skips.push({ a: r2(pts[i].m - jump), b: r2(pts[i].m) }); } // where the website jumps ahead, your recording has a stretch it does not
       sel.skips = cleanSkips(skips, 0, Infinity); drawSkips();
-      $('#partFrom').value = hms(s.begin); if (s.siteLen > 0) { $('#partLen').value = hms(s.siteLen); lenToEnd(); } if (media()) media().currentTime = Math.min(s.begin, media().duration || s.begin);
+      $('#partFrom').value = hms(s.begin); if (media()) media().currentTime = Math.min(s.begin, media().duration || s.begin); $('#partAfter').hidden = false; drawSeg();
+      if (s.siteLen > 0) { sel.lenSet = false; $('#partLen').value = hms(s.siteLen); $('#partLenHint').textContent = 'Taken from the website, through Backup Track.'; }
+      lenToEnd();
       const said = s.siteLen > 0 ? `Taken from Backup Track: the part starts at ${hms(s.begin)} and is ${hms(s.siteLen)} long on the website${sel.skips.length ? `, with ${sel.skips.length} stretch${sel.skips.length === 1 ? '' : 'es'} left out` : ''}. Nothing to type.` : `Taken from Backup Track: the part starts at ${hms(s.begin)}. Press play on the website once, then press the button again to get its length too.`;
       note(said); if (!auto) api.toast(said, 7000);
-    };
-    document.addEventListener('backup-track:state', got); document.dispatchEvent(new CustomEvent('backup-track:listen', { detail: 'once' }));
-    setTimeout(() => { if (!done) { document.removeEventListener('backup-track:state', got); if (!auto) api.toast('Backup Track did not answer. Open its panel and choose your recording there first.', 6000); } }, 2500);
+    });
   }
-  document.addEventListener('backup-track:hello', () => { const first = !hasBT; hasBT = true; $('#partFromBT').hidden = false; if (first) fromBT(true); });
-  $('#partFromBT').addEventListener('click', () => { sel.touched = false; fromBT(false); });
-  build.reset = () => { $('#partAll').checked = true; $('#partRow').hidden = true; $('#partFrom').value = '00:00:00'; $('#partTo').value = ''; $('#partLen').value = ''; $('#skipFrom').value = ''; $('#skipTo').value = ''; note(''); drawSkips(); };
+  document.addEventListener('backup-track:hello', () => { const first = !hasBT; hasBT = true; $('#partFromBT').hidden = false; if (first) { fromBT(true); if (!$('#partAfter').hidden) lenFromBT(); } });
+  $('#partFromBT').addEventListener('click', () => { sel.touched = false; sel.lenSet = false; fromBT(false); });
+  build.reset = () => { $('#partAll').checked = true; $('#partRow').hidden = true; $('#partAfter').hidden = true; $('#partFrom').value = '00:00:00'; $('#partTo').value = ''; $('#partLen').value = ''; $('#skipFrom').value = ''; $('#skipTo').value = ''; $('#partLenHint').textContent = 'Type the length the website shows (for example 00:32:46).'; note(''); drawSkips(); ready(); };
 }
 function fresh() { // another recording: the choice starts again
-  const c = api.cur; if (!c || sel.id === c.track.id) return; sel = { id: c.track.id, on: false, skips: [], touched: false };
+  const c = api.cur; if (!c || sel.id === c.track.id) return; sel = { id: c.track.id, on: false, skips: [], touched: false, lenSet: false };
   if (build.reset) build.reset();
 }
 

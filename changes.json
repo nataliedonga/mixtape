@@ -1,5 +1,12 @@
 [
   {
+    "version": 95,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts: the 'follow a website' form now goes in the same steps as Backup Track. 1: play to the first words and press This part starts here. 2: choose whether the clock counts from 0:00 like the website. 3: the length on the website (shown by itself when Backup Track is following the site). A line then says the part is ready, and you press Transcribe."
+    ]
+  },
+  {
     "version": 94,
     "date": "2026-11-15",
     "items": [
