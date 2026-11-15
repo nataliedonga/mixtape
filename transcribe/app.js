@@ -67,7 +67,7 @@ async function openPicked(fs, extra = {}) {
   const heard = ra.mode === 'heard', num = v => { const n = +v; return v == null || !isFinite(n) ? null : n; }; // a time that is not a number is no time
   const words = ra.words.map(w => ({ t: String(w.t), s: num(w.s), e: num(w.e), ...(w.p ? { p: true } : {}), ...(w.sp ? { sp: w.sp } : {}), ...(heard && w.c != null ? { c: +w.c } : {}) }));
   if (heard && words[0]) words[0].p = true;
-  cur.tr = { id, mode: heard ? 'heard' : 'text', words, upTo: ra.duration || cur.track.duration || 0, done: true, duration: ra.duration || cur.track.duration || 0, updated: Date.now(), voice: ra.voice || '' };
+  cur.tr = { id, mode: heard ? 'heard' : 'text', words, upTo: ra.duration || cur.track.duration || 0, done: true, duration: ra.duration || cur.track.duration || 0, updated: Date.now(), voice: ra.voice || '' }; Legal.imported(cur.tr, ra);
   if (ra.sensitive) { const f = { id, sensitive: true, at: Date.now() }; flags.set(id, f); cur.tr.sensitive = true; await putFlag(f).catch(() => {}); } // a transcript saved as sensitive stays sensitive
   await save(); drawAll(); toast(`Ready: ${words.length.toLocaleString()} words, each with its moment${ra.voice ? `, read by ${String(ra.voice).replace(/^[a-z]{2}-[A-Z]{2}-/, '').replace(/:.*/, '')}` : ''}. Click any word.`, 6000);
 }
@@ -210,7 +210,7 @@ function startEdit(p, atWord) {
 function cancelEdit() { if (!editing) return; editing.p.querySelector('.words').innerHTML = editing.html; editing = null; }
 async function saveEdit(text) {
   const { i0, i1 } = editing; editing = null; remember();
-  const before = cur.tr.words.length; cur.tr.words = T.editParagraph(cur.tr.words, i0, i1, text); shiftNotes(i0, i1, cur.tr.words.length - before); await save(); drawAll(); toast('Corrected.');
+  const before = cur.tr.words.length; cur.tr.words = Legal.edited(cur.tr.words, i0, i1, T.editParagraph(cur.tr.words, i0, i1, text)); shiftNotes(i0, i1, cur.tr.words.length - before); await save(); drawAll(); toast('Corrected.');
 }
 /* a paragraph's speaker: pick one already there, add a new one, or rename this one everywhere */
 function nameSpeaker(p, btn) {
@@ -460,7 +460,7 @@ function markHits() { document.querySelectorAll('.w.hit').forEach(x => x.classLi
 const SENS_LINE = 'SENSITIVE: this transcript is from a recording marked sensitive. Do not share or upload it.';
 $('#exportBtn').addEventListener('click', e => {
   const r = cur.tr, sens = sensitive(cur.track.id), mark = t => sens ? SENS_LINE + '\n\n' + t : t, base = (cur.track.title || 'transcript').replace(/[\\/:*?"<>|]+/g, '-') + (sens ? ' (SENSITIVE)' : ''), timedWords = r.words.slice(0, T.timedUpTo(r.words));
-  menu(e.currentTarget, [[V.clean ? 'Save the clean script as' : 'Save the text (full verbatim) as', null],
+  Legal.exportMenu(e.currentTarget, [[V.clean ? 'Save the clean script as' : 'Save the text (full verbatim) as', null],
     ['Text with timestamps (.txt)', () => dl(mark(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { clean: V.clean })), base + (V.clean ? ' (clean)' : '') + '.txt')],
     ['Plain text (.txt)', () => dl(mark(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { timestamps: false, clean: V.clean })), base + (V.clean ? ' (clean, plain)' : ' (plain)') + '.txt')],
     ['Subtitles (.srt)', () => dl(T.toSrt(timedWords, V.clean), base + '.srt')],
@@ -589,6 +589,8 @@ document.addEventListener('click', e => { const b = e.target.closest('button'); 
 addEventListener('resize', () => { $('#menu').hidden = true; }); // a pop-up placed for the old window size would hang off the new one
 addEventListener('beforeunload', e => { if (job || dirtyEdit()) { e.preventDefault(); e.returnValue = ''; } });
 
+/* legal inserts (legal.js): loaded apart, so the page still works if that file is missing */
+const Legal = await import('./legal.js').then(m => m.initLegal({ get cur() { return cur; }, get editing() { return editing; }, get job() { return job; }, T, KEYS, toast, esc, menu, dl, save, remember, drawText, saveEdit, shiftNotes, sensitive, SENS_LINE })).catch(e => { console.warn('Legal inserts did not load:', e); return { edited: (o, a, b, w) => w, imported() {}, exportMenu: menu }; });
 window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dirtyEdit(), keys: { open: keysHelp, host: '#menu', match: 'table.keys' } });
 initReverb({ M, toast, save, drawAll, window16k, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */

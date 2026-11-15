@@ -1,9 +1,9 @@
 // Mixtape offline cache. Bump VERSION whenever app files change so installed copies pick up the new version.
-const VERSION = 'mixtape-v86';
+const VERSION = 'mixtape-v87';
 const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', './dsp-worker.js', './dsp-shared.js', './midi.js', './long-mp3.js', './media-cut.js', './vendor/mediabunny/mediabunny.min.mjs', './lofi-worklet.js', './vendor/tone/Tone.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './cutter/', './cutter/index.html', './cutter/app.js', './cutter/engine.js', './cutter/model.js', './cutter/h264.js', './cutter/style.css', './cutter/host-mixtape.js', './cutter/olddecode.js', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.wasm',
   './lyrics-core.js', './lyrics.js', './lyrics.css', './asr-worker.js', './speaker-worker.js',
-  './transcript-core.js', './transcribe/', './transcribe/index.html', './transcribe/app.js', './transcribe/style.css', './transcribe/reverb.js', './transcribe/reverb.css',
+  './transcript-core.js', './transcribe/', './transcribe/index.html', './transcribe/app.js', './transcribe/style.css', './transcribe/reverb.js', './transcribe/reverb.css', './transcribe/legal.js', './transcribe/legal-presets.js', './transcribe/legal.css', './legal-core.js',
   './reader/', './reader/index.html', './reader/app.js', './reader/style.css', './vendor/embedpdf/embedpdf.js', './vendor/embedpdf/embedpdf-cl9qiF45.js', './vendor/embedpdf/browser-BKLM0ThC-BCLQGPD6.js', './vendor/embedpdf/direct-engine-DVLMOJWp.js', './vendor/embedpdf/worker-engine-BCCrxWYm.js', './vendor/embedpdf/pdfium.wasm',
   './vendor/embedpdf/fonts/NotoSans-Regular.ttf', './vendor/embedpdf/fonts/NotoSans-Bold.ttf', './vendor/embedpdf/fonts/NotoSans-Italic.ttf', './vendor/embedpdf/fonts/NotoSans-BoldItalic.ttf',
   './reader/doc.css', './reader/textview.js', './reader/formats.js', './reader/sanitize.js', './reader/zip.js', './reader/pages.js', './reader/redact.js', './vendor/marked/marked.esm.js', './vendor/mammoth/mammoth.browser.min.js', './vendor/pdf-lib/pdf-lib.esm.min.js',

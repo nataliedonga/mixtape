@@ -1,5 +1,15 @@
 [
   {
+    "version": 87,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts has a Legal mode (the § Legal button). Type a short code such as ;ina and it becomes the standard wording with the time, or pick from Insert.",
+      "Exhibits propose the next number and build an exhibit index and a witness index by themselves.",
+      "Alt + 1 to 9 set the speaker; examination headings set up Q and A.",
+      "Presets for US company style, US court, US deposition, South Africa and the UK. Nothing is ever inserted or guessed for you."
+    ]
+  },
+  {
     "version": 86,
     "date": "2026-11-15",
     "items": [
