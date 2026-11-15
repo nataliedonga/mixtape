@@ -67,6 +67,7 @@ export function partChosen(cur) {
 }
 
 /* ---- choosing the part, in the "Write down what is said" card ---- */
+const NOBT = 'Backup Track cannot be reached from this Mixtape window, so nothing is shared with it and the length has to be typed. It only works when Mixtape is open in the same Chrome (the same profile) where Backup Track is installed. If this is the installed Mixtape app, or another browser, open Mixtape in a tab next to the website instead.';
 const HINT = 'With Backup Track following the website, the length appears here by itself. Without it, type the length the website shows (for example 00:32:46).';
 function build() {
   const go = $('#goHeard'); if (!go || $('#partBox')) return;
@@ -132,7 +133,7 @@ function build() {
   };
   const note = t => { const n = $('#partBTNote'); n.textContent = t; n.hidden = !t; };
   f.addEventListener('change', e => {
-    if (e.target.name === 'partWhich') { sel.on = e.target.value === 'part'; $('#partRow').hidden = !sel.on; if (sel.on) { document.dispatchEvent(new CustomEvent('backup-track:listen', { detail: 'probe' })); fromBT(true); } return; }
+    if (e.target.name === 'partWhich') { sel.on = e.target.value === 'part'; $('#partRow').hidden = !sel.on; if (sel.on) { document.dispatchEvent(new CustomEvent('backup-track:listen', { detail: 'probe' })); fromBT(true); setTimeout(() => { if (sel.on && !hasBT) note(NOBT); }, 3500); } return; }
     if (e.target.id === 'partFrom') { sel.touched = true; const a = tidy(e.target); if (a != null && media()) media().currentTime = Math.min(a, media().duration || a); /* the player goes there, so you can hear that it is the right place */ if (a != null) started(); lenToEnd(); }
     else if (e.target.id === 'partTo') { sel.lenSet = true; tidy(e.target); $('#partLen').value = ''; ready(); }
     else if (e.target.id === 'partLen') { sel.lenSet = true; tidy(e.target); $('#partLenHint').textContent = 'Typed by you.'; lenToEnd(); }
@@ -182,7 +183,7 @@ function build() {
       note(said); if (!auto) api.toast(said, 7000);
     });
   }
-  document.addEventListener('backup-track:hello', () => { const first = !hasBT; hasBT = true; $('#partFromBT').hidden = false; if (first) fromBT(true); if (sel.on && !$('#partAfter').hidden && !parseTime($('#partLen').value)) lenFromBT(); }); // each time the extension says it is there, the length is asked for if it is still missing
+  document.addEventListener('backup-track:hello', () => { const first = !hasBT; hasBT = true; if ($('#partBTNote').textContent === NOBT) note(''); $('#partFromBT').hidden = false; if (first) fromBT(true); if (sel.on && !$('#partAfter').hidden && !parseTime($('#partLen').value)) lenFromBT(); }); // each time the extension says it is there, the length is asked for if it is still missing
   $('#partFromBT').addEventListener('click', () => { sel.touched = false; sel.lenSet = false; fromBT(false); });
   // the same form, opened for a transcript that already exists: filled in with the part being shown, if there is one
   build.box = f; build.home = () => ($('#engineBox') || go).before(f);

@@ -1,5 +1,12 @@
 [
   {
+    "version": 99,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts now says so when Backup Track cannot be reached from the window Mixtape is open in, and what to do about it."
+    ]
+  },
+  {
     "version": 98,
     "date": "2026-11-15",
     "items": [
