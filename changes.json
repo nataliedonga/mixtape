@@ -1,5 +1,14 @@
 [
   {
+    "version": 83,
+    "date": "2026-11-15",
+    "items": [
+      "The Reader now opens Word, Markdown, plain text, RTF, OpenDocument, ebooks (.epub) and screenplays (.fountain) in a comfortable reading view.",
+      "Pages…: turn, delete, reorder, merge, extract and split the pages of a PDF, with Undo.",
+      "Redact…: black out words or areas in a PDF. The words are removed, not covered, and the new file is checked before you can save it."
+    ]
+  },
+  {
     "version": 82,
     "date": "2026-11-15",
     "items": [

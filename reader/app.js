@@ -19,6 +19,9 @@ window.open = url => {
 };
 
 import EmbedPDF from '../vendor/embedpdf/embedpdf.js';
+import * as PG from './pages.js';   // page tools for PDFs: rotate, delete, reorder, merge, extract, split
+import * as RD from './redact.js';  // redaction that removes what is under the boxes, then checks the new file
+import * as T from './textview.js'; // the reading view for everything that is not a PDF (Word, ebooks, Markdown, screenplays, text)
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -42,7 +45,7 @@ const viewerEl = EmbedPDF.init({
   fonts: { ui: null, signature: null },                      // no Google Fonts: the system's fonts (typed signatures use its handwriting fonts)
   stamp: { manifests: [] },                                   // no stamp sets from the internet; make your own from a picture
   disabledCategories: ['redaction'],
-  tabBar: 'multiple',
+  tabBar: 'never',                                            // the Reader draws one strip of tabs for PDFs and other documents alike (below)
   theme: {
     preference: 'system',
     light: { accent: { primary: '#9E2B47', primaryHover: '#86213A', primaryActive: '#6F1B30', primaryLight: '#F5DDE3', primaryForeground: '#FFFFFF' }, background: { app: '#EFE6DA', surface: '#FFFBF5', surfaceAlt: '#F7F1E8' }, border: { default: '#E6DCCF', subtle: '#EFE6DA' } },
@@ -66,15 +69,18 @@ const dm = cap('document-manager'), ex = cap('export');
      busy, again, err    the save in progress
    } */
 const docs = new Map();
-const activeId = () => { try { return dm.getActiveDocument?.()?.id ?? dm.getActiveDocumentId?.() ?? null; } catch (e) { return null; } };
+const pdfActiveId = () => { try { return dm.getActiveDocument?.()?.id ?? dm.getActiveDocumentId?.() ?? null; } catch (e) { return null; } };
+const activeId = () => (T.frontText() ? null : pdfActiveId()); // the PDF in front; none while a reading-view document is in front
 let autoOn = LS.get('reader:auto', true);
 const canAuto = d => autoOn && d.handle && d.handle.createWritable && d.rw !== false && !d.conflict;
 
 function showState() {
-  const d = docs.get(activeId()), any = docs.size > 0;
-  $('#empty').hidden = any; $('#saveBtn').disabled = !d; $('#saveAsBtn').disabled = !d; $('#revertBtn').disabled = !(d && d.touched);
+  const d = docs.get(activeId()), tx = T.texts.get(T.frontText()), any = docs.size > 0 || T.texts.size > 0;
+  $('#empty').hidden = any; $('#saveBtn').disabled = !d; $('#saveAsBtn').disabled = !d; $('#revertBtn').disabled = !(d && d.touched); $('#pagesBtn').disabled = !d; $('#redactBtn').disabled = !d;
+  drawTabs();
   const st = $('#state'); let text = '', warn = false;
-  if (d) {
+  if (tx) text = `${tx.name} · opened for reading (the file is not changed)`;
+  else if (d) {
     if (d.conflict) { text = `${d.name} · changed outside the Reader: not saving over it`; warn = true; }
     else if (d.err) { text = `${d.name} · not saved: ${d.err}`; warn = true; }
     else if (d.dirty && d.busy && canAuto(d)) text = `${d.name} · saving…`;
@@ -121,12 +127,13 @@ async function changed(id) {
 }
 // What the viewer tells us. Opening a document also sends events ("loaded"), which are not changes; an undo that
 // takes back the only change is one (the file must go back too).
-cap('annotation')?.onAnnotationEvent?.(e => { if (e && /^(create|update|delete|add|remove|move|commit)/i.test(e.type || '')) changed(e.documentId); });
-cap('form')?.onFieldValueChange?.(e => changed(e?.documentId));
+cap('annotation')?.onAnnotationEvent?.(e => { if (e && /^(create|update|delete|add|remove|move|commit)/i.test(e.type || '')) { mark(e.documentId); changed(e.documentId); } });
+cap('form')?.onFieldValueChange?.(e => { mark(e?.documentId); changed(e?.documentId); });
+function mark(id) { const d = docs.get(id ?? activeId()); if (d && d.undo?.length) d.marked = true; } // something was marked after a page change: undoing the page change would lose it, so that asks first
 cap('history')?.onHistoryChange?.(e => { const d = docs.get(e?.documentId ?? activeId()); if (d && ((e?.state?.global?.canUndo ?? true) || d.touched)) changed(d.id); });
 dm.onActiveDocumentChanged?.(showState);
 dm.onDocumentClosed?.(e => {
-  const id = e?.documentId ?? e?.id ?? e, d = docs.get(id); docs.delete(id); showState();
+  const id = e?.documentId ?? e?.id ?? e, d = docs.get(id); docs.delete(id); afterPdfClosed(); showState();
   if (d && d.dirty && d.latest && !d.leaving) toast(`“${d.name}” was closed with changes that are not in a file.`, 30000, [['Save a copy…', () => saveBlobAs(d.latest, d.name)], ['Open it again', () => openBlob(d.latest, d.name, d.handle, { ...d, busy: false, again: false })]]);
 });
 
@@ -172,16 +179,43 @@ async function revert() {
   } catch (e) { toast(`Could not put it back: ${e?.message || e}`, 7000); }
 }
 
+/* Page tools (pages.js) make new bytes for the SAME document: rotated, deleted, reordered or added pages. They come
+   through here so they are treated like any other change: same tab, same file, saved as you go (or held until Save),
+   never written over a file changed elsewhere, and Back to original still has the bytes from when it was opened.
+   The bytes from just before are kept (the last 8) so the change can be undone, with Ctrl+Z too. */
+async function replaceBytes(id, blob, { undoing = false } = {}) {
+  const d = docs.get(id); if (!d) throw new Error('that document is no longer open');
+  const before = undoing ? null : await bytesOf(id), place = tabOrder.indexOf(id);
+  d.leaving = true; d.dirty = false; await done(dm.closeDocument(id));
+  const nid = await openBlob(blob, d.name, d.handle, { original: d.original, seen: d.seen, rw: d.rw, conflict: d.conflict, touched: true });
+  const nd = docs.get(nid); nd.undo = undoing ? d.undo || [] : [...(d.undo || []), before].slice(-8);
+  if (place >= 0) { tabOrder = tabOrder.filter(x => x !== nid); tabOrder.splice(Math.min(place, tabOrder.length), 0, nid); tabsWas = ''; }
+  nd.latest = blob; nd.dirty = true; showState(); // exactly these bytes go into the file (not a re-save by the viewer)
+  try { if (canAuto(nd) && await allowed(nd)) { await writeBack(nd, blob); nd.dirty = false; } } catch (e) { if (!e.conflict) nd.err = e?.message || String(e); }
+  showState(); return nid;
+}
+async function undoPages(id) {
+  const d = docs.get(id); if (!d || !d.undo?.length) return;
+  if (d.marked && !confirm('Undoing the page change also removes the marks and form entries you made after it.\n\nUndo anyway?')) return;
+  try { const prev = d.undo.pop(); await replaceBytes(id, prev, { undoing: true }); toast(`“${d.name}”: the page change was undone.`, 5000); }
+  catch (e) { toast(`Could not undo: ${e?.message || e}`, 7000); }
+}
+
 $('#saveBtn').addEventListener('click', save);
 $('#saveAsBtn').addEventListener('click', saveAs);
 $('#revertBtn').addEventListener('click', revert);
 $('#autoChk').checked = autoOn;
 $('#autoChk').addEventListener('change', e => { autoOn = e.target.checked; LS.set('reader:auto', autoOn); showState(); if (autoOn) for (const d of docs.values()) if (d.dirty) changed(d.id); });
-addEventListener('keydown', e => {
-  const ctrl = e.ctrlKey || e.metaKey; if (!ctrl) return;
-  if (e.key === 's' || e.key === 'S') { e.preventDefault(); e.shiftKey ? saveAs() : save(); }
+function appKey(e) { // also called for keys pressed while a reading-view document has the keyboard
+  const ctrl = e.ctrlKey || e.metaKey; if (!ctrl) { if (e.key === '?' && !e.altKey && e.view !== window) { e.preventDefault(); window.MixtapeShell?.openKeys(); } return; } /* "?" pressed inside a reading-view document: the page itself hears it through shell.js */
+  if (e.key === 's' || e.key === 'S') { e.preventDefault(); if (T.frontText()) toast('This document is open for reading only, so there is nothing to save. Save as PDF… makes a PDF of it.', 6000); else e.shiftKey ? saveAs() : save(); }
   else if (e.key === 'o' || e.key === 'O') { e.preventDefault(); pick(); }
-}, true);
+  else if ((e.key === 'z' || e.key === 'Z') && !e.shiftKey && !PG.pagesOpen()) { // nothing left for the viewer to undo, but a page change is: undo that
+    const d = docs.get(activeId()); let can = true; try { can = !!cap('history')?.forDocument?.(d?.id)?.canUndo?.(); } catch (err) {}
+    if (d && d.undo?.length && !can && !/^(INPUT|TEXTAREA)$/.test(e.target?.tagName || '')) { e.preventDefault(); undoPages(d.id); }
+  }
+}
+addEventListener('keydown', appKey, true);
 addEventListener('beforeunload', e => { if ([...docs.values()].some(d => d.dirty || d.busy)) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- opening ---------- */
@@ -190,13 +224,23 @@ async function openBlob(blob, name, handle, carry = {}) {
   const r = await done(dm.openDocumentBuffer({ buffer, name, autoActivate: true }));
   const id = r?.documentId ?? r;
   docs.set(id, { id, name, handle: handle || null, original, latest: carry.latest || null, seen: carry.seen || null, touched: !!carry.touched, dirty: !!carry.dirty, rw: carry.rw, conflict: !!carry.conflict, busy: false, again: false, err: '' });
-  showState(); return id;
+  bring('pdf', id); return id;
+}
+// Everything that is not a PDF opens in the reading view (textview.js): read-only, the file is never written to.
+async function openOther(file, handle) {
+  try {
+    if (handle) for (const t of T.texts.values()) if (t.handle && await t.handle.isSameEntry(handle).catch(() => false)) { bring('text', t.id); return toast(`“${t.name}” is already open: here it is.`); }
+    toast(`Opening “${file.name}”…`, 60000);
+    const id = await T.openText(file, handle);
+    $('#toast').hidden = true; bring('text', id); remember(file, handle);
+  } catch (e) { toast(e?.refused ? `“${file.name}” was not opened. ${e.message}` : `Could not open “${file.name}”: ${e?.message || e}`, 14000); }
 }
 async function openFile(file, handle) {
-  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return toast(`“${file.name}” is not a PDF. Word, ePub, Markdown and other formats come next.`, 6000);
+  if (T.canRead(file.name)) return openOther(file, handle);
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return toast(/\.doc$/i.test(file.name) ? `“${file.name}” is an old Word file (.doc), which the Reader cannot read. Open it in Word or LibreOffice, save it as .docx, and open that.` : `“${file.name}” is not a kind of document the Reader opens. It opens PDF, Word (.docx), ebooks (.epub), Markdown, screenplays (.fountain), Rich Text, OpenDocument (.odt) and plain text.`, 9000);
   try {
     if (handle) for (const d of docs.values()) { // the same file twice would be two copies fighting over one file
-      if (d.handle && await d.handle.isSameEntry(handle).catch(() => false)) { dm.setActiveDocument(d.id); showState(); return toast(`“${d.name}” is already open: here it is.`); }
+      if (d.handle && await d.handle.isSameEntry(handle).catch(() => false)) { bring('pdf', d.id); return toast(`“${d.name}” is already open: here it is.`); }
     }
     await openBlob(file, file.name, handle, { seen: { at: file.lastModified, size: file.size } });
     remember(file, handle);
@@ -204,7 +248,7 @@ async function openFile(file, handle) {
 }
 async function pick() {
   if (!window.showOpenFilePicker) return $('#fileIn').click();
-  let hs; try { hs = await showOpenFilePicker({ multiple: true, id: 'reader-open', types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] }); } catch (e) { if (e.name !== 'AbortError') $('#fileIn').click(); return; }
+  let hs; try { hs = await showOpenFilePicker({ multiple: true, id: 'reader-open', types: [{ description: 'Documents', accept: { 'application/pdf': ['.pdf'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'], 'application/vnd.oasis.opendocument.text': ['.odt'], 'application/rtf': ['.rtf'], 'application/epub+zip': ['.epub'], 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt', '.text', '.log', '.fountain', '.spmd'] } }, { description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] }); } catch (e) { if (e.name !== 'AbortError') $('#fileIn').click(); return; }
   for (const h of hs) await openFile(await h.getFile(), h);
 }
 for (const b of ['#openBtn', '#openBtn2']) $(b).addEventListener('click', pick);
@@ -240,8 +284,8 @@ async function drawRecent() {
     : '<div class="lbl">Nothing yet. Documents you open with Open… or by dropping them show up here.</div>');
   m.onclick = async ev => {
     const rm = ev.target.closest('[data-rm]'), op = ev.target.closest('[data-i]');
-    if (ev.target.closest('[data-clear]')) { await tx('readwrite', o => o.clear()).catch(() => {}); return drawRecent(); }
-    if (rm) { await tx('readwrite', o => o.delete(list[+rm.dataset.rm].key)).catch(() => {}); return drawRecent(); }
+    if (ev.target.closest('[data-clear]')) { await tx('readwrite', o => o.clear()).catch(() => toast('The list could not be cleared: the browser would not change its storage. Close other Reader tabs and try again.', 7000)); return drawRecent(); }
+    if (rm) { await tx('readwrite', o => o.delete(list[+rm.dataset.rm].key)).catch(() => toast(`“${list[+rm.dataset.rm].name}” could not be taken off the list: the browser would not change its storage. Close other Reader tabs and try again.`, 7000)); return drawRecent(); }
     if (!op) return; m.hidden = true; const r = list[+op.dataset.i];
     try { if ((await r.handle.queryPermission({ mode: 'read' })) !== 'granted' && (await r.handle.requestPermission({ mode: 'read' })) !== 'granted') return toast('The browser was not allowed to read it. Open it again with Open….'); await openFile(await r.handle.getFile(), r.handle); }
     catch (err) { toast(`“${r.name}” could not be opened from where it was. It may have been moved or deleted.`, 6000); }
@@ -254,5 +298,57 @@ $('#recentBtn').addEventListener('click', async e => {
   setTimeout(() => document.addEventListener('pointerdown', function off(ev) { if (!m.contains(ev.target)) { m.hidden = true; document.removeEventListener('pointerdown', off); } }), 0);
 });
 
+/* ---------- one strip of tabs: PDFs (held by the viewer) and reading-view documents (held by textview.js) ---------- */
+let tabOrder = [], tabsWas = '';
+function bring(kind, id) { // put a document in front
+  PG.closePages(); RD.closeRedact();
+  if (kind === 'text') { T.showText(id); $('#viewer').classList.add('away'); }
+  else { T.showText(null); $('#viewer').classList.remove('away'); try { if (id && pdfActiveId() !== id) dm.setActiveDocument(id); } catch (e) {} }
+  showState();
+}
+function afterPdfClosed() { // the last PDF went: show a reading-view document if one is open
+  if (!T.frontText() && T.texts.size && !(dm.getDocumentOrder?.() || []).some(id => docs.has(id))) bring('text', [...tabOrder].reverse().find(id => T.texts.has(id)) || [...T.texts.keys()].pop());
+}
+function drawTabs() {
+  const pdfs = dm.getDocumentOrder?.() || [], open = id => pdfs.includes(id) || T.texts.has(id);
+  tabOrder = tabOrder.filter(open); for (const id of [...pdfs, ...T.texts.keys()]) if (!tabOrder.includes(id)) tabOrder.push(id);
+  const front = T.frontText() || pdfActiveId(), box = $('#tabs');
+  const html = tabOrder.map(id => {
+    const t = T.texts.get(id), name = t ? t.name : docs.get(id)?.name || dm.getDocumentState?.(id)?.name || 'Document', kind = t ? T.extOf(t.name) : 'pdf', on = id === front;
+    return `<div class="tab${on ? ' on' : ''}" role="presentation"><button class="go" role="tab" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-id="${esc(id)}" title="${esc(name)}"><i>${esc(kind)}</i><span>${esc(name)}</span></button><button class="x" data-x="${esc(id)}" title="Close “${esc(name)}”" aria-label="Close ${esc(name)}">✕</button></div>`;
+  }).join('');
+  box.hidden = !tabOrder.length;
+  if (html === tabsWas) return; tabsWas = html;
+  const had = document.activeElement?.closest?.('#tabs') ? document.activeElement.dataset.id : null;
+  box.innerHTML = html;
+  if (had) box.querySelector(`.go[data-id="${CSS.escape(had)}"]`)?.focus();
+  box.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+const goTab = id => bring(T.texts.has(id) ? 'text' : 'pdf', id);
+$('#tabs').addEventListener('click', e => {
+  const x = e.target.closest('[data-x]'), go = e.target.closest('.go');
+  if (x) { const id = x.dataset.x; if (T.texts.has(id)) { const k = tabOrder.indexOf(id), was = T.frontText() === id, next = tabOrder[k + 1] || tabOrder[k - 1]; T.closeText(id); if (was && next) goTab(next); else if (was) bring('pdf', null); else showState(); } else done(dm.closeDocument(id)).catch(() => {}); }
+  else if (go) goTab(go.dataset.id);
+});
+$('#tabs').addEventListener('keydown', e => { // arrow keys walk the tabs, as in any tab strip
+  const go = e.target.closest('.go'); if (!go || !/^(ArrowLeft|ArrowRight|Home|End)$/.test(e.key)) return;
+  const k = tabOrder.indexOf(go.dataset.id), to = e.key === 'Home' ? 0 : e.key === 'End' ? tabOrder.length - 1 : (k + (e.key === 'ArrowRight' ? 1 : -1) + tabOrder.length) % tabOrder.length;
+  e.preventDefault(); goTab(tabOrder[to]); $('#tabs').querySelector(`.go[data-id="${CSS.escape(tabOrder[to])}"]`)?.focus();
+});
+dm.onDocumentOpened?.(() => showState());
+T.initText({ toast, changed: () => showState(), appKey });
+PG.initPages({ toast, engine: () => registry.getEngine(), docOf: id => dm.getDocument(id), nameOf: id => docs.get(id)?.name || 'this PDF', bytesOf, openFile, replace: replaceBytes, undo: undoPages, canUndo: id => !!docs.get(id)?.undo?.length,
+  isOpenFile: async h => { for (const d of docs.values()) if (d.handle && await d.handle.isSameEntry(h).catch(() => false)) return true; return false; } });
+$('#pagesBtn').addEventListener('click', () => { const id = activeId(); if (id) { RD.closeRedact(); PG.openPages(id); } });
+RD.initRedact({ toast, engine: () => registry.getEngine(), docOf: id => dm.getDocument(id), nameOf: id => docs.get(id)?.name || 'this PDF', bytesOf, openFile });
+$('#redactBtn').addEventListener('click', () => { const id = activeId(); if (id) { PG.closePages(); RD.openRedact(id); } });
+dm.onActiveDocumentChanged?.(() => { PG.closePages(); RD.closeRedact(); });
+
 showState();
-if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) window.__reader = { registry, dm, ex, docs, openFile, save, saveAs, activeId, cap, changed };
+// the shared shell (../shell.js): update notice, error net, the keys sheet on "?" and the first-run welcome. The rows are the keys of the keydown handler above; change them together.
+window.MixtapeShell?.init({ tool: 'reader', toast, busy: () => [...docs.values()].some(d => d.dirty || d.busy), keys: { title: 'Reader keys', rows: [
+  ['Any document'], [['Ctrl', 'O'], 'Open a document from this computer'], [['←', '→', 'Home', 'End'], 'Move between the open documents (when one of their tabs has the focus)'], ['?', 'These keys'],
+  ['PDFs'], [['Ctrl', 'S'], 'Save now'], [['Ctrl', 'Shift', 'S'], 'Save a copy under another name or place'], [['Ctrl', 'Z'], 'Undo the last change (that is saved too)'],
+  ['Word, ebooks and text'], [['Ctrl', 'F'], 'Find in the document'], [['Enter', 'Shift Enter'], 'In the find box: the next match, the one before'], [['F3', 'Ctrl G'], 'The next match (with Shift: the one before)'], [['Ctrl', 'P'], 'Save as PDF, through the browser’s print window'], ['Esc', 'In the find box: clear it'],
+] } });
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) window.__reader = { registry, dm, ex, docs, openFile, save, saveAs, activeId, cap, changed, T, bring, PG, RD, replaceBytes, undoPages };

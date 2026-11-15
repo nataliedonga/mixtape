@@ -56,17 +56,30 @@ Rules: `transcript-core.js` (checked by `node transcript-check.cjs`); screen: `t
 
 ## Reader
 
-**Reader** (top bar): PDFs, read and marked up on this computer. The document is never uploaded.
+**Reader** (top bar): documents read on this computer, and PDFs marked up, rearranged and redacted. Nothing is ever uploaded.
 
-- Open with **Open…** (Ctrl+O), by dropping a PDF on the page, from **Recent** (the last 20 documents you opened, found again where they were), or, in the installed app, by opening a `.pdf` with Mixtape.
-- Several documents at once, each in its own tab.
+- Open with **Open…** (Ctrl+O), by dropping a file on the page, from **Recent** (the last 20 documents you opened, found again where they were), or, in the installed app, by opening a `.pdf` with Mixtape.
+- Several documents at once, PDFs and others alike, each in its own tab (arrow keys walk the tabs).
+
+**PDFs**
+
 - **Annotate**: highlight, underline, strike out, squiggly, notes, free text, drawing. **Shapes**: boxes, circles, lines, arrows, polygons. **Insert**: images and stamps. **Form**: fill in a PDF's form fields, and sign.
 - **Saved as you go**: every change is written into the same file as you make it (the browser asks once to allow it). Undo (Ctrl+Z) takes a change back and the file follows. **Back to original** puts the file back byte for byte as it was when opened here. Untick **Save as I go** to save only with **Save** (Ctrl+S). **Save a copy…** (Ctrl+Shift+S) asks where. Password-protected and permission-protected PDFs keep their protection.
+- **Pages…**: turn, delete, reorder (drag the thumbnails, or Alt+arrows), add the pages of other PDFs (merge), **Extract…** the selected pages to a new PDF, **Split…** into several new PDFs. Nothing changes until **Apply to document**; then it is saved like any other change, Ctrl+Z or the Undo in the message takes it back, and Back to original still works. Extract and Split always write new files. A deleted page is removed from the file, not hidden, and its bookmark goes with it. Not for password-protected PDFs; fillable fields in pages added from another PDF become plain.
+- **Redact…**: drag a box over what must go, or find words and **Black out every match**. The text, pictures, drawings, notes, links and form fields under a box are removed from a copy, not covered; the same words are taken out of the document's title, information and bookmarks. Then the copy is checked before it can be saved: it is opened again and all its text searched, every part of the file is unpacked and searched, every box is looked at for letters left behind and must be solid black. Only then does it say *Checked: none of the N blacked-out passages can be found in the new file* and offer **Save the redacted copy…**; otherwise it says what was found and saves nothing. The document you have open is never changed. A page that is turned sideways, or where something under a box cannot be cut out, becomes a picture of itself (the report says which; its words can no longer be selected). Not for password-protected PDFs. The check finds the passages you blacked out, not other spellings of them: it tells you when a word from a passage still appears elsewhere.
 - **Safeguards**: a file changed by another program while open here is not saved over (the header says so; Save asks first). The same file opens once, not in two tabs. A tab closed with changes that are not in a file offers *Save a copy…* and *Open it again*. Each save is this document's own, whichever tab is in front.
-- **Privacy**: the page's Content-Security-Policy makes the browser refuse every connection except to the app's own files. A link inside a PDF is only opened after you agree, and only web and email addresses. Recent can drop one entry or be cleared.
-- Built on EmbedPDF 2.15.1 (MIT) running PDFium (BSD/Apache-2.0) in WebAssembly, with Noto Sans (OFL) for text in scripts a PDF does not carry a font for; all in `vendor/embedpdf/`, nothing is fetched from the internet.
 
-Coming next: Word, text, Markdown and ebooks; page tools; redaction with a check; reading scanned pages (OCR); read-along with a recording.
+**Word, ebooks, screenplays, Markdown, Rich Text, OpenDocument, plain text** (`.docx`, `.epub`, `.fountain`, `.md`, `.rtf`, `.odt`, `.txt`)
+
+- Open in a reading view: one comfortable column, **A− / A+** text size, light or dark page, **Find** (Ctrl+F, Enter for the next), **Contents** from the headings (scenes for a screenplay, the book's own contents for an ebook), and **Save as PDF…** (Ctrl+P) through the browser's print. They are opened for reading only: the file is never changed.
+- Shown for reading, not as printed: a Word, Rich Text or OpenDocument file keeps its words, headings, lists, tables, pictures and links but not its page layout, fonts, columns, headers and footers or tracked changes; an ebook is one long page in the Reader's own type; Rich Text pictures and footnotes are not shown. The note above the document says so. Old Word `.doc` files and copy-protected (DRM) ebooks are not read.
+- **A document is treated as untrusted.** Only plain reading elements are copied onto the page (an allow-list: no scripts, no hidden instructions such as `onerror=`, no `javascript:` or `data:` links, no forms or frames, none of the document's own styles), and it is shown inside a frame in which the browser runs no scripts at all. Pictures inside the file are shown; pictures and style sheets that live on the internet are never fetched. What was left out is counted and said above the document (“2 pictures that live on the internet were not loaded”). Zip-based files (`.docx`, `.odt`, `.epub`) are refused if they would unpack into more than 300 MB, hold more than 5,000 parts, or lie about their size (zip bombs).
+
+**Privacy**: the page's Content-Security-Policy makes the browser refuse every connection except to the app's own files. A link inside a document is only opened after you agree, and only web and email addresses. Recent can drop one entry or be cleared.
+
+Built on EmbedPDF 2.15.1 (MIT) running PDFium (BSD/Apache-2.0) in WebAssembly, with Noto Sans (OFL), in `vendor/embedpdf/`; pdf-lib 1.17.1 (MIT) for page tools and for writing the redacted copy, in `vendor/pdf-lib/`; mammoth 1.13.0 (BSD-2-Clause) for Word, in `vendor/mammoth/`; marked 18.2.0 (MIT) for Markdown, in `vendor/marked/`. Fountain, Rich Text, OpenDocument, ePub and zip are read by the Reader's own code. Nothing is fetched from the internet.
+
+Coming next: reading scanned pages (OCR); read-along with a recording.
 
 Screen: `reader/`.
 

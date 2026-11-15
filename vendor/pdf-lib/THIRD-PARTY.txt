@@ -1,0 +1,8 @@
+pdf-lib.esm.min.js is the unmodified ES-module build from the npm package pdf-lib 1.17.1
+(https://registry.npmjs.org/pdf-lib/-/pdf-lib-1.17.1.tgz), MIT, see LICENSE.md.
+
+That build bundles these libraries (licences as declared in their npm packages):
+  @pdf-lib/standard-fonts  MIT
+  @pdf-lib/upng            MIT
+  pako                     MIT AND Zlib
+  tslib                    0BSD

@@ -1,0 +1,14 @@
+mammoth.browser.min.js is the unmodified browser build from the npm package mammoth 1.13.0
+(https://registry.npmjs.org/mammoth/-/mammoth-1.13.0.tgz), BSD-2-Clause, see LICENSE.
+
+That build bundles these libraries (licences as declared in their npm packages):
+  jszip               MIT OR GPL-3.0-or-later  (used here under MIT)
+  pako                MIT AND Zlib
+  bluebird            MIT
+  underscore          MIT
+  @xmldom/xmldom      MIT
+  xmlbuilder          MIT
+  base64-js           MIT
+  lop                 BSD-2-Clause
+  option              BSD-2-Clause
+  dingbat-to-unicode  BSD-2-Clause

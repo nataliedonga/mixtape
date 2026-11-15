@@ -11,36 +11,107 @@
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icon-192.png">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="../shell.css">
 </head>
 <body>
 <header class="bar">
-  <a class="back" href="../" title="Back to Mixtape">← Mixtape</a>
-  <div class="brand"><b>Reader</b><span>PDFs: read, mark up, fill and sign</span></div>
+  <a class="back" href="../home/" title="All of Mixtape's tools">← Mixtape</a>
+  <div class="brand"><b>Reader</b><span>PDFs, Word, ebooks, scripts and text</span></div>
   <span class="sp"></span>
   <span class="state" id="state" aria-live="polite"></span>
   <button class="btn" id="recentBtn" title="Documents you opened before">Recent ▾</button>
-  <button class="btn" id="openBtn" title="Open a PDF from this computer (Ctrl+O)">Open…</button>
+  <button class="btn" id="openBtn" title="Open a document from this computer (Ctrl+O): PDF, Word, ebook, Markdown, screenplay or text">Open…</button>
+  <button class="btn" id="pagesBtn" title="Page tools for this PDF: rotate, delete, reorder, add pages from other PDFs, extract, split" disabled>Pages…</button>
+  <button class="btn" id="redactBtn" title="Black out parts of this PDF so they are removed, not just covered, and check the result. Always saved as a new file." disabled>Redact…</button>
   <label class="auto" title="Every change is saved into the file as you make it. Undo (Ctrl+Z) takes a change back, and that is saved too. Switch off to save only when you press Save."><input type="checkbox" id="autoChk" checked> Save as I go</label>
   <button class="btn" id="revertBtn" title="Put the file back exactly as it was when you opened it here, undoing everything since" disabled>Back to original</button>
   <button class="btn" id="saveAsBtn" title="Save a copy under another name or place (Ctrl+Shift+S)" disabled>Save a copy…</button>
   <button class="btn primary" id="saveBtn" title="Save now (Ctrl+S)" disabled>Save</button>
-  <input type="file" id="fileIn" accept=".pdf,application/pdf" multiple hidden>
+  <input type="file" id="fileIn" accept=".pdf,application/pdf,.docx,.odt,.rtf,.epub,.md,.markdown,.fountain,.spmd,.txt,.text,.log" multiple hidden>
 </header>
 <main class="stage">
+  <div class="tabs" id="tabs" role="tablist" aria-label="Open documents" hidden></div>
+  <div class="deck">
   <div class="viewer" id="viewer"></div>
+  <section class="tv" id="textview" aria-label="Reading view" hidden>
+    <div class="tvbar" role="toolbar" aria-label="Reading tools">
+      <button class="btn" id="tvOutlineBtn" aria-expanded="false" aria-controls="tvOutline" title="Show or hide the list of headings">Contents</button>
+      <span class="tvgrp" role="group" aria-label="Text size"><button class="btn" id="tvSmaller" title="Smaller text" aria-label="Smaller text">A−</button><output id="tvSize" aria-live="polite">100%</output><button class="btn" id="tvBigger" title="Larger text" aria-label="Larger text">A+</button></span>
+      <button class="btn" id="tvTheme" title="Light page, dark page, or the same as the app">Page: as the app</button>
+      <span class="sp"></span>
+      <span class="tvfind" role="search"><input id="tvFind" type="search" placeholder="Find in this document" aria-label="Find in this document (Ctrl+F). Enter for the next match, Shift+Enter for the one before." autocomplete="off" spellcheck="false"><span id="tvFindN" aria-live="polite"></span><button class="btn" id="tvPrev" title="The match before (Shift+Enter)" aria-label="The match before" disabled>↑</button><button class="btn" id="tvNext" title="The next match (Enter)" aria-label="The next match" disabled>↓</button></span>
+      <button class="btn" id="tvPdf" title="Opens the browser's print window: choose Save as PDF there (Ctrl+P)">Save as PDF…</button>
+    </div>
+    <div class="tvnote" id="tvNote" role="note" hidden></div>
+    <div class="tvbody"><nav class="tvoutline" id="tvOutline" aria-label="Contents" hidden></nav><div class="tvframes" id="tvFrames"></div></div>
+  </section>
+  <section class="pages" id="pages" aria-labelledby="pgTitle" hidden>
+    <div class="pgbar" role="toolbar" aria-label="Page tools">
+      <h2 id="pgTitle">Pages</h2>
+      <button class="btn" id="pgLeft" title="Turn the selected pages a quarter turn left (Shift+R)">⟲ Turn left</button>
+      <button class="btn" id="pgRight" title="Turn the selected pages a quarter turn right (R)">⟳ Turn right</button>
+      <button class="btn" id="pgBack" title="Move the selected pages one place earlier (Alt+←)">← Earlier</button>
+      <button class="btn" id="pgFwd" title="Move the selected pages one place later (Alt+→)">Later →</button>
+      <button class="btn" id="pgDel" title="Delete the selected pages (Delete). They are removed from the file, not hidden.">Delete</button>
+      <button class="btn" id="pgUndo" title="Take back the last thing you did here (Ctrl+Z)">Undo</button>
+      <span class="sp"></span>
+      <button class="btn" id="pgAdd" title="Add the pages of other PDFs to the end of this one (merge)">Add PDFs…</button>
+      <button class="btn" id="pgExtract" title="Save the selected pages as a new PDF. This document is not changed.">Extract…</button>
+      <button class="btn" id="pgSplitBtn" title="Save this document as several new PDFs. This document is not changed." aria-controls="pgSplit">Split…</button>
+      <input type="file" id="pgFile" accept=".pdf,application/pdf" multiple hidden>
+    </div>
+    <div class="pgsplit" id="pgSplit" hidden>
+      <label for="pgSplitMode">Split into new files:</label>
+      <select id="pgSplitMode"><option value="every">every so many pages</option><option value="each">one file per page</option><option value="ranges">at the pages I type</option></select>
+      <input id="pgSplitVal" type="text" inputmode="numeric" value="1" aria-label="Pages per file, or page ranges" autocomplete="off">
+      <button class="btn primary" id="pgSplitGo">Split and save…</button>
+      <p id="pgSplitSay" aria-live="polite"></p>
+    </div>
+    <div class="pggrid" id="pgGrid" role="listbox" aria-multiselectable="true" aria-label="Pages. Arrow keys move, Space selects, Alt+arrows move the selected pages, R turns, Delete deletes."></div>
+    <div class="pgmark" id="pgMark" hidden></div>
+    <div class="pgfoot">
+      <span id="pgInfo" aria-live="polite"></span>
+      <span class="sp"></span>
+      <button class="btn" id="pgUndoApplied" title="Put the document back as it was before the last page change you applied" hidden>Undo last applied change</button>
+      <button class="btn" id="pgCancel">Close</button>
+      <button class="btn primary" id="pgApply" title="Make these changes to the document. It is saved as usual; Undo and Back to original still work." disabled>Apply to document</button>
+    </div>
+  </section>
+  <section class="pages redact" id="redact" aria-labelledby="rdTitle" hidden>
+    <div class="pgbar" role="toolbar" aria-label="Redaction tools">
+      <h2 id="rdTitle">Black out</h2>
+      <span class="tvfind" role="search"><input id="rdFind" type="search" placeholder="Find words to black out" aria-label="Find words to black out. Enter marks every match." autocomplete="off" spellcheck="false"><button class="btn" id="rdMarkAll" title="Put a box on every place these words appear (Enter)">Black out every match</button><span id="rdFindN" aria-live="polite"></span></span>
+      <span class="sp"></span>
+      <button class="btn" id="rdClear" title="Remove every box" disabled>Clear all</button>
+    </div>
+    <div class="rdwork" id="rdWork">
+      <div class="rdpages" id="rdPages" aria-label="Pages. Drag across what must go to draw a box; click a box to remove it."></div>
+      <aside class="rdside" aria-label="What is marked"><h3>Marked to go</h3><ul id="rdList"></ul><p class="quiet">Blacked-out parts are removed from the new file, not covered: the words, anything under the box, and the same words in the document's title, information and bookmarks. Then the new file is checked before it is saved.</p></aside>
+    </div>
+    <div class="rdreport" id="rdReport" role="region" aria-label="Result of the check" hidden></div>
+    <div class="pgfoot">
+      <span id="rdInfo" aria-live="polite"></span>
+      <span class="sp"></span>
+      <button class="btn" id="rdClose">Close</button>
+      <button class="btn primary" id="rdGo" disabled>Black out and check…</button>
+    </div>
+  </section>
   <div class="empty" id="empty">
     <div class="card">
-      <h1>Open a PDF to read it, mark it up, fill it in or sign it.</h1>
+      <h1>Open a document to read it. Open a PDF to mark it up, fill it in or sign it.</h1>
       <p>Highlight, underline, strike out, add notes, draw, add shapes and stamps, fill forms and sign. Every change is saved into the same file as you make it; Undo takes it back, and <b>Back to original</b> restores the file as you opened it.</p>
       <p class="quiet">Everything happens here on this computer: the document is never uploaded.</p>
-      <div class="row"><button class="btn primary" id="openBtn2">Open a PDF…</button></div>
-      <p class="quiet" id="dropHint">Or drop a PDF anywhere on this page.</p>
+      <p><b>Word</b> (.docx), <b>ebooks</b> (.epub), <b>screenplays</b> (.fountain), Markdown, Rich Text, OpenDocument and plain text open in a reading view: your text size, light or dark page, find, a contents list, and Save as PDF. They are opened for reading only and the file is never changed.</p>
+      <div class="row"><button class="btn primary" id="openBtn2">Open a document…</button></div>
+      <p class="quiet" id="dropHint">Or drop one anywhere on this page.</p>
     </div>
+  </div>
   </div>
 </main>
 <div class="veil" id="veil" hidden><div>Drop to open</div></div>
 <div class="menu" id="menu" hidden></div>
 <div class="toast" id="toast" hidden role="status"></div>
+<script src="../shell.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

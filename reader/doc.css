@@ -1,0 +1,74 @@
+/* The page a document is read on (inside the reading frame). The Reader's desk: warm paper and walnut ink by day,
+   deep plum by night, a burgundy accent; a serif column about 68 characters wide. The document's own styles are
+   never used: this sheet is the only one the frame is allowed to load. */
+:root { --paper: #FFFBF5; --ink: #2A2226; --dim: #6E6168; --line: #E6DCCF; --accent: #9E2B47; --soft: #F5DDE3; --wash: #F7F1E8; --size: 18px; color-scheme: light; }
+:root[data-theme="dark"] { --paper: #1B161C; --ink: #EFE6EA; --dim: #A9989F; --line: #3A2F3B; --accent: #D9708A; --soft: #4A2533; --wash: #241D26; color-scheme: dark; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --paper: #1B161C; --ink: #EFE6EA; --dim: #A9989F; --line: #3A2F3B; --accent: #D9708A; --soft: #4A2533; --wash: #241D26; color-scheme: dark; } }
+* { box-sizing: border-box; }
+html { background: var(--paper); scroll-padding-top: 24px; }
+body { margin: 0; color: var(--ink); font: var(--size)/1.62 Georgia, "Iowan Old Style", "Times New Roman", serif; overflow-wrap: break-word; -webkit-text-size-adjust: 100%; }
+main { max-width: 68ch; margin: 0 auto; padding: 44px 24px 30vh; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.7em 0 .5em; font-weight: 600; letter-spacing: -.01em; text-wrap: balance; }
+h1 { font-size: 1.8em; } h2 { font-size: 1.4em; } h3 { font-size: 1.17em; } h4, h5, h6 { font-size: 1em; }
+main > :first-child, .chapter > :first-child { margin-top: 0; }
+p { margin: 0 0 1em; } p.gap { margin: 0; height: 1em; }
+.t-pre { white-space: pre-wrap; tab-size: 4; }
+.al-c { text-align: center; } .al-r { text-align: right; }
+a { color: var(--accent); text-underline-offset: 2px; } a:not([href]) { color: inherit; text-decoration: none; }
+a[data-out]::after { content: " ↗"; font-size: .8em; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+img { max-width: 100%; height: auto; display: block; margin: 1em auto; border-radius: 3px; }
+p > img:only-child { margin: 0 auto; }
+.noimg { color: var(--dim); font-style: italic; font-size: .9em; }
+blockquote { margin: 1em 0; padding: .1em 0 .1em 1.1em; border-left: 3px solid var(--line); color: var(--dim); }
+pre, code, kbd, samp { font-family: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace; font-size: .86em; }
+pre { background: var(--wash); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; overflow-x: auto; line-height: 1.5; }
+:not(pre) > code { background: var(--wash); border-radius: 4px; padding: .1em .3em; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
+ul, ol { padding-left: 1.5em; margin: 0 0 1em; } li { margin: .25em 0; } li > p { margin: 0 0 .4em; }
+table { border-collapse: collapse; margin: 1.2em 0; font-size: .92em; display: block; max-width: 100%; overflow-x: auto; }
+td, th { border: 1px solid var(--line); padding: 6px 10px; vertical-align: top; text-align: left; } th { background: var(--wash); font-weight: 600; }
+td > p:last-child, th > p:last-child { margin-bottom: 0; }
+small, sup, sub { font-size: .78em; } mark { background: var(--soft); color: inherit; }
+.chapter + .chapter { margin-top: 3.5em; padding-top: 3em; border-top: 1px solid var(--line); }
+::highlight(found) { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; }
+::highlight(found-now) { background: var(--accent); color: var(--paper); }
+
+/* Screenplays (Fountain): the page a script is read on. Courier at twelve to the inch, a 60-character line, names
+   and speeches set in from the left as on paper. */
+:root[data-kind="fountain"] body, :root[data-kind="spmd"] body { font: calc(var(--size) * .89)/1.25 "Courier Prime", "Courier New", Courier, monospace; }
+:root[data-kind="fountain"] main, :root[data-kind="spmd"] main { max-width: calc(61ch + 48px); }
+.f-titlepage { text-align: center; padding: 12vh 0 8vh; margin-bottom: 3em; border-bottom: 1px solid var(--line); }
+.f-title { font: inherit; font-weight: 700; text-transform: uppercase; margin: 0 0 2em; letter-spacing: 0; }
+.f-credit { white-space: pre-line; margin: 0 0 1em; } .f-contact { white-space: pre-line; text-align: left; margin: 6vh 0 0; color: var(--dim); }
+.f-scene { font: inherit; font-weight: 700; text-transform: uppercase; margin: 2em 0 1em; letter-spacing: 0; position: relative; }
+.f-scene[data-n] { padding-right: 5ch; }
+.f-scene[data-n]::after { content: attr(data-n); position: absolute; right: 0; top: 0; font-weight: 400; color: var(--dim); }
+.f-section { font: 600 1.05em/1.3 "Segoe UI", system-ui, sans-serif; color: var(--accent); margin: 2.4em 0 .6em; letter-spacing: 0; }
+.f-synopsis { color: var(--dim); font-style: italic; }
+.f-action { white-space: pre-wrap; margin: 0 0 1em; }
+.f-dialogue { margin: 0 auto 1em; padding: 0 0 0 10ch; max-width: 46ch; margin-left: 0; }
+.f-char { margin: 0; padding-left: 12ch; text-transform: uppercase; }
+.f-paren { margin: 0; padding-left: 6ch; } .f-speech { margin: 0; max-width: 35ch; } .f-lyric { font-style: italic; margin: 0 0 .2em; }
+.f-dual { display: grid; grid-template-columns: 1fr 1fr; gap: 2ch; } .f-dual .f-dialogue { padding-left: 0; } .f-dual .f-char { padding-left: 6ch; } .f-dual .f-paren { padding-left: 3ch; }
+.f-trans { text-align: right; text-transform: uppercase; margin: 1em 0; } .f-center { text-align: center; }
+.f-pb { border-top: 1px dashed var(--line); }
+@media (max-width: 560px) {
+  main { padding: 26px 16px 30vh; }
+  .f-dialogue { padding-left: 4ch; } .f-char { padding-left: 8ch; } .f-paren { padding-left: 4ch; } .f-dual { grid-template-columns: 1fr; }
+}
+
+/* Save as PDF: black on white, a real page with margins, nothing split badly. */
+@media print {
+  @page { margin: 22mm 20mm; }
+  :root, :root[data-theme] { --paper: #fff; --ink: #000; --dim: #444; --line: #bbb; --accent: #000; --soft: #eee; --wash: #f4f4f4; color-scheme: light; }
+  html { background: #fff; } body { font-size: 11.5pt; }
+  :root[data-kind="fountain"] body, :root[data-kind="spmd"] body { font-size: 12pt; line-height: 1; }
+  main { max-width: none; padding: 0; }
+  h1, h2, h3, h4, .f-scene, .f-char { break-after: avoid; } img, pre, blockquote, tr, .f-dialogue { break-inside: avoid; }
+  table { display: table; overflow: visible; } pre { white-space: pre-wrap; }
+  a { text-decoration: none; } a[data-out]::after { content: " (" attr(href) ")"; font-size: .85em; word-break: break-all; }
+  .f-pb { break-after: page; border: 0; margin: 0; } .chapter + .chapter { break-before: page; border: 0; margin: 0; padding: 0; }
+  .f-titlepage { break-after: page; border: 0; }
+  ::highlight(found), ::highlight(found-now) { background: none; color: inherit; }
+}
