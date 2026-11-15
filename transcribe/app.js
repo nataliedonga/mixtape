@@ -513,14 +513,14 @@ async function save() { cur.tr.updated = Date.now(); try { await putTr(cur.tr); 
 async function start(mode, text) {
   if (job) return; const d = cur.track.duration || cur.media.duration || 0;
   const pt = !cur.tr && mode === 'heard' ? partChosen(cur) : null; if (pt === false) return; // only a part was asked for, and what was typed cannot be used
-  if (!cur.tr) cur.tr = { id: cur.track.id, mode, words: mode === 'text' ? T.fromText(text) : [], upTo: pt ? pt.a : 0, done: false, duration: d, updated: Date.now(), ...(pt ? { part: pt } : {}) };
+  if (!cur.tr) cur.tr = { id: cur.track.id, mode, words: mode === 'text' ? T.fromText(text) : [], upTo: pt && !pt.whole ? pt.a : 0, done: false, duration: d, updated: Date.now(), ...(pt ? { part: pt } : {}) };
   const tr = cur.tr; job = { stop: false }; $('#start').hidden = true; $('#cont').hidden = true; $('#run').hidden = false; drawAll(); $('#start').hidden = true; $('#cont').hidden = true;
   const st = $('#runSt'), bar = $('#runBar');
   let worker, spkWorker;
   try {
     const input = new M.Input({ source: new M.BlobSource(cur.blob), formats: M.ALL_FORMATS }), a = await input.getPrimaryAudioTrack(); if (!a) throw new Error('this file has no sound');
     if (!(await a.canDecode())) throw new Error(`this browser cannot decode its sound (${a.codec})`);
-    const whole = await a.computeDuration(); tr.duration = whole; const dur = tr.part ? Math.min(whole, tr.part.b) : whole; // a part ends where it was asked to
+    const whole = await a.computeDuration(); tr.duration = whole; const dur = tr.part && !tr.part.whole ? Math.min(whole, tr.part.b) : whole; // a part ends where it was asked to (unless the whole recording is written down and only the part shown)
     worker = new Worker('../asr-worker.js', { type: 'module' }); const files = {};
     const hear = msg => new Promise((res, rej) => { worker.onmessage = m => { const x = m.data; if (x.type === 'load') { files[x.file] = x; const tot = Object.values(files).reduce((s, f) => s + (f.total || 0), 0), got = Object.values(files).reduce((s, f) => s + (f.loaded || 0), 0); st.textContent = `Getting the recogniser (once only): ${Math.round(got / 1e6)} of ${Math.round(tot / 1e6)} MB`; bar.style.width = (tot ? got / tot * 100 : 0) + '%'; } else if (x.type === 'window') res(x.words); else if (x.type === 'error') rej(new Error(x.message)); }; worker.onerror = e => rej(new Error(e.message || 'the recogniser could not start')); worker.postMessage(msg, [msg.audio.buffer]); });
     // who speaks when: a second worker, in step with the recogniser (transcripts only; a read-along has one narrator)

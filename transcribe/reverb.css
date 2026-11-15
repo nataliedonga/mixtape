@@ -43,7 +43,8 @@
 .partsheet-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; font-size: 15px; }
 .partsheet-f { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .partbox.insheet { border: 0; padding: 0; margin: 6px 0 0; }
-.partbox.insheet > legend, .partbox.insheet > .eng { display: none; }
+.partbox.insheet > legend, .partbox.insheet > .eng, .partbox.insheet .partall { display: none; }
+.partbox .partall { margin: 10px 0 0 26px; }
 .partbox.insheet .partrow, .partbox.insheet .partplay, .partbox.insheet .partstep, .partbox.insheet .partseg, .partbox.insheet .partmore, .partbox.insheet .partready, .partbox.insheet .partnote, .partbox.insheet #partFromBT { margin-left: 0; }
 #partBtn { margin-left: 8px; }
 @media (max-width: 860px) { .partsheet { right: 8px; left: 8px; width: auto; bottom: 84px; } }

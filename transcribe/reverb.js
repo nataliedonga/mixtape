@@ -92,7 +92,8 @@ export async function startReverb() {
     await clean();
     const input = new api.M.Input({ source: new api.M.BlobSource(cur.blob), formats: api.M.ALL_FORMATS }), a = await input.getPrimaryAudioTrack(); if (!a) throw new Error('this file has no sound');
     if (!(await a.canDecode())) throw new Error(`this browser cannot decode its sound (${a.codec})`);
-    const whole = await a.computeDuration(), t0 = pt ? pt.a : 0, dur = pt ? Math.min(whole, pt.b) : whole;
+    const cut = pt && !pt.whole ? pt : null; /* pt.whole: the whole recording is written down and only the part is shown */
+    const whole = await a.computeDuration(), t0 = cut ? cut.a : 0, dur = cut ? Math.min(whole, cut.b) : whole;
     st.textContent = 'Handing the recording to Reverb on this computer…';
     await writeWav(wav, a, t0, dur, p => { bar.style.width = Math.round(p * 10) + '%'; });
     const jw = await (await dir.getFileHandle(jobF, { create: true })).createWritable(); await jw.write(JSON.stringify({ audio: wav, name: cur.track.title || '', verbatim: 1 })); await jw.close();

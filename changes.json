@@ -1,5 +1,13 @@
 [
   {
+    "version": 100,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts: when a recording follows a website, you can tick “Write down the whole recording now”. Only the part is shown and played; for the next part press “Part…” and choose it, with no new transcribing.",
+      "Transcripts: “My recording starts in the middle of the website’s”. Say where on the website your recording begins; the clock, the following and Backup Track all use it."
+    ]
+  },
+  {
     "version": 99,
     "date": "2026-11-15",
     "items": [
