@@ -1,0 +1,11 @@
+/* The choice of recogniser in the "Write down what is said" card: belongs to the Transcripts page (its own variables). */
+.engine { border: 1px solid var(--line, #8884); border-radius: 10px; padding: 10px 12px 12px; margin: 0 0 12px; min-width: 0; }
+.engine legend { padding: 0 6px; font-size: 13px; font-weight: 600; color: var(--muted, inherit); }
+.engine .eng { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+.engine .eng input { margin-top: 4px; width: 16px; height: 16px; flex: none; accent-color: var(--accent, currentColor); }
+.engine .eng b { display: block; }
+.engine .eng small { display: block; font-size: 12.5px; line-height: 1.4; color: var(--muted, inherit); opacity: .9; }
+.engine .eng input:disabled ~ span { opacity: .55; }
+.engine .engstatus { margin: 8px 0 8px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: color-mix(in srgb, currentColor 8%, transparent); }
+.engine .engstatus.ok { color: var(--ok, #1f8a55); }
+.engine .eng:focus-within { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; border-radius: 6px; }

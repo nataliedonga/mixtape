@@ -5,6 +5,7 @@
    saved as it goes: a recording can be paused and continued later.
    Rules: ../transcript-core.js and ../lyrics-core.js. Recogniser: ../asr-worker.js. Library: Mixtape's IndexedDB. */
 import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
+import { initReverb, reverbChosen, startReverb } from './reverb.js';
 const T = window.TranscriptCore;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -477,7 +478,7 @@ function menu(anchor, items, opt = {}) {
 }
 
 /* ---------- making it: 30 seconds at a time ---------- */
-$('#goHeard').addEventListener('click', () => start('heard'));
+$('#goHeard').addEventListener('click', () => reverbChosen() ? startReverb() : start('heard')); // Personal: Rev's Reverb through its helper on this computer; otherwise Mixtape's own recogniser
 $('#goText').addEventListener('click', () => { const tx = $('#ownText').value.trim(); if (!tx) return toast('Paste the text first (or load a .txt).'); start('text', tx); });
 $('#loadTxt').addEventListener('click', () => $('#txtIn').click());
 $('#txtIn').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { $('#ownText').value = /\.docx$/i.test(f.name) ? await docxText(f) : await f.text(); toast(`${f.name} loaded.`); } catch (err) { toast(`Could not read ${f.name}: ${err.message || err}`, 6000); } });
@@ -589,6 +590,7 @@ addEventListener('resize', () => { $('#menu').hidden = true; }); // a pop-up pla
 addEventListener('beforeunload', e => { if (job || dirtyEdit()) { e.preventDefault(); e.returnValue = ''; } });
 
 window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dirtyEdit(), keys: { open: keysHelp, host: '#menu', match: 'table.keys' } });
+initReverb({ M, toast, save, drawAll, window16k, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */
 await loadLib(); loadShelf();
 const want = new URLSearchParams(location.search).get('song'); if (want) select(want);
