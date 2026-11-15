@@ -10,14 +10,16 @@
     const str = n => { let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(b[o + i]); o += n; return s; };
     const u32 = () => { const v = (b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]) >>> 0; o += 4; return v; };
     const u16 = () => { const v = b[o] << 8 | b[o + 1]; o += 2; return v; };
-    const vlq = () => { let v = 0, c; do { c = b[o++]; v = (v << 7) | (c & 0x7f); } while (c & 0x80 && o < b.length); return v; };
+    const vlq = () => { let v = 0, c, n = 0; do { c = b[o++]; v = (v << 7) | (c & 0x7f); } while (c & 0x80 && ++n < 4 && o < b.length); return v; }; // four bytes at most, as the format says
     if (str(4) !== 'MThd') throw new Error('This is not a MIDI file.');
     const hl = u32(), format = u16(), ntrk = u16(), div = u16(); o += hl - 6;
     if (div & 0x8000) throw new Error('This MIDI file counts time in SMPTE frames, which Mixtape does not read yet.');
+    if (!div) throw new Error('The MIDI file is damaged (it does not say how long a beat is).'); // a beat of 0 ticks would put every note at an infinite time
     const ppq = div, tempos = [], tracks = [];
     for (let t = 0; t < ntrk && o < b.length; t++) {
       if (str(4) !== 'MTrk') throw new Error('The MIDI file is damaged (a track is missing its header).');
-      const len = u32(), end = o + len; let tick = 0, status = 0;
+      // a damaged file can claim a track of 4 GB or a name of 200 MB: never read past the real end of the file
+      const len = u32(), end = Math.min(o + len, b.length); let tick = 0, status = 0;
       const tr = { name: '', notes: [], programs: {} }, open = new Map();
       while (o < end) {
         tick += vlq();
@@ -25,12 +27,14 @@
         if (s & 0x80) { o++; if (s < 0xf0) status = s; } else s = status; // running status
         if (s === 0xff) {
           const type = b[o++], l = vlq(), at = o; o += l;
-          if (type === 0x51 && l === 3) tempos.push({ tick, us: b[at] << 16 | b[at + 1] << 8 | b[at + 2] });
-          else if (type === 0x03 && !tr.name) { let n = ''; for (let i = 0; i < l; i++) n += String.fromCharCode(b[at + i]); tr.name = n.trim(); }
+          if (type === 0x51 && l === 3 && at + 3 <= end) { const us = b[at] << 16 | b[at + 1] << 8 | b[at + 2]; if (us > 0) tempos.push({ tick, us }); } // a tempo of 0 would be infinitely fast
+          else if (type === 0x03 && !tr.name) { let n = ''; for (let i = 0; i < l && i < 200 && at + i < end; i++) n += String.fromCharCode(b[at + i]); tr.name = n.trim(); }
           else if (type === 0x2f) break;
         } else if (s === 0xf0 || s === 0xf7) { o += vlq(); }
         else {
-          const hi = s & 0xf0, ch = s & 0x0f, d1 = b[o++], d2 = (hi === 0xc0 || hi === 0xd0) ? 0 : b[o++];
+          const hi = s & 0xf0, ch = s & 0x0f, two = !(hi === 0xc0 || hi === 0xd0);
+          if (!(s & 0x80) || o + (two ? 2 : 1) > end) break; // no status byte yet, or the track stops in the middle of a message
+          const d1 = b[o++], d2 = two ? b[o++] : 0;
           if (hi === 0x90 && d2 > 0) { const k = ch * 128 + d1; if (!open.has(k)) open.set(k, []); open.get(k).push({ tick, v: d2 }); }
           else if (hi === 0x80 || (hi === 0x90 && d2 === 0)) {
             const k = ch * 128 + d1, q = open.get(k);

@@ -125,10 +125,24 @@ function ensureProc(c) {
       const res = await dsp('stretch', { chs, sr: b.sampleRate, factor: k }, chs.map(x => x.buffer));
       const out = ctx.createBuffer(res.chs.length, res.chs[0].length, b.sampleRate);
       res.chs.forEach((d, i) => out.copyToChannel(d, i));
-      procReady.set(key, out); return out;
+      procReady.set(key, out); pruneProc(); return out;
     } finally { busy(null); procLoading.delete(key); }
   })();
   procLoading.set(key, p); return p;
+}
+
+/* Decoded sound is big (a 5-minute song is about 100 MB, and so is every speed or key tried on it) and used to be kept
+   until the page was reloaded. The speed/key copies no part uses are dropped, bar the last two (so going back a step
+   is instant); opening another mix lets go of the songs it does not use. */
+function pruneProc(keep = 2) {
+  const used = new Set(P.clips.filter(c => c.trackId).map(c => procKey(c.trackId, clipParams(c).k)));
+  const spare = [...procReady.keys()].filter(k => !used.has(k));
+  for (const k of spare.slice(0, Math.max(0, spare.length - keep))) procReady.delete(k);
+}
+function releaseAudio() {
+  const used = new Set(P.clips.map(c => c.trackId).filter(Boolean));
+  for (const id of [...bufs.keys()]) if (!used.has(id)) bufs.delete(id);
+  pruneProc(0);
 }
 
 /* ---------- project ---------- */
@@ -175,13 +189,45 @@ let P, projId = null;
 let selClip = null, selLane = P.lanes[0].id, playhead = 0, pps = 24, edSel = null;
 let hist = [], fut = [], last = JSON.stringify(P);
 let savedT = null;
+/* Two windows on one mix (the installed app and a browser tab, say) used to write over each other without a word.
+   stored = this mix exactly as this window last read or wrote it. The 'storage' listener below brings in what another
+   window saves; if storage still holds something this window has not seen when it comes to save, it saves its own
+   work as a separate mix instead of writing over the other window's. */
+let stored = null; try { stored = localStorage.getItem(LSP_ONE(projId)); } catch (e) {}
+let unsaved = false; // the last change did not fit in storage (the page then asks before closing)
 const persist = () => {
-  try { localStorage.setItem(LSP_ONE(projId), last); const s = document.getElementById('savedLbl'); if (s) { s.textContent = 'Saved'; s.classList.add('on'); clearTimeout(savedT); savedT = setTimeout(() => s.classList.remove('on'), 1600); } }
-  catch (e) { toast('This laptop’s browser storage is full, so the last change could not be saved.', 6000); }
+  let cur = null; try { cur = localStorage.getItem(LSP_ONE(projId)); } catch (e) {}
+  if (cur != null && cur !== stored && cur !== last) {
+    const was = P.name || 'My mix'; projId = uid(); P.name = `${was} (second window)`; last = JSON.stringify(P); stored = null;
+    try { localStorage.setItem(LSP_CUR, projId); } catch (e) {}
+    setTimeout(() => toast(`“${was}” was changed in another Mixtape window, so this window’s work was saved as a separate mix, “${P.name}”, instead of replacing it. Both are under Mixes.`, 12000), 60); // after the toast of the change itself
+  }
+  try { localStorage.setItem(LSP_ONE(projId), last); stored = last; unsaved = false; const s = document.getElementById('savedLbl'); if (s) { s.textContent = 'Saved'; s.classList.add('on'); clearTimeout(savedT); savedT = setTimeout(() => s.classList.remove('on'), 1600); } }
+  catch (e) { unsaved = true; setTimeout(() => toast('This laptop’s browser storage is full, so the last change could not be saved. To keep this mix, choose Mixes ▸ Save this mix as a file.', 9000), 60); }
   const list = loadIndex(), it = list.find(x => x.id === projId);
   if (it) { it.name = P.name || 'My mix'; it.updated = Date.now(); } else list.unshift({ id: projId, name: P.name || 'My mix', updated: Date.now() });
   saveIndex(list);
 };
+window.addEventListener('storage', e => { // another window saved or deleted the mix that is open here
+  if (e.storageArea !== localStorage || e.key !== LSP_ONE(projId) || e.newValue === stored) return;
+  if (e.newValue == null) { stored = null; return toast('This mix was deleted in another Mixtape window. It is still open here, and your next change saves it again.', 9000); }
+  if (e.newValue === last) { stored = e.newValue; return; }
+  if (unsaved) return toast('This mix was changed in another Mixtape window. This window has a change that could not be saved, so it keeps its own version; your next change is saved as a separate mix.', 12000);
+  let p; try { p = normalize(JSON.parse(e.newValue)); } catch (err) { return; }
+  hist.push(last); if (hist.length > 150) hist.shift(); fut = []; stored = e.newValue; P = p; last = JSON.stringify(P);
+  fixSel(); renderAll(); restartIfPlaying();
+  toast('This mix was just changed in another Mixtape window. This window now shows that newer version. Undo brings back what was here.', 9000);
+});
+/* say so when the same mix is open twice, before anything is changed */
+let studioBC = null; const twoSeen = new Set();
+const twoWindows = () => { if (twoSeen.has(projId)) return; twoSeen.add(projId); toast('This mix is also open in another Mixtape window. A change made in one window shows up in the other.', 8000); };
+try { studioBC = new BroadcastChannel('mixtape-studio');
+  studioBC.onmessage = e => { const m = e.data || {}; if (m.id !== projId) return; if (m.type === 'hello') { try { studioBC.postMessage({ type: 'here', id: projId }); } catch (err) {} twoWindows(); } else if (m.type === 'here') twoWindows(); };
+} catch (e) {}
+const sayHello = () => { try { if (studioBC) studioBC.postMessage({ type: 'hello', id: projId }); } catch (e) {} };
+/* leaving in the middle of a take, an export or a split, or with a change that is not saved, asks first */
+let busyGuard = false;
+window.addEventListener('beforeunload', e => { if (rec || recNotes || unsaved || busyGuard) { e.preventDefault(); e.returnValue = ''; } });
 const UI_KEY = 'mixtape-studio-ui';
 let UI = { lib: true, insp: true, h: 'm', mixer: false, bars: false, clock: 'time', vwin: true }; try { UI = { ...UI, ...(JSON.parse(localStorage.getItem(UI_KEY)) || {}) }; } catch (e) {}
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(UI)); } catch (e) {} };
@@ -1367,8 +1413,10 @@ async function importMidi(file, at = playhead) {
   let m; try { m = MixtapeMIDI.parse(await file.arrayBuffer()); } catch (e) { return toast(`Could not read “${file.name}”: ${e.message}`, 6000); }
   if (!m.tracks.length) return toast(`“${file.name}” has no notes in it.`);
   let tempoMsg = '';
-  if (!P.bpm || !P.clips.length) {
-    P.bpm = m.tempos[0].bpm; P.tempoChanges = m.tempos.slice(1).map(x => ({ id: uid(), t: at + x.sec, bpm: x.bpm }));
+  const okBpm = v => Number.isFinite(v) && v >= 20 && v <= 400; // what the tempo map accepts; a file can claim anything
+  if ((!P.bpm || !P.clips.length) && !okBpm(m.tempos[0].bpm)) tempoMsg = ` The file’s tempo (${m.tempos[0].bpm} BPM) is outside what Mixtape handles, 20 to 400, so the mix tempo was left as it was.`;
+  else if (!P.bpm || !P.clips.length) {
+    P.bpm = m.tempos[0].bpm; P.tempoChanges = m.tempos.slice(1).filter(x => okBpm(x.bpm) && Number.isFinite(x.sec)).map(x => ({ id: uid(), t: at + x.sec, bpm: x.bpm }));
     tempoMsg = ` Mix tempo set from the file: ${P.bpm} BPM${P.tempoChanges.length ? ` with ${P.tempoChanges.length} change${P.tempoChanges.length === 1 ? '' : 's'}` : ''}.`;
   } else if (Math.abs(m.tempos[0].bpm - P.bpm) > 0.05 || m.tempos.length > 1) tempoMsg = ` The file is at ${m.tempos[0].bpm} BPM; your mix tempo (${P.bpm}) was kept.`;
   let first = null; const emptyFirst = P.lanes.length === 1 && !P.clips.some(c => c.lane === P.lanes[0].id) ? P.lanes[0].id : null;
@@ -1656,7 +1704,7 @@ function buildGraph(ac, startPos, when0, opts = {}) {
     if (!dev.on) continue; let d; try { d = buildDevice(ac, dev); } catch (e) { continue; }
     link(out, d.in); out = d.out; masterDevs[dev.id] = d;
   }
-  if (P.polish) { // one-tap mastering: gentle compression, more level, peak catcher
+  if (P.polish && !opts.noPolish) { // one-tap mastering: gentle compression, more level, peak catcher
     const comp = ac.createDynamicsCompressor(); comp.threshold.value = -20; comp.knee.value = 8; comp.ratio.value = 3; comp.attack.value = 0.006; comp.release.value = 0.2;
     const make = ac.createGain(); make.gain.value = 1.9;
     const lim = ac.createDynamicsCompressor(); lim.threshold.value = -1.5; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.08;
@@ -1815,27 +1863,40 @@ async function ensureAll() {
   for (const c of P.clips) if (!c.mute) { if (c.kind === 'midi') await ensureSamp(c); if (c.kind === 'pattern' && String(c.pat.kit).startsWith('s:') && SAMP[c.pat.kit.slice(2)]) { await loadSamp(c.pat.kit.slice(2)); if (kitGaps(c.pat.kit.slice(2))) await loadSamp('kit0'); } }
   if (laneHasFx('lofi')) await ensureLofi(ctx);
 }
-async function play() {
+/* One start at a time. Loading and time-stretching songs can take seconds, and a second Space or click in that time
+   used to start a second copy of the mix that nothing could stop. A second press now joins the start already under
+   way, and pause() (Stop, opening another mix) calls a start off. */
+let playGen = 0, playStart = null;
+function play() {
+  if (playStart && playStart.gen === playGen) return playStart.p;
+  const gen = playGen, p = startPlay(gen).finally(() => { if (playStart && playStart.p === p) playStart = null; });
+  playStart = { gen, p }; return p;
+}
+async function startPlay(gen) {
   stopPreview();
   if (recArm && !playing) { startArmed(); recBanner(); renderInspector(); }
   if (!P.clips.length && !P.video) { toast('Add a song from the left to start.'); return false; }
   try { await ensureAll(); } catch (err) { toast(err.message, 5000); return false; }
+  if (gen !== playGen) return false;
   await ctx.resume();
+  if (gen !== playGen) return false;
   if (playhead >= projectEnd() - 0.02) playhead = 0;
   if (loopActive() && (playhead < P.loop.a || playhead >= P.loop.b - 0.05)) playhead = P.loop.a;
   pendingLoop = null;
   // a track set to an outside instrument: reconnect to MIDI after a reload (already allowed, so no question), and never fall back silently
-  if (P.lanes.some(l => l.mout) && !midiAccess) await ensureMidiAccess(true);
+  if (P.lanes.some(l => l.mout) && !midiAccess) { await ensureMidiAccess(true); if (gen !== playGen) return false; }
   const lost = P.lanes.filter(l => l.mout && !moutOf(l) && laneAudible(l) && P.clips.some(c => c.lane === l.id && c.kind === 'midi' && !c.mute));
   if (lost.length) toast(`${lost.map(l => `“${l.name}”`).join(', ')} ${lost.length === 1 ? 'is' : 'are'} set to play through ${lost[0].mout.name}, which is not connected, so you are hearing Mixtape’s own sound instead. ${midiAccess ? 'Check loopMIDI is running, then press “Look again” in the track’s settings.' : 'Press “Play this track with an outside instrument…” in the track’s settings to reconnect.'}`, 10000);
   const outside = P.lanes.some(l => moutOf(l));
   if (outside) { const c0 = ctx.currentTime; for (let i = 0; i < 25 && ctx.currentTime === c0; i++) await new Promise(r => setTimeout(r, 20)); } // let the audio clock start running, so notes sent now are timed against a moving clock
+  if (gen !== playGen) return false;
   pos0 = playhead; t0 = ctx.currentTime + (outside ? 0.3 : 0.05); // an outside instrument needs a moment so its first notes are not late
   graph = buildGraph(ctx, pos0, t0, { metro: P.metro || (!!recNotes && UI.recClick !== false) }); playing = true; renderTransport(); clearInterval(tickT); tickT = setInterval(tick, 33);
   if (P.video) { await ensureVideoEl(); syncVideo(); }
   return true;
 }
 function pause() {
+  playGen++; // a start still loading is called off
   if (recNotes) finishRecNotes(false);
   if (!playing) return;
   playhead = curPos(); playing = false; clearInterval(tickT);
@@ -1941,12 +2002,17 @@ async function stopRecord() {
   if (playing) { if (graph) pause(); else { playhead = curPos(); playing = false; clearInterval(tickT); } }
   renderTransport();
   if (!r.chunks.length) return toast('Nothing was recorded.');
-  busy('Saving your recording…');
+  busy('Saving your recording…', { guard: true });
   try {
     const blob = new Blob(r.chunks, { type: r.mr.mimeType || 'audio/webm' });
     const n = lib.filter(t => t.artist === 'My recordings').length + 1, title = `Recording ${n}`;
     const t = { id: uid(), name: title + '.webm', size: blob.size, type: blob.type, title, artist: 'My recordings', album: 'Mixtape Studio', track: 0, duration: 0, added: Date.now(), blob, art: null };
-    await saveToLibrary(t);
+    // a take that cannot go into the library (storage full or blocked) is handed over as a file: it used to be dropped
+    try { await saveToLibrary(t); }
+    catch (err) {
+      const file = `${title}.${/mp4/.test(blob.type) ? 'm4a' : /ogg/.test(blob.type) ? 'ogg' : 'webm'}`; downloadBlob(blob, file);
+      return toast(`Your recording could not be kept in the library (this laptop’s browser storage is full or blocked), so it was downloaded instead as “${file}”. It is in your Downloads folder. Free some space, then drag that file into the Studio to use it.`, 20000);
+    }
     const e = await ensureBuf(t.id); t.duration = e.buffer.duration; req('tracks', 'readwrite', o => o.put(t)).catch(() => {});
     const lead = clamp((r.playWall - r.recWall) / 1000 + (ctx.outputLatency || 0) + (ctx.baseLatency || 0), 0, Math.max(0, e.buffer.duration - 0.1));
     const l = newLane('Voice'); P.lanes.push(l);
@@ -2032,14 +2098,16 @@ async function splitStems() {
     try { result = await runSplit(src, left, right); }
     catch (err) { busy(null); return toast(err.cancelled ? 'Splitting cancelled' : `Couldn't split the song: ${err.message}`, err.cancelled ? 2600 : 7000); }
     busy('Saving the four parts to your library…', { progress: 1 });
+    const made = []; // if the fourth does not fit, the first three are taken out again: half a set used to stay in storage, hidden, for ever
     try {
       const n = result.stems.vocals.left.length;
       for (const k of Object.keys(STEMS)) {
-        const s = result.stems[k], blob = encodeWavData([s.left, s.right], 44100);
-        await saveToLibrary({ id: uid(), name: `${src.title} - ${STEMS[k]}.wav`, size: blob.size, type: 'audio/wav', title: `${src.title} (${STEMS[k].toLowerCase()})`,
+        const s = result.stems[k], blob = encodeWavData([s.left, s.right], 44100), id = uid();
+        made.push(id);
+        await saveToLibrary({ id, name: `${src.title} - ${STEMS[k]}.wav`, size: blob.size, type: 'audio/wav', title: `${src.title} (${STEMS[k].toLowerCase()})`,
           artist: src.artist || '', album: 'Stems', track: 0, duration: n / 44100, added: Date.now(), blob, art: null, stemOf: src.id, stemName: k });
       }
-    } catch (err) { busy(null); return toast('Could not save the stems: ' + (err.message || 'your browser may be out of storage space'), 7000); }
+    } catch (err) { await deleteTracks(made); busy(null); return toast('Could not save the stems: ' + (err.message || 'your browser may be out of storage space') + '. Nothing was left behind. Free some space, then split the song again.', 9000); }
     busy(null);
     stems = stemsOf(src.id);
     if (!stems) return toast('The stems were made but could not be found in your library.', 6000);
@@ -2094,7 +2162,7 @@ async function renderMix(opts = {}) {
   const end = (to - from) + (hasTails() ? (hasHall() ? 6 : 2.5) : 0), sr = ctx.sampleRate; // a big hall rings for about 5.5 s
   const oc = new OfflineAudioContext(2, Math.max(1, Math.ceil(end * sr)), sr);
   if (laneHasFx('lofi')) await ensureLofi(oc);
-  buildGraph(oc, from, 0, { lane: opts.lane });
+  buildGraph(oc, from, 0, { lane: opts.lane, noPolish: opts.noPolish });
   const out = await oc.startRendering();
   const chs = [...Array(out.numberOfChannels)].map((_, i) => out.getChannelData(i));
   let limited = null, gainDb = opts.gainDb || 0, lufs0 = NaN;
@@ -2209,21 +2277,54 @@ async function saveSong() {
   if (!choice) return;
   const name = choice.input || 'My mix';
   const range = choice.what === 'loop' ? { from: P.loop.a, to: P.loop.b, tag: ' (loop)' } : choice.what === 'scene' ? { from: sceneFrom, to: sceneTo, tag: ' (scene)' } : { from: 0, to: projectEnd(), tag: '' };
+  const trackName = stemNamer(); // two tracks called "Voice" become "Voice" and "Voice 2"
   const jobs = choice.files === 'tracks'
-    ? P.lanes.filter(l => P.clips.some(c => c.lane === l.id && !c.mute)).map(l => ({ title: `${name}${range.tag} - ${l.name}`, lane: l.id, from: range.from, to: range.to }))
+    ? P.lanes.filter(l => P.clips.some(c => c.lane === l.id && !c.mute)).map(l => ({ title: `${name}${range.tag} - ${trackName(l.name)}`, lane: l.id, from: range.from, to: range.to }))
     : [{ title: name + range.tag, from: range.from, to: range.to, ...(MS().preset !== 'none' ? { normalizeTo: MS().lufs, ceiling: MS().ceiling } : {}) }];
-  pause(); let done = 0, loud = null;
+  pause(); let loud = null, libFail = null, fell = 0;
+  // A full or blocked library must not cost the mix that was just rendered ("Couldn't export", and the file was gone):
+  // what the library cannot take is downloaded instead, and the message says so.
+  const put = async (blob, title, duration) => {
+    let toFile = choice.where.includes('file');
+    if (choice.where.includes('lib')) {
+      if (!libFail) try { await saveToLibrary({ id: uid(), name: title + '.wav', size: blob.size, type: 'audio/wav', title, artist: 'My mixes', album: 'Mixtape Studio', track: 0, duration, added: Date.now(), blob, art: null }); } catch (e) { libFail = e; }
+      if (libFail && !toFile) { toFile = true; fell++; }
+    }
+    if (toFile) downloadBlob(blob, safeName(title) + '.wav');
+  };
   try {
-    for (const j of jobs) {
-      busy(jobs.length > 1 ? `Mixing ${done + 1} of ${jobs.length}: “${j.title}”…` : 'Mixing your song…', { progress: done / jobs.length });
+    if (choice.files === 'tracks') {
+      // Every track file gets the same gain, so the files add back up to the mix. Each used to be turned down on its own
+      // when it peaked, which changed the balance, and each went through its own Polish compressor. Polish is master
+      // processing, so like the master's effects it is left off the track files.
+      const n = jobs.length, outs = []; let sum = null, peak = 0;
+      for (const j of jobs) {
+        busy(`Mixing ${outs.length + 1} of ${n}: “${j.title}”…`, { progress: outs.length / n * 0.6 });
+        const r = await renderMix({ ...j, noScale: true, noPolish: true });
+        for (let c = 0; c < 2; c++) {
+          const d = r.buffer.getChannelData(Math.min(c, r.buffer.numberOfChannels - 1));
+          if (!sum) sum = [new Float32Array(d.length), new Float32Array(d.length)];
+          const s = sum[c], m = Math.min(d.length, s.length);
+          for (let i = 0; i < m; i++) { const v = d[i]; s[i] += v; if (v > peak) peak = v; else if (-v > peak) peak = -v; }
+        }
+        outs.push({ j, blob: r.blob, duration: r.duration });
+      }
+      for (const s of sum || []) for (let i = 0; i < s.length; i++) { const a = Math.abs(s[i]); if (a > peak) peak = a; }
+      sum = null;
+      if (peak > 0.98) { // too hot together, or one of them alone: all of them come down by the same amount
+        const gainDb = 20 * Math.log10(0.98 / peak);
+        for (const [i, o] of outs.entries()) { busy(`Setting one level for all ${n} files: ${i + 1} of ${n}…`, { progress: 0.6 + i / n * 0.4 }); o.blob = (await renderMix({ ...o.j, noScale: true, noPolish: true, gainDb })).blob; }
+      }
+      for (const o of outs) await put(o.blob, o.j.title, o.duration);
+    } else for (const j of jobs) {
+      busy('Mixing your song…', { progress: 0 });
       const { blob, duration, buffer, scale } = await renderMix(j);
-      if (jobs.length === 1) { loud = measureLoudness(buffer); const d = 20 * Math.log10(scale); loud.lufs += d; loud.truePeakDb += d; }
-      if (choice.where.includes('lib')) await saveToLibrary({ id: uid(), name: j.title + '.wav', size: blob.size, type: 'audio/wav', title: j.title, artist: 'My mixes', album: 'Mixtape Studio', track: 0, duration, added: Date.now(), blob, art: null });
-      if (choice.where.includes('file')) downloadBlob(blob, safeName(j.title) + '.wav');
-      done++;
+      loud = measureLoudness(buffer); const d = 20 * Math.log10(scale); loud.lufs += d; loud.truePeakDb += d;
+      await put(blob, j.title, duration);
     }
     const where = choice.where.length === 2 ? 'saved to your library and downloaded' : choice.where[0] === 'lib' ? 'saved to your library' : 'downloaded to your Downloads folder';
-    toast(`${jobs.length === 1 ? `“${jobs[0].title}”` : `${jobs.length} files`} ${where}.${loud && Number.isFinite(loud.lufs) ? ` ${loud.lufs.toFixed(1)} LUFS, true peak ${loud.truePeakDb.toFixed(1)} dBTP.` : ''}`, 6000);
+    if (libFail) toast(`Your library could not take ${jobs.length === 1 ? 'the mix' : 'all the files'} (this laptop’s browser storage is full or blocked). ${fell ? `${fell === 1 ? (jobs.length === 1 ? 'It was' : 'One file was') : `${fell} files were`} downloaded to your Downloads folder instead` : 'The download went ahead'}, so nothing is lost. Free some space to keep mixes in the library.`, 14000);
+    else toast(`${jobs.length === 1 ? `“${jobs[0].title}”` : `${jobs.length} files`} ${where}.${loud && Number.isFinite(loud.lufs) ? ` ${loud.lufs.toFixed(1)} LUFS, true peak ${loud.truePeakDb.toFixed(1)} dBTP.` : ''}`, 6000);
   } catch (err) { toast(`Couldn't export: ${err.message || 'your browser may be out of storage space'}.`, 6000); }
   finally { busy(null); }
 }
@@ -3125,7 +3226,7 @@ $('#lanes').addEventListener('input', e => {
   if (f === 'gain') { l.gain = e.target.value / 100; e.target.nextElementSibling.textContent = e.target.value + '%'; liveLanes(); }
   if (f === 'pan') { l.pan = e.target.value / 100; const v = Math.round(l.pan * 100); e.target.nextElementSibling.textContent = v === 0 ? 'C' : (v < 0 ? 'L' : 'R') + Math.abs(v); liveLanes(); }
 });
-const quietCommit = () => { const s = JSON.stringify(P); if (s !== last) { hist.push(last); fut = []; last = s; persist(); renderTransport(); } };
+const quietCommit = () => { const s = JSON.stringify(P); if (s !== last) { hist.push(last); if (hist.length > 150) hist.shift(); fut = []; last = s; persist(); renderTransport(); } };
 $('#lanes').addEventListener('change', e => {
   const f = e.target.dataset.lf; if (!f) return; const l = P.lanes.find(x => x.id === e.target.closest('.lane').dataset.lane);
   if (f === 'name') { l.name = e.target.value.trim() || l.name; quietCommit(); renderInspector(); }
@@ -4007,7 +4108,7 @@ async function importVideo(file, opts = {}) {
     vidFor = null; await ensureVideoEl(); scrubVideo(playhead);
     if (!opts.silent) commit(`Added the scene “${t.title}” (${fmtT(d)}). Press M to mark a hit point at the playhead.`);
     makeThumbs();
-  } catch (err) { toast('Could not add the video: ' + (err.message || 'your browser may be out of storage space'), 6000); }
+  } catch (err) { toast('Could not add the video: ' + (err.message || 'your browser may be out of storage space') + '. If storage is full, Mixes ▸ Free up space deletes scene videos no mix uses.', 9000); }
   finally { busy(null); }
 }
 async function makeThumbs() {
@@ -4382,8 +4483,9 @@ async function reconnectFolder() {
 function openProject(id, p) {
   pause(); stopWatch(); linkDir = null;
   projId = id; try { localStorage.setItem(LSP_CUR, id); } catch (e) {}
-  P = normalize(p || JSON.parse(localStorage.getItem(LSP_ONE(id)) || 'null'));
-  hist = []; fut = []; last = JSON.stringify(P); persist();
+  try { stored = localStorage.getItem(LSP_ONE(id)); } catch (e) { stored = null; }
+  P = normalize(p || JSON.parse(stored || 'null'));
+  hist = []; fut = []; last = JSON.stringify(P); persist(); releaseAudio(); sayHello();
   selClip = null; selLane = P.lanes[0].id; edSel = null; tlSel = null; playhead = 0;
   renderAll(); if (P.clips.length) fitZoom();
   if (P.lanes.some(l => l.mout) && !midiAccess) ensureMidiAccess(true).then(a => { if (a) renderInspector(); }); // tracks played by an outside instrument reconnect as the mix opens
@@ -4397,12 +4499,114 @@ function newMix() {
 async function projectsMenu(btn) {
   const list = loadIndex().sort((a, b) => b.updated - a.updated);
   const when = t => { const d = new Date(t), today = new Date().toDateString() === d.toDateString(); return today ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString(); };
+  const spare = unusedScenes();
   const items = [{ label: 'New mix', act: newMix },
     { label: `Duplicate “${P.name}”`, act: () => { const p = JSON.parse(JSON.stringify(P)); p.name = P.name + ' copy'; p.link = null; openProject(uid(), p); } },
     { label: `Delete “${P.name}”…`, danger: true, act: deleteProject },
     { sep: true },
+    { label: 'Save this mix as a file…', act: saveMixFile },
+    { label: 'Open a mix file…', act: () => $('#mixIn').click() },
+    ...(spare && spare.length ? [{ label: `Free up space: ${spare.length} unused scene video${spare.length === 1 ? '' : 's'} (${mbOf(spare)} MB)…`, act: freeScenes }] : []),
+    { sep: true },
     ...list.map(x => ({ label: `${x.id === projId ? '● ' : '   '}${x.name}  ·  ${when(x.updated)}`, disabled: x.id === projId, act: () => openProject(x.id) }))];
   const r = btn.getBoundingClientRect(); openMenu(r.left, r.bottom + 4, items);
+}
+/* ---------- a mix as a file ----------
+   Mixes live in this browser's storage, which is small and can be cleared. A mix file is the way out and back in:
+   the whole mix as JSON, with a format name and a version. Songs are not inside it: the file lists which songs the
+   mix uses, and opening it finds them in the library (by id, or by file name and size on another laptop). */
+const MIX_FORMAT = 'mixtape.studio-mix', MIX_VERSION = 1;
+function mixFileData() {
+  const ids = new Set(P.clips.map(c => c.trackId).filter(Boolean)); if (P.video) ids.add(P.video.id);
+  const songs = [...ids].map(id => { const t = libTrack(id); return t ? { id, title: t.title, artist: t.artist || '', name: t.name, size: t.size, duration: t.duration || 0, ...(t.kind ? { kind: t.kind } : {}) } : { id }; });
+  return { format: MIX_FORMAT, version: MIX_VERSION, app: 'Mixtape Studio', savedAt: new Date().toISOString(), name: P.name || 'My mix', songs, mix: JSON.parse(last) };
+}
+function saveMixFile() {
+  const name = safeName(P.name || 'My mix') + '.mixtape.json';
+  downloadBlob(new Blob([JSON.stringify(mixFileData())], { type: 'application/json' }), name);
+  toast(`Saved “${name}” to your Downloads folder. It holds the mix, not the songs: it remembers which songs from your library the mix uses. Open it again with Mixes ▸ Open a mix file.`, 9000);
+}
+/* A mix from a file is somebody else's data until it is checked: the right shapes, and plain names in every value
+   the page uses as the name of a thing (ids, kinds, colours). normalize() then fills in whatever an older file lacks. */
+const SAFE_ID = /^[\w.:|#-]{1,80}$/;
+function cleanMix(p) {
+  const bad = () => { throw new Error('the file is damaged'); };
+  if (!p || typeof p !== 'object' || !Array.isArray(p.lanes) || !p.lanes.length || p.lanes.length > 500 || !Array.isArray(p.clips)) bad();
+  const walk = (v, d) => {
+    if (d > 40) bad();
+    if (Array.isArray(v)) return v.forEach(x => walk(x, d + 1));
+    if (!v || typeof v !== 'object') return;
+    for (const k of Object.keys(v)) { const x = v[k];
+      if (['id', 'lane', 'trackId', 'out', 'kind', 'type', 'inst', 'kit', 'clipId'].includes(k) && x != null && typeof x !== 'number' && !(typeof x === 'string' && SAFE_ID.test(x))) bad();
+      if (k === 'color' && !(typeof x === 'string' && /^#[0-9a-f]{6}$/i.test(x))) delete v[k]; else walk(x, d + 1); }
+  };
+  for (const k of Object.keys(p)) if (k !== 'link') walk(p[k], 1); // what the score folder gave is shown as text only
+  const num = v => typeof v === 'number' && Number.isFinite(v), laneIds = new Set();
+  for (const l of p.lanes) { if (!l || typeof l !== 'object' || typeof l.id !== 'string' || laneIds.has(l.id)) bad(); laneIds.add(l.id); l.name = String(l.name ?? 'Track').slice(0, 200); if (!num(l.gain)) l.gain = 1; if (!num(l.pan)) l.pan = 0; }
+  for (const c of p.clips) {
+    if (!c || typeof c !== 'object' || typeof c.id !== 'string' || !laneIds.has(c.lane) || !num(c.at) || c.at < 0 || !num(c.start) || !num(c.end) || !(c.end > c.start)) bad();
+    if (c.rate != null && !(num(c.rate) && c.rate > 0)) bad();
+    if (c.kind === 'midi' && !Array.isArray(c.notes)) bad();
+    if (!['midi', 'pattern', 'riser'].includes(c.kind) && typeof c.trackId !== 'string') bad();
+  }
+  if (p.bpm != null && !(num(p.bpm) && p.bpm >= 20 && p.bpm <= 400)) p.bpm = null;
+  p.name = String(p.name || 'My mix').slice(0, 120);
+  return p;
+}
+async function openMixFile(file) {
+  if (!file) return;
+  const fail = why => toast(`“${file.name}” was not opened: ${why}. The mix you had open is unchanged.`, 10000);
+  if (file.size > 60e6) return fail('it is too big to be a mix file');
+  if (!libOK) return fail('your song library could not be read just now, so its songs cannot be found. Reload the page and try again');
+  let d, p;
+  try { d = JSON.parse(await file.text()); } catch (e) { return fail('it is not a Mixtape mix file'); }
+  if (!d || typeof d !== 'object' || d.format !== MIX_FORMAT || !d.mix) return fail('it is not a Mixtape mix file');
+  if (!(d.version >= 1)) return fail('the file is damaged');
+  if (d.version > MIX_VERSION) return fail('it was saved by a newer Mixtape. Reload this page to get the update, then try again');
+  try { p = normalize(cleanMix(d.mix)); } catch (e) { return fail('the file is damaged'); }
+  // find each song: the same id (this laptop), or the same file name and size (the same song added on another laptop)
+  const songs = new Map((Array.isArray(d.songs) ? d.songs : []).filter(s => s && typeof s.id === 'string').map(s => [s.id, s])), found = new Map(), left = new Set();
+  const find = id => {
+    if (!found.has(id)) { const s = songs.get(id), m = libTrack(id) || (s && s.name && lib.find(t => t.name === s.name && t.size === s.size)); found.set(id, m ? m.id : null); }
+    return found.get(id);
+  };
+  const before = p.clips.length;
+  p.clips = p.clips.filter(c => { if (!c.trackId) return true; const id = find(c.trackId); if (!id) { left.add(String((songs.get(c.trackId) || {}).title || 'a song without a name').slice(0, 80)); return false; } c.trackId = id; return true; });
+  let noVideo = false;
+  if (p.video) { const id = find(p.video.id); if (id) p.video.id = id; else { p.video = null; p.markers = p.markers.filter(m => m.vt == null); noVideo = true; } }
+  const names = loadIndex().map(x => x.name), base = p.name; for (let n = 2; names.includes(p.name); n++) p.name = `${base} (${n})`;
+  openProject(uid(), p); // always a new mix: opening a file never replaces one you have
+  const gone = before - p.clips.length;
+  if (gone || noVideo) toast(`Opened “${p.name}”, but ${[gone ? `${gone} part${gone === 1 ? ' was' : 's were'} left out because ${left.size === 1 ? 'this song is' : 'these songs are'} not in this laptop’s library: ${[...left].slice(0, 6).join(', ')}${left.size > 6 ? ` and ${left.size - 6} more` : ''}` : '', noVideo ? 'its scene video is not on this laptop' : ''].filter(Boolean).join('; and ')}. Add ${gone ? 'the songs' : 'the video'} to the library, then open the file again to get ${gone ? 'those parts' : 'it'} back.`, 16000);
+}
+$('#mixIn').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; openMixFile(f); });
+/* ---------- storage the Studio filled and nobody could empty ----------
+   A scene video is a whole file in the library. Replacing or removing the picture only takes it out of the mix, and
+   the song lists hide videos, so they piled up unseen until saving failed. Nothing is deleted behind your back
+   (Undo may still want the video, and Transcripts lists it too): Mixes ▸ Free up space names the videos no mix uses
+   and asks. */
+const mbOf = list => Math.max(1, Math.round(list.reduce((n, t) => n + (t.size || (t.blob && t.blob.size) || 0), 0) / 1e6));
+function unusedScenes() { // null: a saved mix could not be read, so nothing can be called unused
+  if (!libOK) return null;
+  const used = new Set(); if (P.video) used.add(P.video.id);
+  for (const x of loadIndex()) { try { const p = JSON.parse(localStorage.getItem(LSP_ONE(x.id))); if (p && p.video && p.video.id) used.add(p.video.id); } catch (e) { return null; } }
+  // not one that Undo or Redo here can bring back, and not one added in the last two minutes (another window may be mid-import)
+  return lib.filter(t => t.kind === 'video' && !used.has(t.id) && Date.now() - (t.added || 0) > 120000 && !hist.some(s => s.includes(t.id)) && !fut.some(s => s.includes(t.id)));
+}
+async function deleteTracks(ids) {
+  let n = 0; for (const id of ids) { try { await req('tracks', 'readwrite', o => o.delete(id)); n++; } catch (e) {} }
+  if (n) { try { new BroadcastChannel('mixtape').postMessage({ type: 'library' }); } catch (e) {} await loadLibrary(); renderLibrary(); }
+  return n;
+}
+async function freeScenes() {
+  await loadLibrary(); const list = unusedScenes();
+  if (!list || !list.length) return toast('There are no unused scene videos to delete.');
+  const names = list.slice(0, 8).map(t => `“${t.title || t.name}”`).join(', ') + (list.length > 8 ? ` and ${list.length - 8} more` : '');
+  if (!(await ask({ title: `Delete ${list.length === 1 ? 'this unused scene video' : `${list.length} unused scene videos`}?`, ok: list.length === 1 ? 'Delete video' : `Delete ${list.length} videos`, danger: true,
+    text: `No mix uses ${list.length === 1 ? 'it' : 'them'} any more: ${names}. Deleting frees about ${mbOf(list)} MB on this laptop. ${list.length === 1 ? 'It also leaves' : 'They also leave'} Transcripts and the Cutter. This cannot be undone.` }))) return;
+  await loadLibrary(); const still = new Set((unusedScenes() || []).map(t => t.id)); // a mix in another window may have taken one up while the question was open
+  const n = await deleteTracks(list.filter(t => still.has(t.id)).map(t => t.id));
+  toast(n ? `${n} scene video${n === 1 ? '' : 's'} deleted.` : 'Nothing was deleted: the videos are in use again, or storage could not be changed.', 5000);
 }
 async function deleteProject() {
   if (!(await ask({ title: `Delete “${P.name}”?`, text: 'The mix goes, not the songs in it: they stay in your library. This cannot be undone.', ok: 'Delete mix', danger: true }))) return;
@@ -4604,11 +4808,12 @@ async function deliverFinal() {
     const sr = ctx.sampleRate, t0 = tcToSec(choice.tcs), tr = Math.round(t0 * sr);
     const wav = name => ({ bits: 24, bext: { timeReference: tr, description: `${L.production?.title || 'Film'} final mix ${name}`, originatorRef: 'final' } });
     const mix = await renderMix({ from: a, to: b, gainDb: gain, ceiling: prof.ceiling - 0.1, wav: wav('mix') }), loud = measureLoudness(mix.buffer);
-    const stems = []; let dlgBuf = null;
+    const stems = [], stemName = stemNamer(); let dlgBuf = null;
     for (const [i, l] of lanes.entries()) {
       busy(`Final mix: track ${i + 1} of ${lanes.length} (${l.name})…`, { progress: 0.2 + 0.8 * (i + 1) / (lanes.length + 1) });
       const s = await renderMix({ from: a, to: b, lane: l.id, gainDb: gain, noScale: true, wav: wav(l.name) });
-      stems.push({ name: l.name, file: `stems/${safeName(l.name)}.wav`, blob: s.blob, lane: l.id }); if (dl && l.id === dl.id) dlgBuf = s.buffer;
+      const fname = stemName(l.name);
+      stems.push({ name: l.name, fname, file: `stems/${fname}.wav`, blob: s.blob, lane: l.id }); if (dl && l.id === dl.id) dlgBuf = s.buffer;
     }
     const dg = dlgBuf ? dialogueGated(mix.buffer, dlgBuf) : null, judged = prof.dialogue ? dg : loud.lufs;
     const manifest = { format: 'mindcraft.mix-delivery/1', production: L.production, cutId: L.cutId, cutVersion: L.cutVersion, startSec: 0, endSec: L.runningTimeSec, sampleRate: sr,
@@ -4618,6 +4823,7 @@ async function deliverFinal() {
       profile: choice.prof, normalisedTo: prof.target, ceilingDbTP: prof.ceiling,
       bwf: { timeReference: tr, startTimecode: choice.tcs, fps: fpsOf(), sampleRate: sr, bitDepth: 24 },
       humanEdits: humanEdits(a, b), sources: sourcesIn(a, b), deliveredAt: new Date().toISOString(), deliveredBy: 'Mixtape Studio' };
+    try { await (await (await linkDir.getDirectoryHandle('deliveries')).getDirectoryHandle('_final')).removeEntry('delivery.json'); } catch (e) {} // as for a cue: no delivery.json until the whole set is written
     await writeFile(linkDir, 'deliveries/_final/mix.wav', mix.blob);
     for (const s of stems) await writeFile(linkDir, `deliveries/_final/${s.file}`, s.blob);
     await writeFile(linkDir, 'deliveries/_final/delivery.json', new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }));
@@ -4640,6 +4846,8 @@ function scheduleHitPoints() {
   clearTimeout(hitTimer);
   hitTimer = setTimeout(async () => { const j = hitPointsJSON(); if (!j || j === hitWritten) return; try { await writeFile(linkDir, 'hitpoints.json', new Blob([j], { type: 'application/json' })); hitWritten = j; } catch (e) {} }, 800);
 }
+// two tracks with one name ("Voice" twice, after two takes) used to be written to one stem file, the second over the first
+const stemNamer = () => { const used = new Set(); return name => { const base = safeName(name); let f = base, n = 2; while (used.has(f.toLowerCase())) f = `${base} ${n++}`; used.add(f.toLowerCase()); return f; }; };
 async function writeFile(dir, path, blob) {
   const parts = path.split('/'), name = parts.pop(); let d = dir;
   for (const p of parts) d = await d.getDirectoryHandle(p, { create: true });
@@ -4652,6 +4860,7 @@ async function deliverCue(ref) {
   const lanes = P.lanes.filter(l => P.clips.some(c => c.lane === l.id && !c.mute && c.at < b && c.at + dur(c) > a));
   const sr = ctx.sampleRate, tcs = startTC(), tr = Math.round(((tcToSec(tcs) || 0) + cue.startSec) * sr);
   const wav = name => ({ bits: 24, bext: { timeReference: tr, description: `${cue.ref} ${cue.title} ${name}`, originatorRef: cue.ref } });
+  let partial = false;
   pause();
   try {
     busy(`Delivering ${cue.ref}: mixing…`, { progress: 0 });
@@ -4659,11 +4868,12 @@ async function deliverCue(ref) {
     const mix = await renderMix({ from: a, to: b, noLimit: true, wav: wav('mix') }), loud = measureLoudness(mix.buffer);
     // if the file was turned down to stop it clipping, state the loudness of the file, not of the mix before it
     if (mix.scale !== 1) { const db = 20 * Math.log10(mix.scale); for (const k of ['lufs', 'peakDb', 'truePeakDb', 'maxMomentary', 'maxShortTerm']) if (Number.isFinite(loud[k])) loud[k] = r1(loud[k] + db); }
-    const stems = []; let dlgBuf = null;
+    const stems = [], stemName = stemNamer(); let dlgBuf = null;
     for (const [i, l] of lanes.entries()) {
       busy(`Delivering ${cue.ref}: stem ${i + 1} of ${lanes.length} (${l.name})…`, { progress: (i + 1) / (lanes.length + 1) });
       const s = await renderMix({ from: a, to: b, lane: l.id, gainDb: mix.scale !== 1 ? 20 * Math.log10(mix.scale) : 0, noScale: true, wav: wav(l.name) });
-      stems.push({ name: l.name, file: `stems/${safeName(l.name)}.wav`, blob: s.blob, lane: l.id }); if (dl && l.id === dl.id) dlgBuf = s.buffer;
+      const fname = stemName(l.name);
+      stems.push({ name: l.name, fname, file: `stems/${fname}.wav`, blob: s.blob, lane: l.id }); if (dl && l.id === dl.id) dlgBuf = s.buffer;
     }
     const dg = dlgBuf ? dialogueGated(mix.buffer, dlgBuf) : null;
     const manifest = { format: 'mindcraft.cue-delivery/1', cueRef: cue.ref, title: cue.title, origin: cue.origin, production: L.production, cutId: L.cutId, cutVersion: L.cutVersion,
@@ -4676,16 +4886,21 @@ async function deliverCue(ref) {
       tempo: P.bpm ? { startBpm: P.bpm, barOneAtSec: +((P.beat0 || 0) - cutOffset()).toFixed(3), changes: (P.tempoChanges || []).map(c => ({ atSec: +(c.t - cutOffset()).toFixed(3), bpm: c.bpm })) } : null,
       deliveredAt: new Date().toISOString(), deliveredBy: 'Mixtape Studio' };
     if (linkDir) {
+      // delivery.json is written last and the old one is taken away first: a folder with a delivery.json is a whole
+      // delivery, and one that failed part-way has none (it used to keep the old list beside the new mix.wav)
+      try { await (await (await linkDir.getDirectoryHandle('deliveries')).getDirectoryHandle(safeName(cue.ref))).removeEntry('delivery.json'); } catch (e) {}
+      partial = true;
       await writeFile(linkDir, `${folder}/mix.wav`, mix.blob);
       for (const s of stems) await writeFile(linkDir, `${folder}/${s.file}`, s.blob);
       await writeFile(linkDir, `${folder}/delivery.json`, new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }));
+      partial = false;
     } else {
-      downloadBlob(mix.blob, `${safeName(cue.ref)} mix.wav`); for (const s of stems) downloadBlob(s.blob, `${safeName(cue.ref)} ${safeName(s.name)}.wav`);
+      downloadBlob(mix.blob, `${safeName(cue.ref)} mix.wav`); for (const s of stems) downloadBlob(s.blob, `${safeName(cue.ref)} ${s.fname}.wav`);
       downloadBlob(new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }), `${safeName(cue.ref)} delivery.json`);
     }
     cue.delivered = (cue.delivered || 0) + 1; cue.stale = []; cue.lastLoudness = loud.lufs;
     commit(`Delivered ${cue.ref} with ${stems.length} stem${stems.length === 1 ? '' : 's'} at ${tc(tr / sr)}: ${loud.lufs} LUFS, peak ${loud.truePeakDb} dBTP, not limited${linkDir ? ' — written to the score folder' : ' — downloaded'}.`);
-  } catch (e) { toast(`Could not deliver ${cue.ref}: ${e.message}`, 6000); }
+  } catch (e) { toast(`Could not deliver ${cue.ref}: ${e.message}.${partial ? ` The folder ${folder} is incomplete (it has no delivery.json). Deliver ${cue.ref} again.` : ''}`, partial ? 12000 : 6000); }
   finally { busy(null); }
 }
 /* A cue's instrument parts as a MIDI file in the score folder (midi/<cue>.mid), for the production studio to render
@@ -4799,6 +5014,7 @@ $('#mCancel').addEventListener('click', () => closeModal(null));
 let toastT; function toast(m, ms = 2600) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, ms); }
 let busyCancel = null;
 function busy(m, opt = {}) {
+  busyGuard = !!m && (opt.progress != null || !!opt.guard); // long work (a bar is showing) or a save in flight: closing the page asks first
   $('#busy').hidden = !m; if (!m) { busyCancel = null; return; }
   $('#busyText').textContent = m;
   $('#busyBar').hidden = opt.progress == null; if (opt.progress != null) $('#busyFill').style.width = Math.round(clamp(opt.progress, 0, 1) * 100) + '%';
@@ -4827,6 +5043,7 @@ $('#busyCancel').addEventListener('click', () => { if (busyCancel) busyCancel();
   const add = new URLSearchParams(location.search).get('add');
   if (add && libTrack(add)) { history.replaceState(null, '', location.pathname); await addRegion(add, 0, null, 'append'); }
   if (P.clips.length) fitZoom();
+  sayHello();
   setTimeout(() => startTour(false), 600);
 })();
 // Test hook: only on this computer (localhost), never on the published site
@@ -4835,5 +5052,7 @@ if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__studio = {
   get edNote() { return edNote; }, set selClip(v) { selClip = v; }, set edOpen(v) { edOpen = v; },
   get P() { return P; }, set P(v) { P = v; },
   commit, renderMix, duckUnder, newLane, newClip, saveToLibrary, encodeWavData, uid, measureLoudness, renderAll,
+  openProject, deleteProject, saveMixFile, openMixFile, mixFileData, cleanMix, unusedScenes, freeScenes, deleteTracks, loadLibrary, importMidi, importVideo, saveSong, deliverCue, toggleRecord, play, pause, ctx, undo,
+  get playing() { return playing; }, get lib() { return lib; }, get held() { return { bufs: [...bufs.keys()], proc: [...procReady.keys()] }; }, get unsaved() { return unsaved; }, get histLen() { return hist.length; }, get rec() { return rec; }, ensureBuf, ensureProc,
 };
 })();
