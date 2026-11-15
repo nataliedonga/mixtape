@@ -46,7 +46,7 @@ export function partShow(t) { const p = counting() ? part() : null; return p ? M
 // the text files saved from a part count the same way as the clock does (the .json keeps the recording's own times, so it still opens with its recording)
 /* what is saved: the part only (if one is shown), and the tags in the wording of the matter's style (tags-core.js).
    opts: { silence, unsure } from "Choose what goes in the file". The transcript itself is not touched. */
-export function partExport(r, opts = {}) { const x = partOnly(r); return { ...x, words: renderTags(x.words, styleOf(r), opts) }; }
+export function partExport(r, opts = {}) { const x = partOnly(r); return { ...x, words: renderTags(x.words, styleOf(r), { ...opts, file: true }) }; }
 function partOnly(r) {
   const p = part(); if (!p) return r; const z = counting(); // only the part is saved; its times count like the clock does
   return { ...r, words: r.words.filter(w => w.s == null || !partHides(w.s)).map(w => !z || w.s == null ? w : { ...w, s: Math.max(0, siteAt(p, w.s)), e: w.e == null ? w.e : Math.max(0, siteAt(p, w.e)) }) };

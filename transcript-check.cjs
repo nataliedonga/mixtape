@@ -134,6 +134,7 @@ ok(r.ptr === 18 && Date.now() - t0 < 500, 'a long text costs no more per window 
   ok(flat({ speakers: false }).startsWith('So, um, where') && !/Speaker/.test(flat({ speakers: false })), 'file choices: without the speakers’ names');
   ok(/^\[\d\d:\d\d(:\d\d)?\] Speaker 1: /.test(T.toTxt(w, {})) && !/\[\d/.test(T.toTxt(w, { timestamps: false })), 'file choices: with and without time stamps');
   T.setCleanStyle('rev'); ok(T.cleanStyle() === 'rev' && T.cleanHidden(w).size === 5, 'styles: the page sets the style in view (Rev hides 5 here): ' + T.cleanHidden(w).size); T.setCleanStyle('');
-  ok(w.length === n0 && w.map(x => x.t).join(' ').includes('um,'), 'styles: nothing is ever taken out of the transcript itself'); }
+  ok(w.length === n0 && w.map(x => x.t).join(' ').includes('um,'), 'styles: nothing is ever taken out of the transcript itself');
+  const d = w.map(x => (x.t === 'th-' ? { ...x, t: 'th --' } : x)); ok(T.cleanHidden(d, 'rev').size === 5, 'styles: a cut-off part-word is still left out by Rev when a file writes its dash Rev’s way: ' + T.cleanHidden(d, 'rev').size); }
 
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

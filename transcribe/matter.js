@@ -65,7 +65,7 @@ async function apply() {
   }
   if (learn(tr, m)) saved = true;
   if (saved) put(ms);
-  if (touched) { try { await api.save(); } catch (e) { busy = false; return; } busy = false; api.drawAll(); if (got.length) api.toast(`${got.length} speaker${got.length === 1 ? '' : 's'} named by voice from “${name}”, highlighted in the text. Check them in the bar above the transcript.`, 8000); }
+  if (touched) { busy = false; api.drawAll(); /* drawn at once, then saved */ try { await api.save(); } catch (e) { return; } if (got.length) api.toast(`${got.length} speaker${got.length === 1 ? '' : 's'} named by voice from “${name}”, highlighted in the text. Check them in the bar above the transcript.`, 8000); }
   busy = false;
 }
 function draw() {

@@ -7,6 +7,7 @@
    Each style has its own approved set and wording (Rev's legal guide; TranscribeMe's tag list); where a style has no
    such tag, the heard words stand and nothing is added. Silence of ten seconds or more can be marked when a file is
    saved (TranscribeMe's rule), and words the recogniser was unsure of can be saved as guesses. */
+import { styled } from './style-core.js';
 const pad = n => String(n).padStart(2, '0');
 export const clock = t => { t = Math.max(0, Math.floor(t || 0)); return `${pad(Math.floor(t / 3600))}:${pad(Math.floor(t / 60) % 60)}:${pad(t % 60)}`; };
 const strip = t => String(t).replace(/^[("'\[]+|[)"'\].,?!;:]+$/g, '');
@@ -37,7 +38,8 @@ export function offered(style = '') {
 /* The words as they are shown and saved: a tagged run becomes one word carrying the tag's text, things that are not
    speech follow their word, and (opts) long silences and unsure words are marked. The transcript is not touched: this
    returns a copy. opts: { silence: seconds or 0, unsure: confidence below which a word is saved as a guess, or 0 } */
-export function render(words, style = '', opts = {}) {
+export function render(words, style = '', opts = {}) { const r = tagged(words, style, opts); return opts.file ? styled(r, style) : r; } // opts.file: for a saved file, the style's numbers and forms too (style-core.js)
+function tagged(words, style, opts) {
   const out = []; let i = 0;
   const push = (w, src) => { if ((src.p || src._p) && !w.p) { w = { ...w, p: true }; if (src.sp) w.sp = src.sp; } out.push(w); };
   while (i < words.length) {

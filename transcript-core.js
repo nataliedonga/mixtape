@@ -97,7 +97,7 @@
     if (style === 'rev' || style === 'tm-clean') {
       for (let i = 0; i < words.length; i++) {
         const w = words[i]; if (w.lg) continue; const b = bare(w.t), next = words[i + 1], alone = (i === 0 || w.p) && (!next || next.p);
-        if (style === 'rev') { if (UMUH.has(b) || (/[a-z]-$/i.test(w.t) && next && !next.p && b && bare(next.t).startsWith(b) && bare(next.t) !== b)) hide.add(i); continue; }
+        if (style === 'rev') { if (UMUH.has(b) || (/[a-z]( -)?-$/i.test(w.t) && next && !next.p && b && bare(next.t).startsWith(b) && bare(next.t) !== b)) hide.add(i); continue; }
         if (FILLERS.has(b)) { if (!alone) hide.add(i); continue; }
         if (next && b && bare(next.t) === b && !next.p && /[,-]$|^\w+$/.test(w.t) && b.length < 12) hide.add(i);
       }

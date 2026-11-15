@@ -28,6 +28,7 @@ function show() {
   const o = read(), sub = o.kind !== 'txt';
   $('#xaSpeakers').disabled = $('#xaTimes').disabled = sub; $('#xaSubNote').hidden = !sub;
   $('#xaLeaves').textContent = `Leaves out ${LEAVES[o.style] || LEAVES['']}.`;
+  $('#xaStyleNote').textContent = o.style === 'rev' ? 'In the file, Rev’s way: Exhibit 5 and Page 15 in digits, numbers from 11 in digits (not at the start of a sentence), $42 for “forty two dollars”, years in digits, “gonna” written out as “going to”, and a spaced double dash for a cut-off word.' : o.style === 'tm-full' ? 'In the file: “them” for “’em”, and a double dash after a cut-off word.' : '';
   $('#xaTagNote').textContent = o.style === 'rev' ? 'Rev’s legal guide has no tag for a guess or for silence, so these two do nothing in this style. Tags you put in yourself are written its way.' : 'Tags you put in yourself are always written, in this style’s wording.';
   let m; try { m = make(o); } catch (e) { $('#xaPreview').textContent = 'This cannot be made: ' + (e.message || e); return; }
   $('#xaName').textContent = m.name; $('#xaPreview').textContent = m.text.split('\n').slice(0, 14).join('\n') + (m.text.split('\n').length > 14 ? '\n…' : '');
@@ -53,7 +54,7 @@ export function initExportAs(a) {
   dlg = document.createElement('dialog'); dlg.id = 'exportAs'; dlg.setAttribute('aria-labelledby', 'xaTitle');
   dlg.innerHTML = `<form method="dialog"><h2 id="xaTitle">Choose what goes in the file</h2>
     <small>The transcript itself is not changed. These choices only decide what is written into this file.</small>
-    <div class="xrow"><label for="xaStyle">Style</label><select id="xaStyle">${STYLES.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div>
+    <div class="xrow"><label for="xaStyle">Style</label><select id="xaStyle">${STYLES.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div><small id="xaStyleNote"></small>
     <fieldset><legend>In the file</legend>
       <label><input type="checkbox" id="xaSpeakers"> The speakers’ names</label>
       <label><input type="checkbox" id="xaTimes"> A time stamp on each paragraph</label>

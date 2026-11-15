@@ -44,9 +44,8 @@ async function applyAuto() {
     taken.add(to); r.words = T().renameSpeaker(r.words, r.voices, x.label, to); auto.names.push({ from: x.label, to, role: x.role, sure: !!x.sure, why: x.evidence.join('; ') });
   }
   for (const x of [...ins].sort((a, b) => b.end - a.end)) r.words = L().insertBlock(r.words, x.end, x.text, { k: 'n', auto: x.quote }, x.s).words; // from the end back, so the places stay true
-  r.auto = auto;
-  try { await api.save(); } catch (e) { busy = false; return; }
-  busy = false; api.drawAll();
+  r.auto = auto; busy = false; api.drawAll(); // drawn in the same instant as the transcript (then saved), so the bar does not arrive a moment later and push the text down
+  try { await api.save(); } catch (e) { return; }
   const n = auto.names.length + ins.length; api.toast(`Set from the words: ${n} thing${n === 1 ? '' : 's'}, highlighted in the text. Check them in the bar above the transcript. Ctrl + Z undoes all of it.`, 9000);
 }
 function state() {
