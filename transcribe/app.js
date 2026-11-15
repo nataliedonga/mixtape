@@ -8,7 +8,7 @@ import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
 import { initReverb, reverbChosen, startReverb } from './reverb.js';
 import { initFollow } from './follow.js';
 import { initRemove } from './remove.js';
-import { initPart, partChosen, partClock, partSeek, partShow, partExport, partTrim } from './part.js';
+import { initPart, partChosen, partClock, partSeek, partShow, partExport, partTrim, partHides } from './part.js';
 const T = window.TranscriptCore;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -128,10 +128,11 @@ function drawText() {
 }
 function paraHTML(words, p, pi, hidden) {
   const first = words[p.i0], timed = first.s != null; let cap = false;
+  if (timed) { let any = false; for (let i = p.i0; i < p.i1; i++) if (words[i].s == null || !partHides(words[i].s)) { any = true; break; } if (!any) return ''; } // only the chosen part of the recording is shown
   if (hidden) { let any = false; for (let i = p.i0; i < p.i1; i++) if (!hidden.has(i)) { any = true; break; } if (!any) return ''; } // a paragraph that was only "Hmm." is not shown in the clean script
   const ws = [];
   for (let i = p.i0; i < p.i1; i++) {
-    const w = words[i], hide = hidden && hidden.has(i);
+    const w = words[i], hide = (hidden && hidden.has(i)) || (w.s != null && partHides(w.s)); // also the words of this paragraph that fall outside the part
     // how sure the recogniser was: under 0.5 lightest, under 0.75 lighter (words a person typed carry no score)
     const cls = ['w', w.s == null ? 'un' : '', w.c != null && w.c < 0.5 ? 'q2' : w.c != null && w.c < 0.75 ? 'q1' : '', hide ? 'f' : '', !hide && cap ? 'cap' : '', SUG.word.has(i) ? 'sug' : '', w.ai ? 'aiw' : '', NT.word.has(i) ? 'nt' : ''].filter(Boolean).join(' ');
     if (hide) { if (/^[A-Z]/.test(w.t) && !/^I\b/.test(w.t)) cap = true; } else cap = false;
@@ -600,7 +601,7 @@ const Legal = await import('./legal.js').then(m => m.initLegal({ get cur() { ret
 window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dirtyEdit(), keys: { open: keysHelp, host: '#menu', match: 'table.keys' } });
 initFollow({ toast, get cur() { return cur; } });
 initRemove({ toast, get cur() { return cur; }, get job() { return job; }, reload: async () => { await loadLib(); drawLib(); } });
-initPart({ toast, drawAll, get cur() { return cur; } });
+initPart({ toast, drawAll, save, get cur() { return cur; } });
 initReverb({ M, toast, save, drawAll, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */
 await loadLib(); loadShelf();

@@ -13,7 +13,7 @@
    has to be typed: it already knows the start, the website's length and the stretches it skips, and they are taken
    from it. Without the extension this page cannot see the website at all, so the times are typed or picked by ear. */
 const $ = s => document.querySelector(s), KEY = 'mixtape-part-clock';
-let api, sel = { id: null, on: false, skips: [], touched: false }, zero = true;
+let api, sel = { id: null, on: false, skips: [], touched: false }, zero = true, inSheet = false; // inSheet: the form is open for a transcript that already exists
 try { zero = localStorage.getItem(KEY) !== '0'; } catch (e) {}
 
 export const hms = t => { t = Math.max(0, t || 0); let whole = Math.floor(t), frac = Math.round((t - whole) * 10); if (frac === 10) { whole++; frac = 0; } const p = n => String(n).padStart(2, '0'); return p(Math.floor(whole / 3600)) + ':' + p(Math.floor(whole / 60) % 60) + ':' + p(whole % 60) + (frac ? '.' + frac : ''); };
@@ -40,7 +40,12 @@ export function partClock(cur, t, d) { const p = counting() ? part() : null; if 
 export function partSeek(cur, f, d) { const p = counting() ? part() : null; return p ? recAt(p, f * siteAt(p, p.b)) : f * d; }
 export function partShow(t) { const p = counting() ? part() : null; return p ? Math.max(0, siteAt(p, t)) : t; }
 // the text files saved from a part count the same way as the clock does (the .json keeps the recording's own times, so it still opens with its recording)
-export function partExport(r) { const p = counting() ? part() : null; if (!p) return r; return { ...r, words: r.words.map(w => w.s == null ? w : { ...w, s: Math.max(0, siteAt(p, w.s)), e: w.e == null ? w.e : Math.max(0, siteAt(p, w.e)) }) }; }
+export function partExport(r) {
+  const p = part(); if (!p) return r; const z = counting(); // only the part is saved; its times count like the clock does
+  return { ...r, words: r.words.filter(w => w.s == null || !partHides(w.s)).map(w => !z || w.s == null ? w : { ...w, s: Math.max(0, siteAt(p, w.s)), e: w.e == null ? w.e : Math.max(0, siteAt(p, w.e)) }) };
+}
+// is this moment outside the part being shown (before it, after it, or in a stretch the website leaves out)?
+export function partHides(t) { const p = part(); return !!p && (t < p.a - 0.01 || t >= p.b || skipsOf(p).some(k => t >= k.a && t < k.b)); }
 // once the part is written down: words inside a stretch the website leaves out are taken away, and what follows starts a new paragraph
 export function partTrim(tr) {
   const ks = tr && tr.part ? skipsOf(tr.part) : []; if (!ks.length || !tr.words.length) return 0;
@@ -108,8 +113,8 @@ function build() {
   const ready = () => {
     const el = $('#partReady'), a = parseTime($('#partFrom').value), d = media() ? media().duration || 0 : 0, bRaw = $('#partTo').value.trim(), b = bRaw ? parseTime(bRaw) : d; if (a == null) { el.textContent = ''; return; }
     const ks = cleanSkips(sel.skips, a, b || Infinity), left = ks.reduce((n, k) => n + (k.b - k.a), 0);
-    el.textContent = !b || b - a < 1 ? `Set: from ${hms(a)}. Say how long it is on the website (or where it ends), then press Transcribe.`
-      : `Ready: from ${hms(a)} to ${bRaw ? hms(b) : 'the end'} of your recording${bRaw ? ` (${hms(b - a - left)} on the website${ks.length ? `, ${ks.length} stretch${ks.length === 1 ? '' : 'es'} left out` : ''})` : ''}. ${zero ? 'It will count from 0:00, like the website.' : 'It will show your recording’s own time.'} Press Transcribe.`;
+    el.textContent = !b || b - a < 1 ? `Set: from ${hms(a)}. Say how long it is on the website (or where it ends), then press ${inSheet ? '“Show only this part”' : 'Transcribe'}.`
+      : `Ready: from ${hms(a)} to ${bRaw ? hms(b) : 'the end'} of your recording${bRaw ? ` (${hms(b - a - left)} on the website${ks.length ? `, ${ks.length} stretch${ks.length === 1 ? '' : 'es'} left out` : ''})` : ''}. ${zero ? 'It will count from 0:00, like the website.' : 'It will show your recording’s own time.'} Press ${inSheet ? '“Show only this part”' : 'Transcribe'}.`;
   };
   const started = () => { $('#partAfter').hidden = false; drawSeg(); ready(); lenFromBT(); toBT(); };
   // what is set here is set in Backup Track too (when it is installed), so the two stay the same
@@ -177,10 +182,17 @@ function build() {
   }
   document.addEventListener('backup-track:hello', () => { const first = !hasBT; hasBT = true; $('#partFromBT').hidden = false; if (first) fromBT(true); if (sel.on && !$('#partAfter').hidden && !parseTime($('#partLen').value)) lenFromBT(); }); // each time the extension says it is there, the length is asked for if it is still missing
   $('#partFromBT').addEventListener('click', () => { sel.touched = false; sel.lenSet = false; fromBT(false); });
+  // the same form, opened for a transcript that already exists: filled in with the part being shown, if there is one
+  build.box = f; build.home = () => ($('#engineBox') || go).before(f);
+  build.prefill = p => {
+    sel = { id: api.cur.track.id, on: true, skips: p ? skipsOf(p).map(k => ({ ...k })) : [], touched: !!p, lenSet: !!p }; $('#partSome').checked = true; $('#partRow').hidden = false; note('');
+    $('#partFrom').value = p ? hms(p.a) : '00:00:00'; $('#partTo').value = p ? hms(p.b) : ''; $('#partLen').value = p ? hms(siteAt(p, p.b)) : ''; $('#partLenHint').textContent = p ? 'The part being shown now.' : HINT; $('#partAfter').hidden = !p;
+    drawSkips(); drawSeg(); ready(); if (!p) { document.dispatchEvent(new CustomEvent('backup-track:listen', { detail: 'probe' })); sel.touched = false; fromBT(true); }
+  };
   build.reset = () => { $('#partAll').checked = true; $('#partRow').hidden = true; $('#partAfter').hidden = true; $('#partFrom').value = '00:00:00'; $('#partTo').value = ''; $('#partLen').value = ''; $('#skipFrom').value = ''; $('#skipTo').value = ''; $('#partLenHint').textContent = HINT; note(''); drawSkips(); ready(); };
 }
 function fresh() { // another recording: the choice starts again
-  const c = api.cur; if (!c || sel.id === c.track.id) return; sel = { id: c.track.id, on: false, skips: [], touched: false, lenSet: false };
+  const c = api.cur; if (!c || sel.id === c.track.id) return; if (inSheet) closeSheet(true); sel = { id: c.track.id, on: false, skips: [], touched: false, lenSet: false };
   if (build.reset) build.reset();
 }
 
@@ -194,13 +206,44 @@ function bar() {
 }
 function badge() {
   fresh(); const lab = $('#partClockLab'), p = part(); if (lab) lab.hidden = !p;
+  const pbn = $('#partBtn'), c = api.cur; if (pbn) { pbn.hidden = !(c && c.tr && c.tr.mode === 'heard' && c.tr.words.length); pbn.textContent = p ? 'Part: ' + hms(p.a).replace(/^00:/, '') + ' ▾' : 'Part…'; }
   const m = $('#meta'); if (m && p && !m.textContent.includes('part ')) m.textContent += ` · part ${hms(p.a)} to ${hms(p.b)}${skipsOf(p).length ? `, ${skipsOf(p).length} stretch${skipsOf(p).length === 1 ? '' : 'es'} left out` : ''}`;
 }
 
+/* ---- a part of a transcript that already exists ----
+   The whole recording was transcribed; the website has it in clips. "Part…" in the player bar opens the same form:
+   find where the clip starts, how the clock counts, how long it is. "Show only this part" then shows and plays just
+   that stretch; nothing is deleted. Choose another part, or "Show the whole recording", whenever you like. */
+function sheet() {
+  const pb = $('#pb'); if (!pb || $('#partBtn')) return;
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn sm'; b.id = 'partBtn'; b.hidden = true; b.textContent = 'Part…';
+  b.title = 'Show and play only one part of this recording (for a website that has it in clips), counted from 0:00 like the website'; pb.appendChild(b);
+  const sh = document.createElement('div'); sh.id = 'partSheet'; sh.className = 'partsheet'; sh.hidden = true; sh.setAttribute('role', 'dialog'); sh.setAttribute('aria-label', 'Show only one part of this recording');
+  sh.innerHTML = `<div class="partsheet-h"><b>Show only one part of this recording</b><button type="button" class="btn sm" id="partSheetX" aria-label="Close">✕</button></div>
+    <p class="parthint">For a website that has this recording in clips. The whole transcript is kept; only what is shown and played changes.</p>
+    <div class="partsheet-body"></div>
+    <div class="partsheet-f"><button type="button" class="btn primary" id="partApply">Show only this part</button><button type="button" class="btn" id="partWhole">Show the whole recording</button></div>`;
+  document.body.appendChild(sh);
+  b.addEventListener('click', () => (sh.hidden ? openSheet() : closeSheet()));
+  $('#partSheetX').addEventListener('click', () => closeSheet());
+  sh.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); closeSheet(); $('#partBtn').focus(); } });
+  const redraw = () => { api.drawAll(); const c = api.cur; if (c && c.media) c.media.dispatchEvent(new Event('timeupdate')); };
+  $('#partApply').addEventListener('click', async () => {
+    const c = api.cur, p = partChosen(c); if (!p) return; c.tr.part = p; try { await api.save(); } catch (e) { return; }
+    closeSheet(); if (c.media && (c.media.currentTime < p.a || c.media.currentTime >= p.b)) c.media.currentTime = p.a; redraw();
+    api.toast(`Showing only ${hms(p.a)} to ${hms(p.b)}. The rest of the transcript is kept: press Part to choose another part or show it all.`, 7000);
+  });
+  $('#partWhole').addEventListener('click', async () => { const c = api.cur; if (c.tr.part) { delete c.tr.part; try { await api.save(); } catch (e) { return; } } closeSheet(); redraw(); api.toast('Showing the whole recording.', 3000); });
+}
+function openSheet() { const c = api.cur; if (!c || !c.tr || !build.box) return; inSheet = true; $('#partSheet').querySelector('.partsheet-body').appendChild(build.box); build.box.classList.add('insheet'); build.prefill(part()); $('#partSheet').hidden = false; $('#partPlay').focus(); }
+function closeSheet(quiet) { const sh = $('#partSheet'); if (!sh || sh.hidden) return; sh.hidden = true; inSheet = false; build.box.classList.remove('insheet'); build.home(); const c = api.cur; sel = { id: quiet || !c ? null : c.track.id, on: false, skips: [], touched: false, lenSet: false }; build.reset(); }
+
 export function initPart(a) {
-  api = a; build(); bar();
+  api = a; build(); bar(); sheet();
   const m = $('#meta'); if (m) new MutationObserver(badge).observe(m, { childList: true, characterData: true, subtree: true });
-  // while the page plays in "Part's time", a stretch the website leaves out is jumped over, as the website does
-  setInterval(() => { const p = counting() ? part() : null, c = api.cur; if (!p || !c || !c.media || c.media.paused) return; const t = c.media.currentTime, k = skipsOf(p).find(k => t >= k.a && t < k.b - 0.05); if (k) c.media.currentTime = k.b; }, 200);
+    setInterval(() => { // only the part plays: it stops at its end, and a stretch the website leaves out is jumped over
+    const p = part(), c = api.cur; if (!p || inSheet || !c || !c.media || c.media.paused) return; const m = c.media, t = m.currentTime, k = skipsOf(p).find(k => t >= k.a && t < k.b - 0.05);
+    if (k) m.currentTime = k.b; else if (t >= p.b) { m.pause(); m.currentTime = Math.max(p.a, p.b - 0.05); } else if (t < p.a - 0.3) m.currentTime = p.a;
+  }, 200);
   if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__part = { get zero() { return zero; }, get sel() { return sel; }, part, hms, parseTime, siteAt, recAt, partTrim };
 }

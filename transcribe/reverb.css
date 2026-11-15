@@ -37,3 +37,13 @@
 /* the "follow a website" form has several steps: when Yes is chosen its card takes the full width */
 .start:has(#partSome:checked) .choice:first-child { grid-column: 1 / -1; }
 .start:has(#partSome:checked) .partbox { max-width: 640px; }
+/* the same form, opened from "Part…" for a transcript that already exists */
+.partsheet { position: fixed; right: 16px; bottom: 92px; z-index: 30; width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 170px); overflow: auto; padding: 14px 16px 16px; background: var(--sheet, #fff); color: var(--ink, inherit); border: 1px solid var(--faint, #888); border-radius: 12px; box-shadow: 0 20px 50px -20px var(--shadow, rgba(0,0,0,.4)); font: 14px/1.5 var(--f-ui, inherit); }
+.partsheet[hidden] { display: none; }
+.partsheet-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; font-size: 15px; }
+.partsheet-f { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.partbox.insheet { border: 0; padding: 0; margin: 6px 0 0; }
+.partbox.insheet > legend, .partbox.insheet > .eng { display: none; }
+.partbox.insheet .partrow, .partbox.insheet .partplay, .partbox.insheet .partstep, .partbox.insheet .partseg, .partbox.insheet .partmore, .partbox.insheet .partready, .partbox.insheet .partnote, .partbox.insheet #partFromBT { margin-left: 0; }
+#partBtn { margin-left: 8px; }
+@media (max-width: 860px) { .partsheet { right: 8px; left: 8px; width: auto; bottom: 84px; } }

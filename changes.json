@@ -1,5 +1,12 @@
 [
   {
+    "version": 97,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts: a recording that is already transcribed in full can be worked on in parts. Press Part in the player bar, find where the website's clip starts, and press Show only this part. Only that stretch is shown and played, counted from 0:00 like the website. Nothing is deleted: choose another part, or Show the whole recording, whenever you like."
+    ]
+  },
+  {
     "version": 96,
     "date": "2026-11-15",
     "items": [
