@@ -20,12 +20,16 @@ When you change `index.html`, bump `VERSION` in `sw.js` so installed copies pick
 
 Designed, specified and tested by Natalie Donga; built with Claude Code.
 
+## Privacy
+
+Mixtape contacts no server except the one it is served from. Fonts (`vendor/fonts/`, SIL Open Font License) and the speech recogniser with its models (`vendor/asr/`: transformers.js, Apache-2.0; ONNX Runtime Web, MIT; Whisper, MIT; pyannote segmentation, MIT; Wespeaker, Apache-2.0) are part of the app. Every page carries a Content-Security-Policy that makes the browser refuse any other connection. Songs, recordings, documents and transcripts stay in the browser on your device.
+
 ## Lyrics
 
 Any song can carry its lyrics (song menu → **Add lyrics**). In **Now Playing → Lyrics** the line being sung lights up and stays in view; tap a line to jump there.
 
 - Paste the words, or load a `.lrc`, `.srt`, `.vtt` or `.txt` file.
-- **Time them automatically**: the song is heard by Whisper (base.en, MIT) running in the browser through transformers.js 4.3.1 (Apache-2.0) and ONNX Runtime Web (MIT), fetched from jsDelivr the first time and kept for offline use; your lines are matched to what it hears. Lines it is unsure of are marked *check*. The model (~77 MB) downloads once, on first use. If the song has a split vocals stem, that is what it listens to.
+- **Time them automatically**: the song is heard by Whisper (base.en, MIT) running in the browser through transformers.js 4.3.1 (Apache-2.0) and ONNX Runtime Web (MIT), all served by Mixtape itself (`vendor/asr/`); your lines are matched to what it hears. Lines it is unsure of are marked *check*. The model (~77 MB) is fetched from Mixtape's own site once, on first use, and kept. If the song has a split vocals stem, that is what it listens to.
 - **Tap along**: play the song and press Space as each line starts (Backspace takes a tap back).
 - Save the timed lyrics as `.lrc`, `.srt` (YouTube, video editors) or `.vtt`.
 
