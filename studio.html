@@ -10,6 +10,7 @@
 <link rel="icon" href="icon-192.png" type="image/png">
 <meta name="theme-color" content="#0E1014">
 <link rel="stylesheet" href="vendor/fonts/studio.css">
+<link rel="stylesheet" href="shell.css">
 <style>
 /* Mixtape Studio: a dark audio workstation. Library on the left, coloured tracks in the middle,
    part editor docked under the tracks, inspector on the right. Deliberately single-theme (dark),
@@ -523,6 +524,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
   <header class="top">
     <div class="tb-left">
       <a class="btn ghost" href="./" title="Back to your music player"><svg class="i"><use href="#i-back"/></svg>Player</a>
+      <a class="btn ghost" href="home/" title="All of Mixtape's tools, and Privacy and storage">Home</a>
       <a class="btn ghost" href="cutter/" title="Cut any sound or video file, in any format">Cutter</a>
       <a class="btn ghost" href="transcribe/" title="Transcripts and read-along">Transcribe</a>
       <div class="sepv"></div>
@@ -656,6 +658,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
 <div class="toast" id="toast" role="status" hidden></div>
 <div class="hintbar" id="hintbar" aria-live="off">Press ? to see every shortcut.</div>
 <div class="coach" id="coach" role="dialog" aria-label="Getting started" hidden><span class="cstep"></span><p></p><div class="cbtns"><button class="btn sm ghost" data-coach="skip">Skip</button><button class="btn sm primary" data-coach="next">Next</button></div></div>
+<script src="shell.js"></script>
 <script src="vendor/tone/Tone.js"></script>
 <script src="dsp-shared.js"></script>
 <script src="midi.js"></script>

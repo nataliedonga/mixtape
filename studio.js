@@ -172,7 +172,7 @@ function normalize(p) {
 /* Projects: every mix is kept separately; the open one is remembered */
 const LSP_INDEX = 'mixtape-studio-projects', LSP_CUR = 'mixtape-studio-current', LSP_ONE = id => 'mixtape-studio-project:' + id;
 const loadIndex = () => { try { return JSON.parse(localStorage.getItem(LSP_INDEX)) || []; } catch (e) { return []; } };
-const saveIndex = list => { try { localStorage.setItem(LSP_INDEX, JSON.stringify(list)); } catch (e) {} };
+const saveIndex = list => { try { localStorage.setItem(LSP_INDEX, JSON.stringify(list)); return true; } catch (e) { return false; } }; /* false: the list of mixes was not written; the caller says so */
 let P, projId = null;
 {
   let list = loadIndex();
@@ -206,7 +206,8 @@ const persist = () => {
   catch (e) { unsaved = true; setTimeout(() => toast('This laptop’s browser storage is full, so the last change could not be saved. To keep this mix, choose Mixes ▸ Save this mix as a file.', 9000), 60); }
   const list = loadIndex(), it = list.find(x => x.id === projId);
   if (it) { it.name = P.name || 'My mix'; it.updated = Date.now(); } else list.unshift({ id: projId, name: P.name || 'My mix', updated: Date.now() });
-  saveIndex(list);
+  /* the mix itself was written but the list of mixes was not: without its entry the mix cannot be found again */
+  if (!saveIndex(list) && !unsaved) setTimeout(() => toast('This mix was saved, but the list of your mixes could not be updated, so it may be missing from Mixes after a reload. To be safe, choose Mixes ▸ Save this mix as a file.', 9000), 60);
 };
 window.addEventListener('storage', e => { // another window saved or deleted the mix that is open here
   if (e.storageArea !== localStorage || e.key !== LSP_ONE(projId) || e.newValue === stored) return;
@@ -3042,6 +3043,7 @@ function showShortcuts() {
 }
 /* First visit: three short pointers, then out of the way for good */
 function startTour(force) {
+  if (window.MixtapeShell) { if (force) MixtapeShell.welcome(true); return; } /* the shared welcome (shell.js) has these steps; the first run is started from the boot below */
   if (!force && UI.toured) return;
   const steps = [
     { el: '#lib', text: 'Your songs. Press ▶ to listen, then drag one onto a track, or press Add.' },
@@ -4605,13 +4607,13 @@ async function freeScenes() {
   if (!(await ask({ title: `Delete ${list.length === 1 ? 'this unused scene video' : `${list.length} unused scene videos`}?`, ok: list.length === 1 ? 'Delete video' : `Delete ${list.length} videos`, danger: true,
     text: `No mix uses ${list.length === 1 ? 'it' : 'them'} any more: ${names}. Deleting frees about ${mbOf(list)} MB on this laptop. ${list.length === 1 ? 'It also leaves' : 'They also leave'} Transcripts and the Cutter. This cannot be undone.` }))) return;
   await loadLibrary(); const still = new Set((unusedScenes() || []).map(t => t.id)); // a mix in another window may have taken one up while the question was open
-  const n = await deleteTracks(list.filter(t => still.has(t.id)).map(t => t.id));
-  toast(n ? `${n} scene video${n === 1 ? '' : 's'} deleted.` : 'Nothing was deleted: the videos are in use again, or storage could not be changed.', 5000);
+  const going = list.filter(t => still.has(t.id)).map(t => t.id), n = await deleteTracks(going), left = going.length - n;
+  toast(n ? `${n} scene video${n === 1 ? '' : 's'} deleted.${left ? ` ${left} could not be deleted and ${left === 1 ? 'is' : 'are'} still in your library: choose this again to retry.` : ''}` : 'Nothing was deleted: the videos are in use again, or storage could not be changed.', left ? 8000 : 5000);
 }
 async function deleteProject() {
   if (!(await ask({ title: `Delete “${P.name}”?`, text: 'The mix goes, not the songs in it: they stay in your library. This cannot be undone.', ok: 'Delete mix', danger: true }))) return;
-  const list = loadIndex().filter(x => x.id !== projId); try { localStorage.removeItem(LSP_ONE(projId)); } catch (e) {}
-  saveIndex(list);
+  const list = loadIndex().filter(x => x.id !== projId); let gone = true; try { localStorage.removeItem(LSP_ONE(projId)); } catch (e) { gone = false; }
+  if (!saveIndex(list) || !gone) return toast(`“${P.name}” could not be deleted: the browser would not change its storage. It is still under Mixes. Close other Mixtape windows and try again.`, 8000);
   if (list.length) openProject(list.sort((a, b) => b.updated - a.updated)[0].id); else newMix();
 }
 function unlinkFolder() { stopWatch(); linkDir = null; P.link = null; P.markers = (P.markers || []).filter(m => m.src !== 'pkg'); commit('Unlinked from the production studio. Your music stays.'); }
@@ -4834,7 +4836,7 @@ async function deliverFinal() {
   finally { busy(null); }
 }
 /* Hit points you add go back to the production studio, so they survive the next package */
-let hitWritten = null, hitTimer = null;
+let hitWritten = null, hitTimer = null, hitWarned = false;
 function hitPointsJSON() {
   const L = P.link; if (!L) return null;
   const off = cutOffset();
@@ -4844,7 +4846,7 @@ function hitPointsJSON() {
 function scheduleHitPoints() {
   if (!linkDir || !P.link) return;
   clearTimeout(hitTimer);
-  hitTimer = setTimeout(async () => { const j = hitPointsJSON(); if (!j || j === hitWritten) return; try { await writeFile(linkDir, 'hitpoints.json', new Blob([j], { type: 'application/json' })); hitWritten = j; } catch (e) {} }, 800);
+  hitTimer = setTimeout(async () => { const j = hitPointsJSON(); if (!j || j === hitWritten) return; try { await writeFile(linkDir, 'hitpoints.json', new Blob([j], { type: 'application/json' })); hitWritten = j; hitWarned = false; } catch (e) { if (!hitWarned) { hitWarned = true; toast('The hit points could not be written into the score folder, so the studio does not have your latest ones. They are still saved in this mix. Check that the folder is still there and that the Studio may change it.', 9000); } } }, 800);
 }
 // two tracks with one name ("Voice" twice, after two takes) used to be written to one stem file, the second over the first
 const stemNamer = () => { const used = new Set(); return name => { const base = safeName(name); let f = base, n = 2; while (used.has(f.toLowerCase())) f = `${base} ${n++}`; used.add(f.toLowerCase()); return f; }; };
@@ -5044,6 +5046,8 @@ $('#busyCancel').addEventListener('click', () => { if (busyCancel) busyCancel();
   if (add && libTrack(add)) { history.replaceState(null, '', location.pathname); await addRegion(add, 0, null, 'append'); }
   if (P.clips.length) fitZoom();
   sayHello();
+  /* the shared shell (shell.js): update notice, error net, first-run welcome; the shortcuts sheet stays the Studio's own */
+  if (window.MixtapeShell) MixtapeShell.init({ tool: 'studio', toast, busy: () => !!(rec || recNotes || busyGuard), welcomeSeen: !!UI.toured, keys: { open: showShortcuts, host: '#modal', match: '.ksheet', close: () => closeModal(null) } });
   setTimeout(() => startTour(false), 600);
 })();
 // Test hook: only on this computer (localhost), never on the published site

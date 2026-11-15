@@ -370,7 +370,7 @@ async function deleteTrack(id) {
   tracks.delete(id); if (favs.delete(id) && listsOk) putFav(id, false);
   lists.forEach(l => { if (l.ids.includes(id)) { l.ids = l.ids.filter(x => x !== id); putList(l); } });
   const u = artUrls.get(id); if (u) { URL.revokeObjectURL(u); artUrls.delete(id); }
-  for (const s of [...tracks.values()].filter(x => x.stemOf === id)) { tracks.delete(s.id); dbDel('tracks', s.id).catch(() => {}); }
+  for (const s of [...tracks.values()].filter(x => x.stemOf === id)) { tracks.delete(s.id); dbDel('tracks', s.id).catch(() => toast(`“${s.title}”, a part split from that song, could not be removed from storage, so it will be back the next time you open the player. Reload the page and remove it again.`, 7000)); }
   save(); render(); toast('Song removed');
   dbDel('tracks', id).then(updateStorage, () => toast(`“${t.title}” could not be removed from storage, so it will be back the next time you open the player. Reload the page and try again.`, 7000));
 }
@@ -821,8 +821,9 @@ async function openLaunched(files) {
 if ('launchQueue' in window) {
   window.launchQueue.setConsumer(async params => {
     if (!params.files || !params.files.length) return;
-    const files = [];
-    for (const h of params.files) { try { files.push(await h.getFile()); } catch (e) {} }
+    const files = []; let unread = 0;
+    for (const h of params.files) { try { files.push(await h.getFile()); } catch (e) { unread++; } }
+    if (unread) toast(`${unread === 1 ? 'A file' : `${unread} files`} could not be read, so ${unread === 1 ? 'it was' : 'they were'} not added. Add ${unread === 1 ? 'it' : 'them'} with Add songs instead.`, 7000);
     if (files.length) openLaunched(files);
   });
 }
@@ -837,4 +838,13 @@ installBtn.addEventListener('click', async () => { if (!installEvt) return; inst
 window.addEventListener('appinstalled', () => { installBtn.hidden = true; toast('Installed. Open Mixtape from your home screen or app list.', 4000); });
 /* what the lyrics (lyrics.js) may use: the library, the audio, saving, and the player's own messages and menus */
 window.MixtapeApp = { tracks, audio, get curId() { return curId; }, loadTrack, saveTrack, toast, ask, openMenu, download, esc, fmt };
+/* the shared shell (shell.js): the update notice, the error net, the keys sheet on "?" and the first-run welcome.
+   The rows are the keys of the keydown handler above; change them together. */
+if (window.MixtapeShell) MixtapeShell.init({ tool: 'player', toast, busy: () => importing, keys: { title: 'Player keys', rows: [
+  ['Play'],
+  [['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['Shift ←', 'Shift →'], 'Previous or next song'], [['P', 'N'], 'Previous or next song'],
+  [['↑', '↓'], 'Volume up or down'], ['M', 'Mute or unmute'], ['S', 'Shuffle on or off'], ['R', 'Repeat: off, all songs, this song'], ['L', 'Add the playing song to favorites, or take it out'],
+  ['Find and open'],
+  ['/', 'Search your songs'], ['Enter', 'Play the song that has the focus (Tab moves between songs)'], ['Esc', 'Close a menu, a question or Now Playing'], ['?', 'These keys'],
+] } });
 })();

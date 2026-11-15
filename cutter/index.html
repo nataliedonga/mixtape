@@ -12,10 +12,12 @@
 <link rel="icon" href="../icon-192.png">
 <link rel="stylesheet" href="../vendor/fonts/cutter.css">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="../shell.css">
 </head>
 <body>
 <header class="top">
   <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.6 7.6 20 18M8.6 16.4 20 6"/></svg><b>Cutter</b><small>any sound or video</small></div>
+  <a class="homelink" href="../home/" title="All of Mixtape's tools, and Privacy and storage">← Mixtape</a>
   <button id="openBtn" class="primary">Open files</button>
   <input id="fileIn" type="file" multiple hidden accept="video/*,audio/*,.mkv,.mka,.mov,.m4v,.m4a,.ts,.mts,.flac,.opus,.ogg,.wav,.aif,.aiff">
   <div class="pills" id="pills"></div>
@@ -96,6 +98,7 @@
 <div id="sheet" class="sheetwrap" hidden></div>
 <div id="toast" class="toast" hidden role="status"></div>
 <div id="dropveil" class="dropveil" hidden><div>Drop to open</div></div>
+<script src="../shell.js"></script>
 <script src="host-mixtape.js"></script>
 <script type="module" src="app.js"></script>
 </body>

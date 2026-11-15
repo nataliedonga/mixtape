@@ -405,7 +405,7 @@ function exportRangesNow() { if (!cur) return []; if (S.mode === 'keep' && !cur.
 /* ---------- where files go ---------- */
 $('#destBtn').addEventListener('click', e => {
   const r = e.currentTarget.getBoundingClientRect();
-  menu(r.left, r.top - 8, [['Downloads', () => { destDir = null; $('#destBtn').textContent = 'To Downloads'; sessTx('state', 'readwrite', o => o.delete('dest')).catch(() => {}); }], ...(window.showDirectoryPicker ? [['Choose a folder…', async () => { try { destDir = await showDirectoryPicker({ id: 'cutter-out', mode: 'readwrite' }); $('#destBtn').textContent = `To “${destDir.name}”`; sessTx('state', 'readwrite', o => o.put({ k: 'dest', handle: destDir })).catch(() => {}); } catch (err) {} }]] : [])], true);
+  menu(r.left, r.top - 8, [['Downloads', () => { destDir = null; $('#destBtn').textContent = 'To Downloads'; sessTx('state', 'readwrite', o => o.delete('dest')).catch(() => {}); }], ...(window.showDirectoryPicker ? [['Choose a folder…', async () => { try { destDir = await showDirectoryPicker({ id: 'cutter-out', mode: 'readwrite' }); $('#destBtn').textContent = `To “${destDir.name}”`; sessTx('state', 'readwrite', o => o.put({ k: 'dest', handle: destDir })).catch(() => {}); } catch (err) { if (err.name !== 'AbortError') toast(`That folder could not be used: ${err.message || err}. Files still go to ${destDir ? `“${destDir.name}”` : 'your Downloads'}. Choose another folder to change that.`, 7000); } }]] : [])], true);
 });
 async function saveFile(file, name) {
   if (window.__cutterSave) return window.__cutterSave(file, name); // tests on this computer only (set from the console on localhost)
@@ -541,7 +541,7 @@ $('#splitBtn').addEventListener('click', () => {
 $('#listBtn').addEventListener('click', e => {
   const r = e.currentTarget.getBoundingClientRect();
   menu(r.right - 220, r.bottom + 6, [
-    ['Save the list as a spreadsheet (.csv)', async () => { if (!cur || !cur.parts.length) return toast('There are no parts to save.'); await saveFile(new File([C.partsToCsv(cur.parts, fps())], `${cur.media.name} parts.csv`, { type: 'text/csv' }), `${cur.media.name} parts.csv`); toast('The list was saved.'); }],
+    ['Save the list as a spreadsheet (.csv)', async () => { if (!cur || !cur.parts.length) return toast('There are no parts to save.'); try { const s = await saveFile(new File([C.partsToCsv(cur.parts, fps())], `${cur.media.name} parts.csv`, { type: 'text/csv' }), `${cur.media.name} parts.csv`); toast(`The list was saved to ${s.where}.`); } catch (e) { toast(`The list could not be saved${destDir ? ` into “${destDir.name}”` : ''}: ${e.message || e}. Your parts are still here. ${destDir ? 'Choose Downloads or another folder (bottom right), then save it again.' : 'Try again.'}`, 8000); } }],
     ['Load a list (.csv)…', () => { if (!cur) return toast('Open a file first.'); const i = document.createElement('input'); i.type = 'file'; i.accept = '.csv,.txt,text/csv'; i.onchange = async () => { const f = i.files[0]; if (!f) return; const parts = C.partsFromCsv(await f.text(), dur(), fps()); if (!parts.length) return toast('No start and end times were found in that file.', 5000); commit(parts, `${parts.length} parts loaded.`); }; i.click(); }],
     ['Remove all parts', () => { if (cur && cur.parts.length) commit([], 'All parts removed (Ctrl Z brings them back).'); }],
   ]);
@@ -549,7 +549,9 @@ $('#listBtn').addEventListener('click', e => {
 async function snapshot() {
   if (!cur || !cur.media.v || !cur.media.video.canDecode) return toast('There is no picture to save.'); const f = await cur.media.frame(ph); if (!f) return;
   const blob = await new Promise(r => f.canvas.convertToBlob ? f.canvas.convertToBlob({ type: 'image/png' }).then(r) : f.canvas.toBlob(r, 'image/png'));
-  const name = `${cur.media.name} ${C.fmtTime(ph, fps()).replace(/:/g, '.')}.png`, s = await saveFile(new File([blob], name, { type: 'image/png' }), name); toast(`Frame saved to ${s.where}.`);
+  const name = `${cur.media.name} ${C.fmtTime(ph, fps()).replace(/:/g, '.')}.png`;
+  try { const s = await saveFile(new File([blob], name, { type: 'image/png' }), name); toast(`Frame saved to ${s.where}.`); }
+  catch (e) { toast(`The frame could not be saved${destDir ? ` into “${destDir.name}”` : ''}: ${e.message || e}. ${destDir ? 'Choose Downloads or another folder (bottom right), then press S again.' : 'Press S to try again.'}`, 8000); }
 }
 $('#snapBtn').addEventListener('click', snapshot);
 
@@ -757,6 +759,8 @@ function offerReopen(recs, st) {
 writableTargets().then(t => { targets = t; updateExportBar(); }).catch(() => {});
 updateExportBar(); renderParts(); sizeCanvases(); restoreSession();
 sweepExports(); // working copies of exports older than an hour go when the page opens, not only at the next export
+// the shared shell (../shell.js): update notice, error net, first-run welcome; the keys sheet stays the Cutter's own (help)
+window.MixtapeShell?.init({ tool: 'cutter', toast, busy: () => !!exporting, keys: { open: help, host: '#sheet', match: '.keys', close: closeSheet } });
 if ('serviceWorker' in navigator && !host && !document.querySelector('base') && location.protocol !== 'file:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) navigator.serviceWorker.register('sw.js').catch(() => {});
 // for tests on this computer only
 if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) window.__cutter = { files, openFiles, withSrc, forgetEverything,get cur() { return cur; }, get ph() { return ph; }, movePH, get sel() { return sel; }, set sel(v) { sel = v; markSel(); dirty(); }, commit, C, get view() { return view; }, setView, S };

@@ -1,0 +1,122 @@
+[
+  {
+    "version": 82,
+    "date": "2026-11-15",
+    "items": [
+      "Every tool now has a way back to Mixtape's home page, where Privacy and storage also lives.",
+      "When Mixtape has been updated while you have it open, a small notice tells you and lets you reload when it suits you. It never reloads by itself.",
+      "Press ? in any tool to see its keys. The Player and the Reader now have a keys list too.",
+      "The first time you open a tool, a short welcome points at where to start. You can skip it, and bring it back from the keys list.",
+      "If something goes wrong, Mixtape says so in plain words and tells you what to do next. The technical detail stays on your device."
+    ]
+  },
+  {
+    "version": 81,
+    "date": "2026-11-15",
+    "items": [
+      "A home page shows all five tools and what each is for.",
+      "Privacy and storage shows everything Mixtape keeps on this device, backs it all up to one file, restores it, and can forget it."
+    ]
+  },
+  {
+    "version": 80,
+    "date": "2026-11-15",
+    "items": [
+      "Mixtape no longer connects to any other website. Its fonts and the speech recogniser are now part of the app itself.",
+      "Studio: a round of fixes so that nothing is lost when storage is blocked or a save fails."
+    ]
+  },
+  {
+    "version": 79,
+    "date": "2026-11-15",
+    "items": [
+      "Cutter: “Forget everything on this device” (under Keys and tips) removes everything the Cutter keeps in this browser. Files you saved and your library are not touched.",
+      "Cutter: a round of fixes."
+    ]
+  },
+  {
+    "version": 78,
+    "date": "2026-11-15",
+    "items": [
+      "Player: if a favourite, a playlist or a song could not be saved or removed, the Player now tells you instead of carrying on as if it had worked."
+    ]
+  },
+  {
+    "version": 77,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts: a file saved from a recording you marked sensitive says so in its name and at its top.",
+      "Transcripts: a correction you were half-way through typing is never dropped."
+    ]
+  },
+  {
+    "version": 76,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts: after a pause, Play picks up 10 seconds earlier so you can find your place. Back jumps 10 seconds, forward 5."
+    ]
+  },
+  {
+    "version": 75,
+    "date": "2026-11-15",
+    "items": [
+      "Fixes across all the tools so that nothing is lost, and nothing is sent anywhere, by accident."
+    ]
+  },
+  {
+    "version": 74,
+    "date": "2026-11-15",
+    "items": [
+      "Reader: every change is saved into the file as you make it. Undo takes a change back, and “Back to original” restores the file as you opened it."
+    ]
+  },
+  {
+    "version": 73,
+    "date": "2026-11-15",
+    "items": [
+      "Cutter: when you join files, you choose whether to save the list of where each clip begins."
+    ]
+  },
+  {
+    "version": 72,
+    "date": "2026-11-15",
+    "items": [
+      "Cutter: a joined file comes with a list of where each clip begins and ends."
+    ]
+  },
+  {
+    "version": 71,
+    "date": "2026-11-15",
+    "items": [
+      "Cutter: joining a hundred files at once now works."
+    ]
+  },
+  {
+    "version": 70,
+    "date": "2026-11-15",
+    "items": [
+      "New tool: the Reader. Open PDFs, highlight and add notes, fill in forms and sign, all offline."
+    ]
+  },
+  {
+    "version": 69,
+    "date": "2026-11-14",
+    "items": [
+      "Cutter: the back and forward keys jump 3 seconds unless you choose another step."
+    ]
+  },
+  {
+    "version": 68,
+    "date": "2026-11-14",
+    "items": [
+      "Cutter: Tab plays and pauses and Shift + Tab goes back, as in Transcripts. The arrow keys move back and forward, and change the volume."
+    ]
+  },
+  {
+    "version": 66,
+    "date": "2026-11-14",
+    "items": [
+      "An installed Mixtape still opens its saved pages when the website answers with an error."
+    ]
+  }
+]

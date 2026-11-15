@@ -218,6 +218,7 @@ select.sel{height:40px;border-radius:10px;border:1px solid var(--line);backgroun
 }
 </style>
 <link rel="stylesheet" href="lyrics.css">
+<link rel="stylesheet" href="shell.css">
 </head>
 <body>
 
@@ -250,6 +251,7 @@ select.sel{height:40px;border-radius:10px;border:1px solid var(--line);backgroun
     <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="q" type="search" placeholder="Search songs, artists, albums" aria-label="Search your songs" autocomplete="off"></label>
     <div class="adds">
       <button class="btn" id="installBtn" hidden>Install app</button>
+      <a class="btn" id="homeBtn" href="home/" title="All of Mixtape's tools, and Privacy and storage">Home</a>
       <a class="btn" id="studioBtn" href="studio.html" title="Cut and mix your songs">Studio</a>
       <a class="btn" id="transcribeBtn" href="transcribe/" title="Transcripts and read-along: click a word to hear it">Transcribe</a>
       <a class="btn" id="cutterBtn" href="cutter/" title="Cut any sound or video file: exact to the frame or untouched, any format">Cutter</a>
@@ -365,6 +367,7 @@ select.sel{height:40px;border-radius:10px;border:1px solid var(--line);backgroun
 <div class="drop" id="drop" hidden>Drop songs or folders to add them</div>
 <audio id="audio" preload="metadata"></audio>
 
+<script src="shell.js"></script>
 <script src="app.js"></script>
 <script src="lyrics-core.js"></script>
 <script src="lyrics.js"></script>

@@ -200,3 +200,6 @@ select { background: var(--panel-2); border: 1px solid var(--line-2); border-rad
 .files h2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .files h2 .sm { text-transform: none; letter-spacing: 0; }
 .joinopt { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--dim); font-size: 13px; cursor: pointer; }
+/* the way back to Mixtape's home */
+.top a.homelink { color: inherit; opacity: .75; text-decoration: none; font-size: 13px; white-space: nowrap; padding: 6px 8px; border-radius: 6px; }
+.top a.homelink:hover, .top a.homelink:focus-visible { opacity: 1; text-decoration: underline; }

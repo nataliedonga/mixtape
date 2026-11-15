@@ -1,0 +1,96 @@
+/* Mixtape shell: the update notice, the keys sheet, the welcome and the error details (see shell.js).
+   No look of its own: every colour comes from the page it sits in. Each tool names its colours differently
+   (the Player has --raise and --muted, the Cutter --panel and --dim, the Reader --bar, Transcripts --sheet), so each
+   value below tries those names in turn and falls back to the browser's own colours. Fonts are the page's. */
+.mxs {
+  --mxs-bg: var(--raise, var(--sheet, var(--bar, var(--panel, Canvas))));
+  --mxs-ink: var(--ink, CanvasText);
+  --mxs-muted: var(--muted, var(--dim, var(--mxs-ink)));
+  --mxs-line: var(--line-2, var(--line, currentColor));
+  --mxs-accent: var(--accent, Highlight);
+  --mxs-accent-ink: var(--accent-ink, HighlightText);
+  box-sizing: border-box; font-family: inherit; color: var(--mxs-ink); line-height: 1.45; text-align: left;
+}
+.mxs *, .mxs *::before, .mxs *::after { box-sizing: border-box; }
+.mxs[hidden], .mxs [hidden] { display: none !important; }
+
+/* buttons: spelled out in full, because some tools style every <button> on the page */
+.mxs .mxs-btn, .mxs .mxs-btn:hover:not(:disabled) {
+  appearance: none; height: 34px; min-width: 0; width: auto; padding: 0 14px; margin: 0; border-radius: 8px; border: 1px solid var(--mxs-line);
+  background: transparent; color: var(--mxs-ink); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; box-shadow: none; text-transform: none; letter-spacing: 0;
+}
+.mxs .mxs-btn:hover:not(:disabled) { border-color: var(--mxs-ink); }
+.mxs .mxs-btn.mxs-primary, .mxs .mxs-btn.mxs-primary:hover:not(:disabled) { background: var(--mxs-accent); border-color: var(--mxs-accent); color: var(--mxs-accent-ink); }
+.mxs .mxs-btn.mxs-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.mxs .mxs-link, .mxs .mxs-link:hover:not(:disabled) {
+  appearance: none; height: auto; min-width: 0; width: auto; padding: 4px 2px; margin: 0; border: 0; border-radius: 4px; background: none; box-shadow: none;
+  color: var(--mxs-ink); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap; text-transform: none; letter-spacing: 0;
+}
+.mxs .mxs-link:hover:not(:disabled) { text-decoration-thickness: 2px; }
+.mxs button:focus-visible, .mxs a:focus-visible, .mxs .mxs-pre:focus-visible, .mxs-toastbtn:focus-visible { outline: 2px solid var(--mxs-accent, currentColor); outline-offset: 2px; }
+.mxs .mxs-sp { flex: 1 1 0; }
+.mxs .mxs-quiet { color: var(--mxs-muted); font-size: .93em; }
+.mxs .mxs-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* our own sheet: keys, what changed, details */
+.mxs-scrim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .5); }
+.mxs .mxs-dialog {
+  width: min(560px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column;
+  background: var(--mxs-bg); color: var(--mxs-ink); border: 1px solid var(--mxs-line); border-radius: 14px; box-shadow: 0 24px 60px -12px rgba(0, 0, 0, .5);
+}
+.mxs .mxs-dialog.mxs-wide { width: min(720px, 100%); }
+.mxs .mxs-title { margin: 0; padding: 18px 20px 6px; font: inherit; font-size: 1.3em; font-weight: 700; line-height: 1.25; color: var(--mxs-ink); letter-spacing: 0; text-transform: none; }
+.mxs .mxs-body { padding: 6px 20px 4px; overflow: auto; min-height: 0; }
+.mxs .mxs-body p { margin: 0 0 10px; }
+.mxs .mxs-dialog > .mxs-acts { padding: 12px 20px 16px; }
+.mxs .mxs-keys { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 7px 16px; align-items: baseline; }
+.mxs .mxs-khead { grid-column: 1 / -1; margin: 12px 0 2px; font: inherit; font-size: .82em; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--mxs-muted); }
+.mxs .mxs-khead:first-child { margin-top: 2px; }
+.mxs .mxs-date { font-weight: 500; letter-spacing: 0; text-transform: none; }
+.mxs kbd {
+  display: inline-block; min-width: 1.9em; padding: 1px 7px; border: 1px solid var(--mxs-line); border-bottom-width: 2px; border-radius: 6px; background: transparent;
+  color: var(--mxs-ink); font-family: var(--f-mono, ui-monospace, Consolas, monospace); font-size: .86em; text-align: center; white-space: nowrap;
+}
+.mxs .mxs-kcell { white-space: nowrap; }
+.mxs .mxs-list { margin: 0 0 8px; padding-left: 1.2em; }
+.mxs .mxs-list li { margin: 0 0 5px; }
+.mxs .mxs-pre {
+  margin: 0 0 6px; padding: 10px 12px; max-height: 38vh; overflow: auto; border: 1px solid var(--mxs-line); border-radius: 8px; background: transparent; color: var(--mxs-ink);
+  font: 12px/1.5 var(--f-mono, ui-monospace, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+}
+/* the two links at the foot of a keys sheet, ours or a tool's own */
+.mxs-extras { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid var(--mxs-line); grid-column: 1 / -1; }
+
+/* the update notice: small, in a corner, above whatever bar the tool keeps at the bottom */
+.mxs-update {
+  position: fixed; left: 16px; bottom: 16px; z-index: 900; max-width: min(620px, calc(100vw - 32px)); display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
+  padding: 10px 12px 10px 16px; background: var(--mxs-bg); border: 1px solid var(--mxs-accent); border-radius: 12px; box-shadow: 0 14px 40px -12px rgba(0, 0, 0, .55);
+}
+.mxs .mxs-utext { font-weight: 600; }
+.mxs .mxs-usays { flex: 1 1 240px; min-width: 0; }
+.mxs .mxs-ubtns { display: flex; gap: 8px; margin-left: auto; }
+
+/* our own toast, used only where a tool has none */
+.mxs-toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 950; max-width: min(560px, calc(100vw - 32px)); padding: 10px 16px; border-radius: 10px;
+  background: var(--mxs-ink); color: var(--mxs-bg); font-weight: 550; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .5);
+}
+/* a button inside a toast (the tool's or ours): it takes the toast's own colours */
+.mxs-toastbtn, .mxs-toastbtn:hover, button.mxs-toastbtn:hover:not(:disabled) {
+  appearance: none; display: inline-block; height: 28px; line-height: 26px; width: auto; min-width: 0; margin: 4px 0 0 8px; padding: 0 10px; border-radius: 7px; border: 1px solid currentColor;
+  background: transparent; color: inherit; font: inherit; font-weight: 650; text-decoration: none; cursor: pointer; pointer-events: auto; white-space: nowrap; box-shadow: none;
+}
+.mxs-toastbtn:hover { text-decoration: underline; }
+
+/* the welcome: a ring round the real control and a small card beside it. Neither stops a click on the tool. */
+.mxs-ring { position: fixed; z-index: 940; pointer-events: none; border-radius: 10px; outline: 3px solid var(--mxs-accent); outline-offset: 0; box-shadow: 0 0 0 6px color-mix(in srgb, var(--mxs-accent) 28%, transparent); transition: left .18s, top .18s, width .18s, height .18s; }
+.mxs-tour {
+  position: fixed; z-index: 941; width: min(340px, calc(100vw - 24px)); display: grid; gap: 8px; padding: 14px 16px 12px;
+  background: var(--mxs-bg); border: 1px solid var(--mxs-accent); border-radius: 12px; box-shadow: 0 16px 44px -10px rgba(0, 0, 0, .6); transition: left .18s, top .18s;
+}
+.mxs .mxs-step { margin: 0; font-size: .78em; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--mxs-muted); }
+.mxs .mxs-ttext { margin: 0; }
+.mxs-tour .mxs-acts { margin-top: 2px; }
+.mxs-tour .mxs-link { font-weight: 500; font-size: .93em; }
+@media (prefers-reduced-motion: reduce) { .mxs-ring, .mxs-tour { transition: none; } .mxs .mxs-btn { transition: none; } }
+@media (max-width: 520px) { .mxs-update { left: 8px; right: 8px; max-width: none; } }

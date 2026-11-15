@@ -588,6 +588,7 @@ document.addEventListener('click', e => { const b = e.target.closest('button'); 
 addEventListener('resize', () => { $('#menu').hidden = true; }); // a pop-up placed for the old window size would hang off the new one
 addEventListener('beforeunload', e => { if (job || dirtyEdit()) { e.preventDefault(); e.returnValue = ''; } });
 
+window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dirtyEdit(), keys: { open: keysHelp, host: '#menu', match: 'table.keys' } });
 /* ---------- start ---------- */
 await loadLib(); loadShelf();
 const want = new URLSearchParams(location.search).get('song'); if (want) select(want);

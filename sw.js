@@ -1,11 +1,12 @@
 // Mixtape offline cache. Bump VERSION whenever app files change so installed copies pick up the new version.
-const VERSION = 'mixtape-v81';
+const VERSION = 'mixtape-v82';
 const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', './dsp-worker.js', './dsp-shared.js', './midi.js', './long-mp3.js', './media-cut.js', './vendor/mediabunny/mediabunny.min.mjs', './lofi-worklet.js', './vendor/tone/Tone.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './cutter/', './cutter/index.html', './cutter/app.js', './cutter/engine.js', './cutter/model.js', './cutter/h264.js', './cutter/style.css', './cutter/host-mixtape.js', './cutter/olddecode.js', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.wasm',
   './lyrics-core.js', './lyrics.js', './lyrics.css', './asr-worker.js', './speaker-worker.js',
   './transcript-core.js', './transcribe/', './transcribe/index.html', './transcribe/app.js', './transcribe/style.css',
   './reader/', './reader/index.html', './reader/app.js', './reader/style.css', './vendor/embedpdf/embedpdf.js', './vendor/embedpdf/embedpdf-cl9qiF45.js', './vendor/embedpdf/browser-BKLM0ThC-BCLQGPD6.js', './vendor/embedpdf/direct-engine-DVLMOJWp.js', './vendor/embedpdf/worker-engine-BCCrxWYm.js', './vendor/embedpdf/pdfium.wasm',
   './vendor/embedpdf/fonts/NotoSans-Regular.ttf', './vendor/embedpdf/fonts/NotoSans-Bold.ttf', './vendor/embedpdf/fonts/NotoSans-Italic.ttf', './vendor/embedpdf/fonts/NotoSans-BoldItalic.ttf',
+  './shell.js', './shell.css', './changes.json',
   './home/', './home/index.html', './home/home.css', './home/home.js', './storage/', './storage/index.html', './storage/storage.css', './storage/storage.js', './backup-core.js',
   './vendor/fonts/BricolageGrotesque-latin-11f6ab2d.woff2', './vendor/fonts/BricolageGrotesque-latin-ext-094ba9c3.woff2', './vendor/fonts/Figtree-latin-57fd1acf.woff2', './vendor/fonts/Figtree-latin-ext-a310474d.woff2', './vendor/fonts/IBMPlexMono-latin-50879063.woff2', './vendor/fonts/IBMPlexMono-latin-ac5ee02b.woff2', './vendor/fonts/IBMPlexMono-latin-d5549a5e.woff2', './vendor/fonts/IBMPlexMono-latin-ext-4a23f6b8.woff2', './vendor/fonts/IBMPlexMono-latin-ext-b058013d.woff2', './vendor/fonts/IBMPlexMono-latin-ext-e35bab18.woff2', './vendor/fonts/IBMPlexSans-latin-d8b4e62d.woff2', './vendor/fonts/IBMPlexSans-latin-ext-69ec3099.woff2', './vendor/fonts/JetBrainsMono-latin-4f27206c.woff2', './vendor/fonts/JetBrainsMono-latin-ext-06ad3600.woff2', './vendor/fonts/MartianMono-latin-b1337618.woff2', './vendor/fonts/MartianMono-latin-ext-f877caae.woff2', './vendor/fonts/Newsreader-latin-5d70b133.woff2', './vendor/fonts/Newsreader-latin-ext-a40c6200.woff2', './vendor/fonts/cutter.css', './vendor/fonts/player.css', './vendor/fonts/studio.css', './vendor/fonts/transcripts.css'];
 // The AI stem splitter is large and changes rarely, so it lives in its own caches that app updates don't clear.
@@ -20,8 +21,11 @@ const ORCH_CACHE = 'mixtape-orch-v1'; // the orchestra's recordings, saved on fi
 self.addEventListener('install', e => {
   // cache: 'reload' skips the browser's own HTTP cache: GitHub Pages lets it keep files for 10 minutes, so a new version
   // installed soon after publishing could otherwise store the previous version's files
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))));
 });
+// A new version waits until the page asks for it (the "Mixtape was updated: Reload" bar in shell.js) or every Mixtape
+// tab has closed, so an open page never ends up running half old, half new. A first install still starts at once.
+self.addEventListener('message', e => { if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !KEEP(k)).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
