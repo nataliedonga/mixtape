@@ -7,6 +7,7 @@
 import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
 import { initReverb, reverbChosen, startReverb } from './reverb.js';
 import { initFollow } from './follow.js';
+import { initRemove } from './remove.js';
 import { initPart, partChosen, partClock, partSeek, partShow, partExport, partTrim } from './part.js';
 const T = window.TranscriptCore;
 const $ = s => document.querySelector(s);
@@ -598,6 +599,7 @@ addEventListener('beforeunload', e => { if (job || dirtyEdit()) { e.preventDefau
 const Legal = await import('./legal.js').then(m => m.initLegal({ get cur() { return cur; }, get editing() { return editing; }, get job() { return job; }, T, KEYS, toast, esc, menu, dl, save, remember, drawText, saveEdit, shiftNotes, sensitive, SENS_LINE })).catch(e => { console.warn('Legal inserts did not load:', e); return { edited: (o, a, b, w) => w, imported() {}, exportMenu: menu }; });
 window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dirtyEdit(), keys: { open: keysHelp, host: '#menu', match: 'table.keys' } });
 initFollow({ toast, get cur() { return cur; } });
+initRemove({ toast, get cur() { return cur; }, get job() { return job; }, reload: async () => { await loadLib(); drawLib(); } });
 initPart({ toast, drawAll, get cur() { return cur; } });
 initReverb({ M, toast, save, drawAll, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */

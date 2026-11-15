@@ -1,5 +1,12 @@
 [
   {
+    "version": 94,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts: point at a recording in the list and press the small ✕ to remove it from Mixtape, together with its transcript. It asks first and shows the recording's length. The original file on your computer is not touched."
+    ]
+  },
+  {
     "version": 93,
     "date": "2026-11-15",
     "items": [
