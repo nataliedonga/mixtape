@@ -168,13 +168,13 @@ let scrolledAt = 0; $('#doc').addEventListener('wheel', () => { scrolledAt = per
 function keepInView(el) { if (performance.now() - scrolledAt < 5000) return; const box = $('#doc').getBoundingClientRect(), r = el.getBoundingClientRect(); if (r.top < box.top + box.height * 0.2 || r.bottom > box.top + box.height * 0.7) $('#doc').scrollBy({ top: r.top - box.top - box.height * 0.35, behavior: 'smooth' }); }
 function playAt(t) { if (!cur) return; cur.media.currentTime = Math.max(0, t); justSeeked = false; cur.media.play().catch(() => {}); scrolledAt = 0; }
 let justSeeked = false;
-const togglePlay = () => { if (!cur) return; const m = cur.media; if (m.paused) { if (V.backup && !justSeeked && m.currentTime > 1) m.currentTime -= 1; justSeeked = false; m.play().catch(() => {}); } else m.pause(); };
+const togglePlay = () => { if (!cur) return; const m = cur.media; if (m.paused) { if (V.backup && !justSeeked) m.currentTime = Math.max(0, m.currentTime - 10); /* picks up 10 seconds before where it stopped, so the words lead in */ justSeeked = false; m.play().catch(() => {}); } else m.pause(); };
 const back = sec => { if (cur) { cur.media.currentTime = Math.max(0, cur.media.currentTime - sec); justSeeked = true; } };
 const fwd = sec => { if (cur) { cur.media.currentTime = Math.min(cur.media.duration || 1e9, cur.media.currentTime + sec); justSeeked = true; } };
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const speedBy = d => { const sel = $('#speed'), i = Math.max(0, Math.min(SPEEDS.length - 1, SPEEDS.indexOf(+sel.value) + d)); if (!sel.querySelector(`option[value="${SPEEDS[i]}"]`)) sel.insertAdjacentHTML('beforeend', `<option value="${SPEEDS[i]}">${SPEEDS[i]}×</option>`); sel.value = String(SPEEDS[i]); if (cur) cur.media.playbackRate = SPEEDS[i]; toast(`Speed ${SPEEDS[i]}×`, 1200); };
 $('#bPlay').addEventListener('click', togglePlay);
-$('#bBack').addEventListener('click', () => back(5));
+$('#bBack').addEventListener('click', () => back(10));
 $('#bFwd').addEventListener('click', () => fwd(5));
 $('#seek').addEventListener('input', e => { if (cur && cur.media.duration) { cur.media.currentTime = e.target.value / 1000 * cur.media.duration; justSeeked = true; } });
 $('#speed').addEventListener('change', e => { if (cur) cur.media.playbackRate = +e.target.value; });
@@ -197,7 +197,7 @@ function startEdit(p, atWord) {
   const box = p.querySelector('.words'); editing = { p, i0, i1, html: box.innerHTML };
   box.innerHTML = `<div class="edit"><textarea aria-label="Correct the paragraph">${esc(text)}</textarea><div class="row"><span class="hint">Words you keep keep their timing. A blank line splits the paragraph. <b>Tab</b> plays / pauses.</span><span class="sp"></span><button class="btn sm" data-x="cancel">Cancel</button><button class="btn sm primary" data-x="save">Save</button></div></div>`;
   const ta = box.querySelector('textarea'); ta.focus(); let caret = ta.value.length; if (atWord != null && atWord >= i0) { caret = words.slice(i0, atWord).map(w => w.t).join(' ').length + (atWord > i0 ? 1 : 0); } ta.setSelectionRange(caret, caret);
-  ta.addEventListener('keydown', ev => { if (ev.key === 'Tab') { ev.preventDefault(); ev.stopPropagation(); ev.shiftKey ? back(5) : togglePlay(); } else if (ev.key === 'Escape') { ev.preventDefault(); cancelEdit(); } else if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); saveEdit(ta.value); } });
+  ta.addEventListener('keydown', ev => { if (ev.key === 'Tab') { ev.preventDefault(); ev.stopPropagation(); ev.shiftKey ? back(10) : togglePlay(); } else if (ev.key === 'Escape') { ev.preventDefault(); cancelEdit(); } else if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); saveEdit(ta.value); } });
   box.querySelector('[data-x="cancel"]').addEventListener('click', cancelEdit); box.querySelector('[data-x="save"]').addEventListener('click', () => saveEdit(ta.value));
 }
 function cancelEdit() { if (!editing) return; editing.p.querySelector('.words').innerHTML = editing.html; editing = null; }
@@ -553,25 +553,25 @@ async function window16k(track, w0, w1) {
 }
 
 /* ---------- keys: the transcription editors' way (Temi, Rev, Happy Scribe) ---------- */
-const KEYS = [['Tab', 'Play / pause — anywhere, even while typing'], ['Shift + Tab', 'Back 5 seconds'], ['Ctrl + →  /  Ctrl + ←', 'Forward / back 5 seconds'], ['← →', 'Forward / back 5 seconds (when not typing)'], ['Ctrl + ↑  /  Ctrl + ↓', 'Faster / slower'], ['Click a word', 'Play from that word'], ['Double-click a word', 'Correct its paragraph (Ctrl + Enter saves, Esc cancels)'], ['N', 'Note for the writer: on the words you selected, or the sentence being read (Ctrl + Enter saves)'], ['Ctrl + Z', 'Undo the last change'], ['Ctrl + F', 'Find in the text (Enter: next, Shift + Enter: previous)'], ['Space', 'Play / pause (when not typing)'], ['?', 'These keys']];
+const KEYS = [['Tab', 'Play / pause — anywhere, even while typing'], ['Shift + Tab', 'Back 10 seconds'], ['Ctrl + →  /  Ctrl + ←', 'Forward 5 seconds / back 10 seconds'], ['← →', 'Forward 5 seconds / back 10 seconds (when not typing)'], ['Ctrl + ↑  /  Ctrl + ↓', 'Faster / slower'], ['Click a word', 'Play from that word'], ['Double-click a word', 'Correct its paragraph (Ctrl + Enter saves, Esc cancels)'], ['N', 'Note for the writer: on the words you selected, or the sentence being read (Ctrl + Enter saves)'], ['Ctrl + Z', 'Undo the last change'], ['Ctrl + F', 'Find in the text (Enter: next, Shift + Enter: previous)'], ['Space', 'Play / pause (when not typing)'], ['?', 'These keys']];
 function keysHelp() {
-  const m = $('#menu'); m.innerHTML = `<div class="lbl">Keys</div><table class="keys">${KEYS.map(([k, v]) => `<tr><td><kbd>${esc(k)}</kbd></td><td>${esc(v)}</td></tr>`).join('')}</table><label class="sw"><input type="checkbox" id="bkp"${V.backup ? ' checked' : ''}> Back up 1 second when playing again after a pause</label>`; m.hidden = false;
+  const m = $('#menu'); m.innerHTML = `<div class="lbl">Keys</div><table class="keys">${KEYS.map(([k, v]) => `<tr><td><kbd>${esc(k)}</kbd></td><td>${esc(v)}</td></tr>`).join('')}</table><label class="sw"><input type="checkbox" id="bkp"${V.backup ? ' checked' : ''}> Start 10 seconds earlier when playing again after a pause</label>`; m.hidden = false;
   const b = $('#keysBtn') || $('#bPlay'), r = b.getBoundingClientRect(); m.style.top = Math.max(8, Math.min(innerHeight - m.offsetHeight - 8, r.bottom + 6)) + 'px'; m.style.left = Math.max(8, Math.min(innerWidth - m.offsetWidth - 8, r.right - m.offsetWidth)) + 'px';
   m.querySelector('#bkp').addEventListener('change', e => { V.backup = e.target.checked; saveV(); });
   m.onclick = null; setTimeout(() => document.addEventListener('pointerdown', function off(ev) { if (!m.contains(ev.target)) { m.hidden = true; document.removeEventListener('pointerdown', off); } }), 0);
 }
 document.addEventListener('keydown', e => {
   const typing = !!e.target.closest('input, textarea, select'), ctrl = e.ctrlKey || e.metaKey;
-  if (e.key === 'Tab' && cur && !e.target.closest('.menu')) { e.preventDefault(); e.shiftKey ? back(5) : togglePlay(); return; }
+  if (e.key === 'Tab' && cur && !e.target.closest('.menu')) { e.preventDefault(); e.shiftKey ? back(10) : togglePlay(); return; }
   if (ctrl && e.key === 'f' && cur && cur.tr) { e.preventDefault(); $('#q').focus(); $('#q').select(); return; }
   if (ctrl && (e.key === 'z' || e.key === 'Z') && !typing) { e.preventDefault(); undo(); return; }
   if (ctrl && e.key === 'ArrowRight') { e.preventDefault(); fwd(5); return; }
-  if (ctrl && e.key === 'ArrowLeft') { e.preventDefault(); back(5); return; }
+  if (ctrl && e.key === 'ArrowLeft') { e.preventDefault(); back(10); return; }
   if (ctrl && e.key === 'ArrowUp') { e.preventDefault(); speedBy(1); return; }
   if (ctrl && e.key === 'ArrowDown') { e.preventDefault(); speedBy(-1); return; }
   if (typing || !cur) return;
   if (e.key === ' ') { if (e.target.closest('button')) return; e.preventDefault(); togglePlay(); }
-  else if (e.key === 'ArrowLeft') { e.preventDefault(); back(5); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); back(10); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); fwd(5); }
   else if (e.key === '?') { e.preventDefault(); keysHelp(); }
   else if ((e.key === 'n' || e.key === 'N') && !ctrl && !e.altKey) { e.preventDefault(); newNote(); }
