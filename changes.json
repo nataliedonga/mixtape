@@ -1,5 +1,12 @@
 [
   {
+    "version": 90,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts has a cleaner layout, By speaker: each speaker's turn is its own block, with a coloured dot and the name on top and the words in a quiet box. Untick By speaker above the text to go back to one flowing page. Read-alongs are unchanged."
+    ]
+  },
+  {
     "version": 89,
     "date": "2026-11-15",
     "items": [

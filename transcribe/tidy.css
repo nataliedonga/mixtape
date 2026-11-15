@@ -1,0 +1,18 @@
+/* Transcripts, "By speaker" layout: each turn is its own block — a coloured dot and the speaker's name on top, the words
+   in a quiet outlined box underneath — so it is plain at a glance who says what. The reading typeface, the colours and
+   everything else stay Mixtape's own. Switched on by the class "tidy" on #text. */
+.text.tidy{max-width:860px;font-size:18px;line-height:1.65}
+.text.tidy .para{display:block;margin:0 0 14px;padding-right:40px}
+.text.tidy .gut{flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;padding:0 0 5px 2px}
+.text.tidy .spk{order:1;max-width:none;text-align:left;font:700 13px var(--f-ui);letter-spacing:.04em;text-transform:uppercase;display:inline-flex;align-items:center;gap:9px;-webkit-text-fill-color:var(--ink)} /* the name is written in ink; the speaker's own colour stays as the dot's */
+.text.tidy .spk::before{content:"";width:11px;height:11px;border-radius:50%;background:var(--accent);flex:none}
+.text.tidy .spk[style*="color"]::before{background:currentColor}
+.text.tidy .spk.none{opacity:1;font-weight:600;-webkit-text-fill-color:var(--faint);text-transform:none;letter-spacing:0}
+.text.tidy .spk.none::before{background:transparent;box-shadow:inset 0 0 0 1.5px var(--faint)}
+.text.tidy .ts{order:2;font-size:11.5px}
+.text.tidy .gut > :not(.ts):not(.spk){order:3}
+.text.tidy .words{display:inline-block;max-width:100%;margin-left:22px;padding:7px 12px 8px;border:1px solid var(--line);border-radius:6px;background:var(--sheet)}
+.text.tidy .para:hover .words{border-color:var(--faint)}
+.text.tidy .para:has(.w.on) .words{border-color:var(--accent)}
+.text.tidy .ed{top:26px}
+@media (max-width:860px){ .text.tidy .words{margin-left:0;display:block} .text.tidy .para{padding-right:0} }

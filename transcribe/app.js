@@ -110,7 +110,7 @@ function drawAll() {
   drawText();
 }
 /* view settings, kept per browser: the clean script (fillers hidden), unsure words shown lighter, back up on resume */
-const V = Object.assign({ clean: false, unsure: true, backup: true }, (() => { try { return JSON.parse(localStorage.getItem('mixtape-transcript-view')) || {}; } catch (e) { return {}; } })());
+const V = Object.assign({ clean: false, unsure: true, backup: true, tidy: true }, (() => { try { return JSON.parse(localStorage.getItem('mixtape-transcript-view')) || {}; } catch (e) { return {}; } })());
 const saveV = () => { try { localStorage.setItem('mixtape-transcript-view', JSON.stringify(V)); } catch (e) {} };
 const SPK_COLOURS = ['#1F6F78', '#B5523B', '#5B5EA6', '#7A6A1F', '#2F7D4F', '#9C3D7A', '#3A6EA5', '#8A5A2B'];
 const spkColour = name => { const names = cur && cur.tr ? T.speakerNames(cur.tr.words) : []; const i = names.indexOf(name); return SPK_COLOURS[(i < 0 ? 0 : i) % SPK_COLOURS.length]; };
@@ -120,7 +120,7 @@ function drawText() {
   if (!r || !r.words.length) { el.innerHTML = ''; return; }
   const ps = T.paragraphs(r.words), hidden = V.clean ? T.cleanHidden(r.words) : null;
   SUG = sugMap(r); NT = noteMap(r);
-  el.classList.toggle('show-unsure', V.unsure);
+  el.classList.toggle('show-unsure', V.unsure); el.classList.toggle('tidy', V.tidy && r.mode === 'heard'); // a read-along has one narrator: it stays one flowing page
   el.innerHTML = ps.map((p, pi) => paraHTML(r.words, p, pi, hidden)).join('');
   if (hits.length) markHits();
 }
@@ -146,6 +146,7 @@ function drawTools() {
   const names = T.speakerNames(r.words), unsure = r.words.filter(w => w.c != null && w.c < 0.75).length, fillers = T.cleanHidden(r.words).size;
   box.innerHTML = `<label class="sw" title="Hide ums, uhs, false starts (“we, we”) and starters (“So,”, “Well,”) for a cleaner script; exports follow this"><input type="checkbox" data-v="clean"${V.clean ? ' checked' : ''}> Clean script${fillers ? ` <small>(${fillers} hidden)</small>` : ''}</label>`
     + `<label class="sw" title="Words the recogniser was not sure of are lighter: check those first"><input type="checkbox" data-v="unsure"${V.unsure ? ' checked' : ''}> Unsure words lighter${unsure ? ` <small>(${unsure})</small>` : ''}</label>`
+    + (r.mode === 'heard' ? `<label class="sw" title="Each speaker's turn in its own block, with the name on top. Untick for one flowing page."><input type="checkbox" data-v="tidy"${V.tidy ? ' checked' : ''}> By speaker</label>` : '')
     + (r.mode === 'heard' ? `<span class="spks">${names.map(n => `<button class="chip" data-ren="${esc(n)}" title="Rename “${esc(n)}” everywhere" style="--c:${spkColour(n)}">${esc(n)}</button>`).join('')}${names.length ? '' : '<span class="muted">No speakers yet</span>'}</span>` : '')
     + `<span class="sp"></span>${reviewURL() && r.mode === 'heard' && sensitive(cur.track.id) ? `<button class="btn sm aibtn" disabled title="This recording is marked sensitive, so the AI check (which sends the words to Claude through the studio) is locked. Unmark it at the top if you choose to.">🔒 AI check</button>` : ''}${reviewURL() && r.mode === 'heard' && !sensitive(cur.track.id) ? `<button class="btn sm aibtn" data-ai title="A second reader: Claude reads the transcript for sense and suggests where the recogniser most likely misheard (names, places, sound-alikes) and where a speaker looks wrong. Nothing changes until you accept it.">✦ AI check</button>` : ''}<button class="btn sm ntbtn" data-notes title="Notes for the writer: select words, or press N while listening, to mark where something should change">✎ Notes${(r.notes || []).length ? ` (${r.notes.length})` : ''}</button><button class="btn sm ghost" id="keysBtn" title="Keyboard shortcuts (?)">⌨ Keys</button>`
     + aiBar(r);
