@@ -1,5 +1,14 @@
 [
   {
+    "version": 92,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts now asks, before transcribing: is this to follow along with a website? If yes, find where the part starts by playing your recording (Play, back and forward buttons) and press This part starts here, or type the time. Say where it ends, or how long the website's part is.",
+      "With Backup Track installed, Take both from Backup Track fills in the start and the website's length for you.",
+      "Only that part is written down, and it counts from 0:00 like the website."
+    ]
+  },
+  {
     "version": 91,
     "date": "2026-11-15",
     "items": [

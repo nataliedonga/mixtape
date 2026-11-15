@@ -43,23 +43,54 @@ export function partChosen(cur) {
 function build() {
   const go = $('#goHeard'); if (!go || $('#partBox')) return;
   const f = document.createElement('fieldset'); f.id = 'partBox'; f.className = 'engine partbox';
-  f.innerHTML = `<legend>How much of it?</legend>
-    <label class="eng"><input type="radio" name="partWhich" id="partAll" value="all" checked><span><b>All of it</b></span></label>
-    <label class="eng"><input type="radio" name="partWhich" id="partSome" value="part"><span><b>Only a part</b><small>For a long recording that you work on in parts. Play it below to find the place, or type the times.</small></span></label>
-    <div class="partrow" id="partRow" hidden>
-      <label for="partFrom">From</label><input id="partFrom" type="text" inputmode="numeric" value="00:00:00" placeholder="00:00:00" autocomplete="off" aria-label="The part starts at (hours:minutes:seconds)"><button type="button" class="btn sm" id="partFromNow" title="Use the moment the player is at">Where the player is</button>
-      <label for="partTo">to</label><input id="partTo" type="text" inputmode="numeric" placeholder="the end" autocomplete="off" aria-label="The part ends at (hours:minutes:seconds); empty means the end of the recording"><button type="button" class="btn sm" id="partToNow" title="Use the moment the player is at">Where the player is</button>
+  f.innerHTML = `<legend>Is this to follow along with a website?</legend>
+    <label class="eng"><input type="radio" name="partWhich" id="partAll" value="all" checked><span><b>No: write down the whole recording</b></span></label>
+    <label class="eng"><input type="radio" name="partWhich" id="partSome" value="part"><span><b>Yes: the website has only a part of it</b><small>Say where that part starts in your recording. Only that part is written down, and it then counts from 0:00, the same as the website.</small></span></label>
+    <div id="partRow" hidden>
+      <div class="partplay" role="group" aria-label="Play the recording to find the place">
+        <button type="button" class="btn sm" data-pskip="-10" title="Back 10 seconds">−10 s</button><button type="button" class="btn sm" data-pskip="-5" title="Back 5 seconds">−5 s</button>
+        <button type="button" class="btn sm primary" id="partPlay" title="Play or pause the recording, to find where the part starts">▶ Play</button>
+        <button type="button" class="btn sm" data-pskip="5" title="Forward 5 seconds">+5 s</button><button type="button" class="btn sm" data-pskip="10" title="Forward 10 seconds">+10 s</button>
+        <span class="partnow" id="partNow" aria-live="off">00:00:00</span>
+      </div>
+      <div class="partrow">
+        <label for="partFrom">Starts at</label><input id="partFrom" type="text" inputmode="numeric" value="00:00:00" placeholder="00:00:00" autocomplete="off" aria-label="The part starts at (hours:minutes:seconds)"><button type="button" class="btn sm" id="partFromNow" title="The place the player is at becomes the start of the part">This part starts here</button>
+      </div>
+      <div class="partrow">
+        <label for="partTo">Ends at</label><input id="partTo" type="text" inputmode="numeric" placeholder="the end" autocomplete="off" aria-label="The part ends at (hours:minutes:seconds); empty means the end of the recording"><button type="button" class="btn sm" id="partToNow" title="The place the player is at becomes the end of the part">It ends here</button>
+      </div>
+      <div class="partrow"><label for="partLen">or it is</label><input id="partLen" type="text" inputmode="numeric" placeholder="00:32:46" autocomplete="off" aria-label="How long the part is on the website (hours:minutes:seconds)"><span class="parthint">long on the website</span></div>
+      <button type="button" class="btn sm" id="partFromBT" hidden title="Backup Track knows where this part starts in your recording and how long the website’s part is">Take both from Backup Track</button>
     </div>`;
   ($('#engineBox') || go).before(f);
-  const show = () => { $('#partRow').hidden = !sel.on; };
-  f.addEventListener('change', e => { if (e.target.name === 'partWhich') { sel.on = e.target.value === 'part'; show(); if (sel.on) $('#partFrom').focus(); } else if (e.target.id === 'partFrom' || e.target.id === 'partTo') { const v = parseTime(e.target.value); if (v != null) e.target.value = hms(v); } });
-  const now = () => (api.cur && api.cur.media ? api.cur.media.currentTime : 0);
-  $('#partFromNow').addEventListener('click', () => { $('#partFrom').value = hms(now()); });
-  $('#partToNow').addEventListener('click', () => { $('#partTo').value = hms(now()); });
+  const show = () => { $('#partRow').hidden = !sel.on; }, media = () => (api.cur && api.cur.media) || null, now = () => (media() ? media().currentTime : 0);
+  const tidy = el => { const v = parseTime(el.value); if (v != null) el.value = hms(v); return v; };
+  f.addEventListener('change', e => {
+    if (e.target.name === 'partWhich') { sel.on = e.target.value === 'part'; show(); if (sel.on) { $('#partFrom').focus(); document.dispatchEvent(new CustomEvent('backup-track:listen', { detail: 'probe' })); } }
+    else if (e.target.id === 'partFrom') { const a = tidy(e.target); if (a != null && media()) media().currentTime = Math.min(a, media().duration || a); /* the player goes there, so you can hear that it is the right place */ lenToEnd(); }
+    else if (e.target.id === 'partTo') { tidy(e.target); $('#partLen').value = ''; }
+    else if (e.target.id === 'partLen') { tidy(e.target); lenToEnd(); }
+  });
+  // "it is 32:46 long on the website": the end is the start plus that
+  const lenToEnd = () => { const a = parseTime($('#partFrom').value), l = parseTime($('#partLen').value); if (a != null && l != null && l > 0) $('#partTo').value = hms(a + l); };
+  $('#partFromNow').addEventListener('click', () => { $('#partFrom').value = hms(now()); lenToEnd(); });
+  $('#partToNow').addEventListener('click', () => { $('#partTo').value = hms(now()); $('#partLen').value = ''; });
+  $('#partPlay').addEventListener('click', () => { const m = media(); if (!m) return; if (m.paused) m.play().catch(() => {}); else m.pause(); });
+  f.addEventListener('click', e => { const b = e.target.closest('[data-pskip]'), m = media(); if (b && m) m.currentTime = Math.max(0, Math.min(m.duration || 1e9, m.currentTime + +b.dataset.pskip)); });
+  setInterval(() => { const m = media(); if ($('#partRow').hidden || !m) return; $('#partNow').textContent = hms(m.currentTime); $('#partPlay').textContent = m.paused ? '▶ Play' : '❚❚ Pause'; }, 250);
+  // Backup Track (the browser extension), when it is installed: it already knows the start and the website's length
+  document.addEventListener('backup-track:hello', () => { $('#partFromBT').hidden = false; });
+  $('#partFromBT').addEventListener('click', () => {
+    let done = false; const got = e => { let s; try { s = JSON.parse(e.detail); } catch (err) { return; } if (done || s.begin == null) return; done = true; document.removeEventListener('backup-track:state', got);
+      $('#partFrom').value = hms(s.begin); if (s.siteLen > 0) { $('#partLen').value = hms(s.siteLen); lenToEnd(); } if (media()) media().currentTime = Math.min(s.begin, media().duration || s.begin);
+      api.toast(s.siteLen > 0 ? `Taken from Backup Track: starts at ${hms(s.begin)}, ${hms(s.siteLen)} long.` : `Taken from Backup Track: starts at ${hms(s.begin)}. Press play on the website once and try again to get its length too.`, 7000); };
+    document.addEventListener('backup-track:state', got); document.dispatchEvent(new CustomEvent('backup-track:listen', { detail: 'once' }));
+    setTimeout(() => { if (!done) { document.removeEventListener('backup-track:state', got); api.toast('Backup Track did not answer. Open its panel and choose your recording there first.', 6000); } }, 2500);
+  });
 }
 function fresh() { // another recording: the choice starts again
   const c = api.cur; if (!c || sel.id === c.track.id) return; sel = { id: c.track.id, on: false };
-  if ($('#partBox')) { $('#partAll').checked = true; $('#partRow').hidden = true; $('#partFrom').value = '00:00:00'; $('#partTo').value = ''; }
+  if ($('#partBox')) { $('#partAll').checked = true; $('#partRow').hidden = true; $('#partFrom').value = '00:00:00'; $('#partTo').value = ''; $('#partLen').value = ''; }
 }
 
 /* ---- the clock's choice, in the player bar; and the part named beside the title ---- */

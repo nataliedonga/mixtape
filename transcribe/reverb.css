@@ -10,7 +10,11 @@
 .engine .engstatus.ok { color: var(--ok, #1f8a55); }
 .engine .eng:focus-within { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; border-radius: 6px; }
 /* choosing a part of the recording (part.js) */
-.partbox .partrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 2px 26px; }
+.partbox .partrow, .partbox .partplay { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 2px 26px; }
+.partbox .partrow label { min-width: 64px; }
+.partbox .partnow { font: 600 15px var(--f-mono, ui-monospace, monospace); margin-left: 6px; }
+.partbox .parthint { color: var(--muted, inherit); font-size: 13px; }
+.partbox #partFromBT { margin: 10px 0 2px 26px; }
 .partbox .partrow label { color: var(--muted, inherit); font-size: 13px; }
 .partbox .partrow input { width: 108px; height: 32px; border: 1px solid var(--faint, #888); border-radius: 8px; background: var(--sheet, transparent); color: inherit; font: 600 14px var(--f-mono, ui-monospace, monospace); text-align: center; }
 .partbox .partrow input:focus-visible { outline: 2px solid var(--accent, currentColor); outline-offset: 1px; }
