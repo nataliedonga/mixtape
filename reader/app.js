@@ -21,6 +21,7 @@ window.open = url => {
 import EmbedPDF from '../vendor/embedpdf/embedpdf.js';
 import * as PG from './pages.js';   // page tools for PDFs: rotate, delete, reorder, merge, extract, split
 import * as RD from './redact.js';  // redaction that removes what is under the boxes, then checks the new file
+import * as OC from './ocr.js';     // reading scanned pages (OCR): a new, searchable copy; the recogniser is only loaded when it is used
 import * as T from './textview.js'; // the reading view for everything that is not a PDF (Word, ebooks, Markdown, screenplays, text)
 
 const $ = s => document.querySelector(s);
@@ -76,7 +77,8 @@ const canAuto = d => autoOn && d.handle && d.handle.createWritable && d.rw !== f
 
 function showState() {
   const d = docs.get(activeId()), tx = T.texts.get(T.frontText()), any = docs.size > 0 || T.texts.size > 0;
-  $('#empty').hidden = any; $('#saveBtn').disabled = !d; $('#saveAsBtn').disabled = !d; $('#revertBtn').disabled = !(d && d.touched); $('#pagesBtn').disabled = !d; $('#redactBtn').disabled = !d;
+  $('#empty').hidden = any; $('#saveBtn').disabled = !d; $('#saveAsBtn').disabled = !d; $('#revertBtn').disabled = !(d && d.touched); $('#pagesBtn').disabled = !d; $('#redactBtn').disabled = !d; $('#ocrBtn').disabled = !d;
+  $('#toolsHint').textContent = d ? 'A picture of a page (PNG, JPEG or WebP) can also be opened or dropped to have its words read.' : 'Open a PDF to use these. A picture of a page (PNG, JPEG or WebP) can be opened or dropped to have its words read.';
   drawTabs();
   const st = $('#state'); let text = '', warn = false;
   if (tx) text = `${tx.name} · opened for reading (the file is not changed)`;
@@ -237,7 +239,8 @@ async function openOther(file, handle) {
 }
 async function openFile(file, handle) {
   if (T.canRead(file.name)) return openOther(file, handle);
-  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return toast(/\.doc$/i.test(file.name) ? `“${file.name}” is an old Word file (.doc), which the Reader cannot read. Open it in Word or LibreOffice, save it as .docx, and open that.` : `“${file.name}” is not a kind of document the Reader opens. It opens PDF, Word (.docx), ebooks (.epub), Markdown, screenplays (.fountain), Rich Text, OpenDocument (.odt) and plain text.`, 9000);
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf' && OC.isImage(file)) { PG.closePages(); RD.closeRedact(); return OC.openImage(file); } // a picture of a page: offer to read its words into a new PDF
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return toast(/\.doc$/i.test(file.name) ? `“${file.name}” is an old Word file (.doc), which the Reader cannot read. Open it in Word or LibreOffice, save it as .docx, and open that.` : `“${file.name}” is not a kind of document the Reader opens. It opens PDF, Word (.docx), ebooks (.epub), Markdown, screenplays (.fountain), Rich Text, OpenDocument (.odt) and plain text, and reads the words in pictures of pages (PNG, JPEG, WebP).`, 9000);
   try {
     if (handle) for (const d of docs.values()) { // the same file twice would be two copies fighting over one file
       if (d.handle && await d.handle.isSameEntry(handle).catch(() => false)) { bring('pdf', d.id); return toast(`“${d.name}” is already open: here it is.`); }
@@ -248,7 +251,7 @@ async function openFile(file, handle) {
 }
 async function pick() {
   if (!window.showOpenFilePicker) return $('#fileIn').click();
-  let hs; try { hs = await showOpenFilePicker({ multiple: true, id: 'reader-open', types: [{ description: 'Documents', accept: { 'application/pdf': ['.pdf'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'], 'application/vnd.oasis.opendocument.text': ['.odt'], 'application/rtf': ['.rtf'], 'application/epub+zip': ['.epub'], 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt', '.text', '.log', '.fountain', '.spmd'] } }, { description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] }); } catch (e) { if (e.name !== 'AbortError') $('#fileIn').click(); return; }
+  let hs; try { hs = await showOpenFilePicker({ multiple: true, id: 'reader-open', types: [{ description: 'Documents', accept: { 'application/pdf': ['.pdf'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'], 'application/vnd.oasis.opendocument.text': ['.odt'], 'application/rtf': ['.rtf'], 'application/epub+zip': ['.epub'], 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt', '.text', '.log', '.fountain', '.spmd'], 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'], 'image/webp': ['.webp'], 'image/tiff': ['.tif', '.tiff'] } }, { description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] }); } catch (e) { if (e.name !== 'AbortError') $('#fileIn').click(); return; }
   for (const h of hs) await openFile(await h.getFile(), h);
 }
 for (const b of ['#openBtn', '#openBtn2']) $(b).addEventListener('click', pick);
@@ -301,7 +304,7 @@ $('#recentBtn').addEventListener('click', async e => {
 /* ---------- one strip of tabs: PDFs (held by the viewer) and reading-view documents (held by textview.js) ---------- */
 let tabOrder = [], tabsWas = '';
 function bring(kind, id) { // put a document in front
-  PG.closePages(); RD.closeRedact();
+  PG.closePages(); RD.closeRedact(); OC.closeOcr();
   if (kind === 'text') { T.showText(id); $('#viewer').classList.add('away'); }
   else { T.showText(null); $('#viewer').classList.remove('away'); try { if (id && pdfActiveId() !== id) dm.setActiveDocument(id); } catch (e) {} }
   showState();
@@ -339,16 +342,41 @@ dm.onDocumentOpened?.(() => showState());
 T.initText({ toast, changed: () => showState(), appKey });
 PG.initPages({ toast, engine: () => registry.getEngine(), docOf: id => dm.getDocument(id), nameOf: id => docs.get(id)?.name || 'this PDF', bytesOf, openFile, replace: replaceBytes, undo: undoPages, canUndo: id => !!docs.get(id)?.undo?.length,
   isOpenFile: async h => { for (const d of docs.values()) if (d.handle && await d.handle.isSameEntry(h).catch(() => false)) return true; return false; } });
-$('#pagesBtn').addEventListener('click', () => { const id = activeId(); if (id) { RD.closeRedact(); PG.openPages(id); } });
+$('#pagesBtn').addEventListener('click', () => { const id = activeId(); if (id) { RD.closeRedact(); OC.closeOcr(); PG.openPages(id); } });
 RD.initRedact({ toast, engine: () => registry.getEngine(), docOf: id => dm.getDocument(id), nameOf: id => docs.get(id)?.name || 'this PDF', bytesOf, openFile });
-$('#redactBtn').addEventListener('click', () => { const id = activeId(); if (id) { PG.closePages(); RD.openRedact(id); } });
-dm.onActiveDocumentChanged?.(() => { PG.closePages(); RD.closeRedact(); });
+$('#redactBtn').addEventListener('click', () => { const id = activeId(); if (id) { PG.closePages(); OC.closeOcr(); RD.openRedact(id); $('#rdFind').focus(); } });
+OC.initOcr({ toast, engine: () => registry.getEngine(), docOf: id => dm.getDocument(id), nameOf: id => docs.get(id)?.name || 'this PDF', bytesOf, openFile });
+$('#ocrBtn').addEventListener('click', () => { const id = activeId(); if (id) { PG.closePages(); RD.closeRedact(); OC.openOcr(id); } });
+dm.onActiveDocumentChanged?.(() => { PG.closePages(); RD.closeRedact(); OC.closeOcr(); });
+
+/* ---------- Tools ▾: the tools for the PDF in front, in one menu so the header stays on one line ---------- */
+const toolsBtn = $('#toolsBtn'), toolsMenu = $('#toolsMenu');
+function tools(open, refocus) {
+  toolsMenu.hidden = !open; toolsBtn.setAttribute('aria-expanded', String(open));
+  if (open) { const rc = toolsBtn.getBoundingClientRect(); toolsMenu.style.top = rc.bottom + 6 + 'px'; toolsMenu.style.left = Math.max(8, Math.min(innerWidth - toolsMenu.offsetWidth - 8, rc.left)) + 'px'; toolsMenu.querySelector('button:not(:disabled)')?.focus(); }
+  else if (refocus) toolsBtn.focus();
+}
+toolsBtn.addEventListener('click', () => tools(toolsMenu.hidden));
+toolsMenu.addEventListener('click', e => { if (e.target.closest('button')) tools(false); });
+document.addEventListener('pointerdown', e => { if (!toolsMenu.hidden && !toolsMenu.contains(e.target) && !toolsBtn.contains(e.target)) tools(false); });
+addEventListener('keydown', e => { // Esc closes the menu, the arrows walk it, Tab leaves it
+  if (toolsMenu.hidden) return;
+  const items = [...toolsMenu.querySelectorAll('button:not(:disabled)')], k = items.indexOf(document.activeElement);
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); tools(false, true); }
+  else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && items.length) { e.preventDefault(); items[(k + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus(); }
+  else if (e.key === 'Tab') tools(false);
+}, true);
+addEventListener('resize', () => tools(false));
 
 showState();
-// the shared shell (../shell.js): update notice, error net, the keys sheet on "?" and the first-run welcome. The rows are the keys of the keydown handler above; change them together.
+// the shared shell (../shell.js): update notice, error net, the keys sheet on "?" and the first-run welcome. The rows are the keys of the keydown handlers here, in textview.js (reading view), pages.js (page tools), redact.js and ocr.js; change them together.
 window.MixtapeShell?.init({ tool: 'reader', toast, busy: () => [...docs.values()].some(d => d.dirty || d.busy), keys: { title: 'Reader keys', rows: [
   ['Any document'], [['Ctrl', 'O'], 'Open a document from this computer'], [['←', '→', 'Home', 'End'], 'Move between the open documents (when one of their tabs has the focus)'], ['?', 'These keys'],
   ['PDFs'], [['Ctrl', 'S'], 'Save now'], [['Ctrl', 'Shift', 'S'], 'Save a copy under another name or place'], [['Ctrl', 'Z'], 'Undo the last change (that is saved too)'],
+  ['Tools ▾'], [['↓', '↑'], 'Move through the tools in the open menu'], ['Esc', 'Close the menu'],
+  ['Pages… (when a page has the focus)'], [['←', '→', '↑', '↓'], 'Move from page to page'], [['Space', 'Enter'], 'Select the page, or take it out of the selection'], [['Shift', '← → ↑ ↓'], 'Select from where you started to here'], [['Ctrl', 'A'], 'Select every page'],
+  [['Alt', '← → ↑ ↓'], 'Move the selected pages earlier or later'], [['R', 'Shift R'], 'Turn the selected pages a quarter turn right, left'], [['Delete', 'Backspace'], 'Delete the selected pages (when Apply is pressed they are removed from the file)'], [['Ctrl', 'Z'], 'Take back the last thing you did in page tools'], ['Esc', 'Close page tools (it asks first if changes are not applied)'],
+  ['Redact… and OCR…'], ['Enter', 'In the find box of Redact: black out every match. In the pages box of OCR: start reading'], ['Esc', 'Close the tool. While pages are being read: stop the reading'],
   ['Word, ebooks and text'], [['Ctrl', 'F'], 'Find in the document'], [['Enter', 'Shift Enter'], 'In the find box: the next match, the one before'], [['F3', 'Ctrl G'], 'The next match (with Shift: the one before)'], [['Ctrl', 'P'], 'Save as PDF, through the browser’s print window'], ['Esc', 'In the find box: clear it'],
 ] } });
-if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) window.__reader = { registry, dm, ex, docs, openFile, save, saveAs, activeId, cap, changed, T, bring, PG, RD, replaceBytes, undoPages };
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) window.__reader = { registry, dm, ex, docs, openFile, save, saveAs, activeId, cap, changed, T, bring, PG, RD, OC, replaceBytes, undoPages };

@@ -1,0 +1,32 @@
+Everything here is unmodified, taken from npm registry tarballs. Nothing is fetched from the internet when it runs:
+the Reader (reader/ocr.js) points workerPath, corePath and langPath at these files and switches the library's own
+cache off.
+
+tesseract.esm.min.js, worker.min.js
+  npm package tesseract.js 7.0.0 (https://registry.npmjs.org/tesseract.js/-/tesseract.js-7.0.0.tgz), dist/.
+  Apache-2.0, see LICENSE.md.
+  The builds bundle these (the first four are named in worker.min.js.LICENSE.txt; the rest are the package's
+  dependencies, licences as declared in their npm packages):
+    regenerator-runtime  MIT
+    buffer               MIT
+    ieee754              BSD-3-Clause
+    zlib.js              MIT
+    idb-keyval           Apache-2.0
+    wasm-feature-detect  Apache-2.0
+    bmp-js               MIT
+    is-url               MIT
+
+core/tesseract-core-lstm.wasm.js, core/tesseract-core-simd-lstm.wasm.js, core/tesseract-core-relaxedsimd-lstm.wasm.js
+  npm package tesseract.js-core 7.0.0 (https://registry.npmjs.org/tesseract.js-core/-/tesseract.js-core-7.0.0.tgz).
+  The version tesseract.js 7.0.0 asks for ("tesseract.js-core": "^7.0.0"; npm's "latest" tag points at 6.1.2, a
+  later patch of the older line). Apache-2.0, see core/LICENSE. Tesseract OCR and Leptonica compiled to
+  WebAssembly (Tesseract: Apache-2.0; Leptonica: BSD-2-Clause). Three builds of the recogniser (LSTM only); the
+  worker picks one by what the browser's WebAssembly can do. Only one is downloaded.
+
+lang/eng.traineddata.gz
+  English, from npm package @tesseract.js-data/eng 1.0.0
+  (https://registry.npmjs.org/@tesseract.js-data/eng/-/eng-1.0.0.tgz), folder 4.0.0_best_int: the integer version
+  of "tessdata_best" (https://github.com/tesseract-ocr/tessdata_best), LSTM only. 2,952,873 bytes (5,199,098
+  unpacked). The trained data is Apache-2.0 (lang/LICENSE, from tessdata_best); the npm package that carries it
+  declares MIT.
+  sha256 of the unpacked data: 5dc5d8d640a212c9d6184921ba103b186f50e0fed9ee716c53e6b312b400d747

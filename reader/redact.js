@@ -29,14 +29,23 @@ const $ = s => document.querySelector(s);
 const wait = t => (t && typeof t.toPromise === 'function' ? t.toPromise() : new Promise((res, rej) => t.wait(res, e => rej(e && (e.reason || e)))));
 const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const shown = p => (p.rotation % 2 ? { w: p.size.height, h: p.size.width } : { w: p.size.width, h: p.size.height }); // the page as displayed, in points
+const shown = p => (p.rotation % 2 ? { w: p.size.height, h: p.size.width } : { w: p.size.width, h: p.size.height }); // the page as displayed, in points: for the VIEWER's copy of a document (size as stored, plus quarter turns)
+/* A document the engine opens itself (the private copy that is redacted, and the new file when it is checked) is
+   different: its page size is already the size as displayed, and it is drawn upright with rotation 0. Using the
+   viewer's rule there drew a page stored turned (a sideways scan) the wrong way up and put the boxes in the wrong
+   place on it, leaving the words readable in the picture. Tested with pages stored at 90, 180 and 270 degrees. */
+const upright = p => ({ w: p.size.width, h: p.size.height });
+/* The viewer's copy also gives the places of words (search matches, letters) on the page as it is STORED; the boxes
+   here are on the page as it is displayed. These two turn a box from one to the other for a page stored turned. */
+const toShown = (p, r) => { const q = ((p.rotation % 4) + 4) % 4, w = p.size.width, h = p.size.height; return q === 1 ? { ...r, x: h - r.y - r.h, y: r.x, w: r.h, h: r.w } : q === 2 ? { ...r, x: w - r.x - r.w, y: h - r.y - r.h } : q === 3 ? { ...r, x: r.y, y: w - r.x - r.w, w: r.h, h: r.w } : r; };
+const toStored = (p, r) => { const q = ((p.rotation % 4) + 4) % 4, w = p.size.width, h = p.size.height; return q === 1 ? { ...r, x: r.y, y: h - r.x - r.w, w: r.h, h: r.w } : q === 2 ? { ...r, x: w - r.x - r.w, y: h - r.y - r.h } : q === 3 ? { ...r, x: w - r.y - r.h, y: r.x, w: r.h, h: r.w } : r; };
 const hits = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const er = r => ({ origin: { x: r.x, y: r.y }, size: { width: r.w, height: r.h } });
 const re = r => ({ x: r.origin.x, y: r.origin.y, w: r.size.width, h: r.size.height });
 let hooks = {}, S = null;
 
 async function canvasOf(eng, doc, page, scale) {
-  const blob = await wait(eng.renderPage(doc, page, { scaleFactor: scale, rotation: page.rotation, withAnnotations: true, withForms: true })), bmp = await createImageBitmap(blob);
+  const blob = await wait(eng.renderPage(doc, page, { scaleFactor: scale, rotation: 0, withAnnotations: true, withForms: true })), bmp = await createImageBitmap(blob); // only ever given documents the engine opened itself: 0 is upright
   const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0); bmp.close?.(); return c;
 }
 function flat(canvas, r, scale) { // are the pixels under this box one flat colour (nothing painted there)?
@@ -75,9 +84,9 @@ export async function redact(bytes, marks, eng, say = () => {}) {
         try { await wait(eng.redactTextInRects(doc, page, boxes.map(er), { recurseForms: true, drawBlackBoxes: false })); } catch (e) { asPicture = 'the engine could not remove its text'; }
         try { for (const a of await wait(eng.getPageAnnotations(doc, page))) if (a.rect && boxes.some(b => hits(b, re(a.rect)))) { await wait(eng.removePageAnnotation(doc, page, a)); removedAnnots++; } } catch (e) { asPicture ||= 'a note, link or form field under a box could not be removed'; }
       }
-      if (!asPicture) { const c = await canvasOf(eng, doc, page, 2), sc = c.width / shown(page).w; if (!boxes.every(b => flat(c, b, sc))) asPicture = 'a picture, drawing or stamp lies under a box'; } // the scale is measured from the picture, never assumed
+      if (!asPicture) { const c = await canvasOf(eng, doc, page, 2), sc = c.width / upright(page).w; if (!boxes.every(b => flat(c, b, sc))) asPicture = 'a picture, drawing or stamp lies under a box'; } // the scale is measured from the picture, never assumed
       if (asPicture) { // the page becomes a picture of itself with the boxes burnt in
-        const size = shown(page), c = await canvasOf(eng, doc, page, Math.min(200 / 72, 2600 / Math.max(size.w, size.h))), sc = c.width / size.w, g = c.getContext('2d');
+        const size = upright(page), c = await canvasOf(eng, doc, page, Math.min(200 / 72, 2600 / Math.max(size.w, size.h))), sc = c.width / size.w, g = c.getContext('2d');
         g.fillStyle = '#000'; for (const b of boxes) g.fillRect(Math.floor(b.x * sc) - 1, Math.floor(b.y * sc) - 1, Math.ceil(b.w * sc) + 2, Math.ceil(b.h * sc) + 2);
         const jpg = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9));
         picture.set(pi, { jpg: new Uint8Array(await jpg.arrayBuffer()), ...size }); why.set(pi, asPicture);
@@ -136,7 +145,7 @@ export async function check(bytes, marks, passages, eng, picturePages = new Set(
       const left = (await wordsUnder(eng, doc, doc.pages[pi], boxes)).map(s => s.replace(/\s+/g, '')).filter(Boolean);
       if (left.length) failures.push({ page: pi + 1, what: `letters are still inside a box (“${left.join(' ').slice(0, 40)}”)` });
       for (const a of await wait(eng.getPageAnnotations(doc, doc.pages[pi]))) if (a.rect && boxes.some(b => hits(b, re(a.rect)))) failures.push({ page: pi + 1, what: 'a note, link or form field still touches a box' });
-      { const c = await canvasOf(eng, doc, doc.pages[pi], 1.5), sc = c.width / shown(doc.pages[pi]).w; if (!boxes.every(b => black(c, b, sc))) failures.push({ page: pi + 1, what: 'a box is not solid black in the new file' }); }
+      { const c = await canvasOf(eng, doc, doc.pages[pi], 1.5), sc = c.width / upright(doc.pages[pi]).w; if (!boxes.every(b => black(c, b, sc))) failures.push({ page: pi + 1, what: 'a box is not solid black in the new file' }); }
       if (picturePages.has(pi) && (await wait(eng.getPageGlyphs(doc, doc.pages[pi]))).length) failures.push({ page: pi + 1, what: 'a page that should be only a picture still carries text' });
     }
     lines.push(`Opened the new file again and read all the text on its ${plural(doc.pages.length, 'page', 'pages')}.`);
@@ -179,7 +188,7 @@ async function findAll(q, add) {
   q = q.trim(); if (q.length < 2) { $('#rdFindN').textContent = q ? 'Type at least 2 letters.' : ''; return []; }
   const r = await wait(hooks.engine().searchAllPages(S.doc, q)), res = r?.results || [];
   $('#rdFindN').textContent = res.length ? `${plural(res.length, 'match', 'matches')}` : 'Not found in the text of this document.';
-  if (add) { for (const h of res) for (const rc of h.rects) { const b = re(rc), m = { page: h.pageIndex, x: b.x - 1.5, y: b.y - 2, w: b.w + 3, h: b.h + 4, text: h.context?.match || q }; if (!S.marks.some(o => o.page === m.page && Math.abs(o.x - m.x) < 1 && Math.abs(o.y - m.y) < 1 && Math.abs(o.w - m.w) < 1)) S.marks.push(m); } drawMarks(); if (res.length) { $('#rdFindN').textContent = `${plural(res.length, 'match', 'matches')} marked.`; document.querySelector(`#rdPages .rdpage[data-p="${res[0].pageIndex}"]`)?.scrollIntoView({ block: 'nearest' }); } }
+  if (add) { for (const h of res) for (const rc of h.rects) { const b = toShown(S.doc.pages[h.pageIndex], re(rc)), m = { page: h.pageIndex, x: b.x - 1.5, y: b.y - 2, w: b.w + 3, h: b.h + 4, text: h.context?.match || q }; if (!S.marks.some(o => o.page === m.page && Math.abs(o.x - m.x) < 1 && Math.abs(o.y - m.y) < 1 && Math.abs(o.w - m.w) < 1)) S.marks.push(m); } drawMarks(); if (res.length) { $('#rdFindN').textContent = `${plural(res.length, 'match', 'matches')} marked.`; document.querySelector(`#rdPages .rdpage[data-p="${res[0].pageIndex}"]`)?.scrollIntoView({ block: 'nearest' }); } }
   return res;
 }
 export async function openRedact(id) {
@@ -190,7 +199,8 @@ export async function openRedact(id) {
   drawMarks();
   for (const p of doc.pages) { if (!S || S.id !== id) return; try { const blob = await wait(hooks.engine().renderPage(doc, p, { scaleFactor: 1.5, rotation: p.rotation, withAnnotations: true, withForms: true })), u = URL.createObjectURL(blob); S.urls.push(u); const im = document.querySelector(`#rdPages .rdpage[data-p="${p.index}"] img`); if (im) im.src = u; } catch (e) {} }
 }
-export function closeRedact() { if (!S) return; for (const u of S.urls) URL.revokeObjectURL(u); S = null; $('#redact').hidden = true; $('#rdPages').textContent = ''; }
+function setDraw(on) { $('#rdPages').classList.toggle('draw', on); const b = $('#rdDraw'); b.setAttribute('aria-pressed', String(on)); b.textContent = on ? 'Drawing with a finger: on' : 'Draw boxes with a finger'; }
+export function closeRedact() { if (!S) return; setDraw(false); for (const u of S.urls) URL.revokeObjectURL(u); S = null; $('#redact').hidden = true; $('#rdPages').textContent = ''; }
 function showReport(r) {
   const box = $('#rdReport'); box.hidden = !r; $('#rdWork').hidden = !!r; $('#rdGo').hidden = !!r; if (!r) return;
   const n = S.marks.length, pics = r.pictures.length ? `<p class="warn">${r.pictures.map(p => `Page ${p.page} became a picture, because ${esc(p.why)}: its words can no longer be selected or searched.`).join(' ')}</p>` : '';
@@ -220,6 +230,7 @@ export function initRedact(h) {
   $('#rdClose').addEventListener('click', () => { if (S && S.marks.length && $('#rdReport').hidden && !confirm('Close without blacking anything out? The boxes you drew will be forgotten.')) return; closeRedact(); });
   $('#rdGo').addEventListener('click', go);
   $('#rdClear').addEventListener('click', () => { S.marks = []; drawMarks(); });
+  $('#rdDraw').addEventListener('click', () => setDraw(!$('#rdPages').classList.contains('draw')));
   $('#rdMarkAll').addEventListener('click', () => findAll($('#rdFind').value, true));
   $('#rdFind').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); findAll($('#rdFind').value, true); } });
   let ft = 0; $('#rdFind').addEventListener('input', () => { clearTimeout(ft); ft = setTimeout(() => S && findAll($('#rdFind').value, false), 250); });
@@ -237,6 +248,7 @@ export function initRedact(h) {
   pagesEl.addEventListener('pointerdown', e => {
     const pg = e.target.closest('.rdpage'); if (!pg || e.button || !S) return;
     const box = e.target.closest('.rdbox'); if (box) { S.marks.splice(+box.dataset.k, 1); drawMarks(); return; }
+    if (e.pointerType === 'touch' && !pagesEl.classList.contains('draw')) return; // a finger scrolls the pages unless "Draw boxes with a finger" is on (a mouse or pen always draws)
     const r = pg.getBoundingClientRect(); d = { pg, r, x0: e.clientX, y0: e.clientY, ghost: document.createElement('div') }; d.ghost.className = 'rdbox ghost'; pg.appendChild(d.ghost); e.preventDefault();
   });
   addEventListener('pointermove', e => { if (!d) return; const x = Math.max(d.r.left, Math.min(d.r.right, e.clientX)), y = Math.max(d.r.top, Math.min(d.r.bottom, e.clientY)); d.box = { l: Math.min(d.x0, x) - d.r.left, t: Math.min(d.y0, y) - d.r.top, w: Math.abs(x - d.x0), h: Math.abs(y - d.y0) }; d.ghost.style.cssText = `left:${d.box.l}px;top:${d.box.t}px;width:${d.box.w}px;height:${d.box.h}px`; });
@@ -244,7 +256,7 @@ export function initRedact(h) {
     if (!d) return; const { pg, r, box, ghost } = d; d = null; ghost.remove();
     if (!S || !box || box.w < 5 || box.h < 5) return;
     const pi = +pg.dataset.p, sz = S.sizes[pi], k = sz.w / r.width, m = { page: pi, x: box.l * k, y: box.t * k, w: box.w * k, h: box.h * k, text: '' };
-    try { m.text = (await wordsUnder(hooks.engine(), S.doc, S.doc.pages[pi], [m]))[0].replace(/\s+/g, ' ').trim(); } catch (e) {}
+    try { m.text = (await wordsUnder(hooks.engine(), S.doc, S.doc.pages[pi], [toStored(S.doc.pages[pi], m)]))[0].replace(/\s+/g, ' ').trim(); } catch (e) {}
     S.marks.push(m); drawMarks();
   });
   addEventListener('keydown', e => { if (S && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); $('#rdClose').click(); } });

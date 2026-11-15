@@ -1,5 +1,14 @@
 [
   {
+    "version": 88,
+    "date": "2026-11-15",
+    "items": [
+      "Reader: OCR… reads scanned pages and pictures so you can search and copy their text. It makes a new PDF and tells you, page by page, how sure it was. It is machine reading: check names and numbers.",
+      "Reader: Redact now works correctly on pages that are stored sideways or upside down. Before this version, a blacked-out word on such a page could stay readable. If you redacted a turned page earlier, check that copy again.",
+      "Reader: Pages, Redact and OCR are together under Tools."
+    ]
+  },
+  {
     "version": 87,
     "date": "2026-11-15",
     "items": [
