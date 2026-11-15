@@ -45,7 +45,7 @@ export function sizeText(b) {
   return `${(b / 1073741824).toFixed(2)} GB`;
 }
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
-const tell = () => { try { const c = new BroadcastChannel(CHANNEL); c.postMessage({ type: 'library' }); c.postMessage({ type: 'lists' }); setTimeout(() => c.close(), 500); } catch (e) {} };
+const tell = forgot => { try { const c = new BroadcastChannel(CHANNEL); if (forgot) c.postMessage({ type: 'forgot' }); /* an open Player drops what is gone, so it cannot write a forgotten song back */ c.postMessage({ type: 'library' }); c.postMessage({ type: 'lists' }); setTimeout(() => c.close(), 500); } catch (e) {} };
 
 /* ---------- the browser's stores ---------- */
 /* Opens a database only if it is already there. Opening one that is not would create it empty, and the tool it belongs
@@ -308,7 +308,7 @@ export async function forget(id) {
   else if (id === 'settings') await attempt(settings);
   else if (id.startsWith('cache:') && CACHE_OWN(id.slice(6))) await attempt(() => cache(id.slice(6)));
   else return false;
-  tell();
+  tell(true);
   return ok;
 }
 

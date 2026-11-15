@@ -1,5 +1,12 @@
 [
   {
+    "version": 86,
+    "date": "2026-11-15",
+    "items": [
+      "When you forget songs in Privacy and storage, a Player that is open elsewhere drops them at once instead of still showing them."
+    ]
+  },
+  {
     "version": 85,
     "date": "2026-11-15",
     "items": [

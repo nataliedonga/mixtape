@@ -11,7 +11,9 @@ An offline music player for your own songs, with a studio for mixing, scoring to
 - **Player:** your own song files, saved on your device and never uploaded. Queue, playlists, favourites, search, shuffle and repeat, sleep timer, speed, lock-screen controls. Reads title, artist, album and cover art from MP3 tags.
 - **Studio:** cut and arrange parts on a timeline, mix with per-track EQ, compression, sends and groups, drum machine, MIDI and synthesised instruments, and an orchestra of CC0 samples.
 - **Scoring to picture:** a picture track, hit points, a tempo map that fits the cuts, and finished mixes delivered to broadcast and streaming loudness standards (EBU R128, -23 LUFS).
-- **Reader:** open a PDF to read it, mark it up, fill in its forms and sign it, then save back into the same file.
+- **Reader:** open a PDF to read it, mark it up, fill in its forms and sign it, saved back into the same file; reorder, merge and split its pages; redact it with a check that the words are really gone. Also reads Word, Markdown, text, RTF, OpenDocument, ebooks and screenplays.
+- **Cutter:** cut or join any sound or video file, exact to the frame or untouched.
+- **Home, and Privacy and storage:** see everything kept on the device, back it all up to one file, restore it, or forget it.
 - **Lyrics and transcripts:** speech recognition runs in the browser (Whisper through transformers.js) to time lyrics line by line, transcribe interviews, find the speakers, and match a read script to its recording word by word.
 
 Everything runs on the device. The only exception is an optional AI check of a transcript, which is switched off for anything marked sensitive.

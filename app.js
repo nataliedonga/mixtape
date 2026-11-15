@@ -824,7 +824,11 @@ async function openLibrary() {
 if (chan) chan.onmessage = async e => {
   if (!e.data || store !== 'ok') return;
   try {
-    if (e.data.type === 'library') { for (const t of await dbAll('tracks')) { if (tracks.has(t.id)) continue; if (!t.blob && t.buf) { t.blob = new Blob([t.buf], { type: t.type || '' }); delete t.buf; } if (t.blob) tracks.set(t.id, t); } render(); updateStorage(); }
+    if (e.data.type === 'forgot') { // Privacy and storage removed things: start again from what is really stored, so nothing forgotten is shown or saved back
+      const all = await dbAll('tracks'), keep = new Set(all.map(t => t.id)); let gone = 0; for (const id of [...tracks.keys()]) if (!keep.has(id)) gone++;
+      if (gone) { toast(`${gone} song${gone === 1 ? ' was' : 's were'} removed in Privacy and storage. Reloading the player…`, 2500); setTimeout(() => location.reload(), 1200); }
+    }
+    else if (e.data.type === 'library') { for (const t of await dbAll('tracks')) { if (tracks.has(t.id)) continue; if (!t.blob && t.buf) { t.blob = new Blob([t.buf], { type: t.type || '' }); delete t.buf; } if (t.blob) tracks.set(t.id, t); } render(); updateStorage(); }
     else if (e.data.type === 'lists') { await readLists(); if (S.view.type === 'list' && !lists.some(l => l.id === S.view.id)) S.view = { type: 'all' }; render(); }
   } catch (err) { /* a read that failed changes nothing here: what is on screen stays */ }
 };
