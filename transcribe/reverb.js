@@ -61,6 +61,31 @@ function build() {
 }
 
 /* ---- the sound, written into the folder as a 16 kHz mono WAV, a window at a time (hours never sit in memory) ---- */
+/* Who is speaking when, for a Reverb transcript. Reverb only hears the words; the voices are found here, in the browser,
+   by the same speaker finder the in-browser recogniser uses (speaker-worker.js), 30 seconds at a time. Each word takes
+   the speaker of the turn it falls in, and a new speaker starts a new paragraph. Nothing leaves this computer. */
+async function addSpeakers(track, words, from, dur, tick, job) {
+  const T = window.TranscriptCore, voices = []; let out = [], k = 0, failed = 0;
+  if (!T || words.some(x => x.s == null)) return null;
+  const heard = words.map(x => ({ text: x.t, start: x.s, end: x.e ?? x.s, ...(x.c != null ? { c: x.c } : {}) }));
+  const w = new Worker('../speaker-worker.js', { type: 'module' });
+  const ask = msg => new Promise(res => { w.onmessage = m => { const x = m.data; if (x.type === 'speakers') res(x); else if (x.type === 'error') { console.warn('speakers:', x.message); res(null); } }; w.onerror = e => { console.warn('speakers:', e.message); res(null); }; w.postMessage(msg, [msg.audio.buffer]); });
+  try {
+    for (let w0 = Math.max(0, from - 2.5); w0 < dur; w0 += 25) {
+      if (job && job.stop) throw Object.assign(new Error('stopped'), { stopped: true });
+      const w1 = Math.min(dur, w0 + 30), keepFrom = w0 <= from ? from : w0 + 2.5, keepTo = w1 >= dur ? Infinity : w0 + 27.5;
+      let part = []; while (k < heard.length && heard[k].start < keepTo) part.push(heard[k++]);
+      if (part.length) {
+        const pcm = await api.window16k(track, w0, w1), sp = pcm.length > 8000 ? await ask({ audio: pcm, offset: w0, keepFrom: keepFrom === 0 ? -1 : keepFrom, keepTo }) : null;
+        if (sp && sp.turns.length) { const names = sp.prints.map(pr => T.clusterVoice(voices, pr).name); part = T.labelHeard(part, sp.turns.map(t => ({ s: t.s, e: t.e, name: t.g >= 0 ? names[t.g] : null }))); }
+        else if (!sp) failed++;
+      }
+      out = T.append(out, part); if (tick) tick(Math.min(1, w1 / dur));
+      if (w1 >= dur) break;
+    }
+  } finally { w.terminate(); }
+  return failed && !voices.length ? null : { words: out, voices };
+}
 async function writeWav(name, track, t0, dur, tick) { // from t0 to dur: the whole recording, or only the part asked for
   const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); let frames = 0;
   const head = n => { const b = new ArrayBuffer(44), v = new DataView(b), S = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0))); S(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); S(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 16000, true); v.setUint32(28, 32000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); S(36, 'data'); v.setUint32(40, n * 2, true); return b; };
@@ -108,10 +133,15 @@ export async function startReverb() {
         const at = v => { const n = num(v); return n == null ? null : Math.round((n + t0) * 1000) / 1000; }; /* Reverb heard only the part: its times start at the part's start */
         const words = got.words.map(w => ({ t: String(w.t), s: at(w.s), e: at(w.e), ...(w.p ? { p: true } : {}), ...(w.c != null && isFinite(+w.c) ? { c: +w.c } : {}) })); if (words[0]) words[0].p = true;
         if (!words.length) throw new Error('Reverb heard no words in this recording');
+        // the words are kept at once (so they are safe), then the voices are found and the speakers put on them
         cur.tr = { id: cur.track.id, mode: 'heard', words, upTo: dur, done: true, duration: whole, updated: Date.now(), speakers: false, engine: 'Reverb ASR v1 (Rev)', use: 'personal', ...(pt ? { part: pt } : {}) };
+        await api.save(); let who = null;
+        try { st.textContent = 'Finding who speaks when, on this computer…'; bar.style.width = '0%'; who = await addSpeakers(a, words, t0, dur, p => { bar.style.width = Math.round(p * 100) + '%'; st.textContent = `Finding who speaks when, on this computer: ${Math.round(p * 100)}%`; }, job); }
+        catch (e) { if (e && e.stopped) who = null; else console.warn('speakers:', e); }
+        if (who && who.words.length === words.length) { cur.tr.words = who.words; cur.tr.voices = who.voices; cur.tr.speakers = true; }
         if (api.partTrim) api.partTrim(cur.tr); // what the website leaves out is not kept
         await api.save(); await clean();
-        api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb. Personal use only. Click any word to hear it.`, 7000); return;
+        api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb${who && cur.tr.speakers ? `, ${who.voices.length} speaker${who.voices.length === 1 ? '' : 's'} found (click a name to rename it everywhere)` : ', without speakers (they could not be found this time)'}. Personal use only.`, 9000); return;
       }
       const s = await readJSON('status.json'), alive = s && s.alive && Date.now() / 1000 - s.alive < 8; quiet = alive ? 0 : quiet + 1;
       if (quiet > 8) throw new Error('Reverb’s helper stopped answering. Start it again from your reverb-personal folder, then press Transcribe');
@@ -135,5 +165,5 @@ export function initReverb(a) {
   api = a; build();
   const m = $('#meta'); if (m) new MutationObserver(badge).observe(m, { childList: true, characterData: true, subtree: true });
   kv('readonly', s => s.get('inbox')).then(d => { if (d) { dir = d; refresh(); } }).catch(() => {});
-  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__reverb = { setDir(d) { dir = d; lastStatus = null; return refresh(); }, startReverb, reverbChosen }; // for checks on this computer only
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__reverb = { setDir(d) { dir = d; lastStatus = null; return refresh(); }, startReverb, reverbChosen, async speakersFor(words) { const cur = api.cur, input = new api.M.Input({ source: new api.M.BlobSource(cur.blob), formats: api.M.ALL_FORMATS }), a = await input.getPrimaryAudioTrack(); return addSpeakers(a, words, 0, await a.computeDuration(), null, null); } }; // for checks on this computer only
 }

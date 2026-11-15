@@ -1,5 +1,12 @@
 [
   {
+    "version": 101,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts: Personal (Reverb) transcripts now have speakers. After Reverb writes the words down, Mixtape finds who speaks when on this computer; click a name to rename it everywhere."
+    ]
+  },
+  {
     "version": 100,
     "date": "2026-11-15",
     "items": [
