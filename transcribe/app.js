@@ -7,6 +7,7 @@
 import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
 import { initReverb, reverbChosen, startReverb } from './reverb.js';
 import { initFollow } from './follow.js';
+import { initPart, partChosen, partClock, partSeek, partShow, partExport } from './part.js';
 const T = window.TranscriptCore;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -138,7 +139,7 @@ function paraHTML(words, p, pi, hidden) {
     ws.push(`<span class="${cls}" data-i="${i}"${tip}>${esc(w.t)}</span>${f ? `<button class="sugc" data-fix="${k}" title="AI check: probably “${esc(f.likely)}”. Click to accept it or keep what was heard.">→ ${esc(f.likely)}</button>` : ''}${(NT.end.get(i) || []).map(n => `<button class="ntb" data-note="${esc(n.id)}" title="${esc(n.text || 'Note')}">✎ ${esc(noteLabel(n))}</button>`).join('')}`);
   }
   const col = p.speaker ? spkColour(p.speaker) : '';
-  return `<div class="para" data-p="${pi}" data-i0="${p.i0}" data-i1="${p.i1}"><div class="gut">${timed ? `<button class="ts" data-ts="${first.s}" title="Play from here">${T.short(first.s)}</button>` : '<span class="ts">—</span>'}<button class="spk${p.speaker ? '' : ' none'}" data-spk title="Choose or rename the speaker"${col ? ` style="color:${col}"` : ''}>${p.speaker ? esc(p.speaker) : '+ speaker'}</button>${sugSpk(p.i0)}</div><div class="words">${ws.join(' ')}</div><button class="ed" data-ed title="Correct this paragraph (or double-click a word)" aria-label="Correct this paragraph">✎</button></div>`;
+  return `<div class="para" data-p="${pi}" data-i0="${p.i0}" data-i1="${p.i1}"><div class="gut">${timed ? `<button class="ts" data-ts="${first.s}" title="Play from here">${T.short(partShow(first.s))}</button>` : '<span class="ts">—</span>'}<button class="spk${p.speaker ? '' : ' none'}" data-spk title="Choose or rename the speaker"${col ? ` style="color:${col}"` : ''}>${p.speaker ? esc(p.speaker) : '+ speaker'}</button>${sugSpk(p.i0)}</div><div class="words">${ws.join(' ')}</div><button class="ed" data-ed title="Correct this paragraph (or double-click a word)" aria-label="Correct this paragraph">✎</button></div>`;
 }
 /* the strip above the text: the switches, the speakers (click to rename everywhere), the keys */
 function drawTools() {
@@ -162,7 +163,7 @@ function wireMedia(m) {
 let raf = 0; function loop() { cancelAnimationFrame(raf); const go = () => { if (!cur || cur.media.paused) return; tick(); raf = requestAnimationFrame(go); }; raf = requestAnimationFrame(go); }
 function tick() {
   if (!cur) return; const m = cur.media, d = m.duration || cur.track.duration || 0;
-  $('#tm').textContent = `${T.short(m.currentTime)} / ${T.short(d)}`; if (document.activeElement !== $('#seek')) $('#seek').value = d ? Math.round(m.currentTime / d * 1000) : 0;
+  const ck = partClock(cur, m.currentTime, d); $('#tm').textContent = `${T.short(ck.now)} / ${T.short(ck.total)}`; if (document.activeElement !== $('#seek')) $('#seek').value = Math.round(ck.frac * 1000);
   const r = cur.tr; if (!r || !r.words.length) return;
   const k = T.wordAt(r.words, m.currentTime, T.timedUpTo(r.words)); if (k === lit) return;
   const old = lit >= 0 && $(`.w[data-i="${lit}"]`); if (old) old.classList.remove('on'); lit = k;
@@ -180,7 +181,7 @@ const speedBy = d => { const sel = $('#speed'), i = Math.max(0, Math.min(SPEEDS.
 $('#bPlay').addEventListener('click', togglePlay);
 $('#bBack').addEventListener('click', () => back(10));
 $('#bFwd').addEventListener('click', () => fwd(5));
-$('#seek').addEventListener('input', e => { if (cur && cur.media.duration) { cur.media.currentTime = e.target.value / 1000 * cur.media.duration; justSeeked = true; } });
+$('#seek').addEventListener('input', e => { if (cur && cur.media.duration) { cur.media.currentTime = partSeek(cur, e.target.value / 1000, cur.media.duration); justSeeked = true; } });
 $('#speed').addEventListener('change', e => { if (cur) cur.media.playbackRate = +e.target.value; });
 $('#text').addEventListener('dblclick', e => { const p = e.target.closest('.para'); if (p && e.target.closest('.w') && !editing) { e.preventDefault(); startEdit(p, +e.target.closest('.w').dataset.i); } });
 $('#text').addEventListener('click', e => {
@@ -461,13 +462,13 @@ function markHits() { document.querySelectorAll('.w.hit').forEach(x => x.classLi
 // every file saved from a sensitive recording says so: in its name (subtitles have no place for a remark) and, where the format allows, in its first line
 const SENS_LINE = 'SENSITIVE: this transcript is from a recording marked sensitive. Do not share or upload it.';
 $('#exportBtn').addEventListener('click', e => {
-  const r = cur.tr, sens = sensitive(cur.track.id), mark = t => sens ? SENS_LINE + '\n\n' + t : t, base = (cur.track.title || 'transcript').replace(/[\\/:*?"<>|]+/g, '-') + (sens ? ' (SENSITIVE)' : ''), timedWords = r.words.slice(0, T.timedUpTo(r.words));
+  const r = partExport(cur.tr), sens = sensitive(cur.track.id), mark = t => sens ? SENS_LINE + '\n\n' + t : t, base = (cur.track.title || 'transcript').replace(/[\\/:*?"<>|]+/g, '-') + (sens ? ' (SENSITIVE)' : ''), timedWords = r.words.slice(0, T.timedUpTo(r.words));
   Legal.exportMenu(e.currentTarget, [[V.clean ? 'Save the clean script as' : 'Save the text (full verbatim) as', null],
     ['Text with timestamps (.txt)', () => dl(mark(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { clean: V.clean })), base + (V.clean ? ' (clean)' : '') + '.txt')],
     ['Plain text (.txt)', () => dl(mark(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { timestamps: false, clean: V.clean })), base + (V.clean ? ' (clean, plain)' : ' (plain)') + '.txt')],
     ['Subtitles (.srt)', () => dl(T.toSrt(timedWords, V.clean), base + '.srt')],
     ['Web subtitles (.vtt)', () => dl(sens ? T.toVtt(timedWords, V.clean).replace(/^WEBVTT[^\n]*\n+/, m => m.trimEnd() + '\n\nNOTE ' + SENS_LINE + '\n\n') : T.toVtt(timedWords, V.clean), base + '.vtt')],
-    ['Words with times (.json)', () => dl(JSON.stringify({ title: cur.track.title, mode: r.mode, ...(sensitive(cur.track.id) ? { sensitive: true } : {}), words: r.words }, null, 1), base + '.json')],
+    ['Words with times (.json)', () => dl(JSON.stringify({ title: cur.track.title, mode: r.mode, ...(sensitive(cur.track.id) ? { sensitive: true } : {}), words: cur.tr.words, ...(cur.tr.part ? { part: cur.tr.part } : {}) }, null, 1), base + '.json')],
     ['Start again…', null],
     ['Start again (this transcript is deleted)', async () => { if (!confirm(`Delete the ${r.mode === 'text' ? 'read-along' : 'transcript'} of “${cur.track.title}” and start again? Save it as a file first if you want to keep it.`)) return; await tx(trDB, 'transcripts', 'readwrite', o => o.delete(r.id)); trs.delete(r.id); cur.tr = null; hits = []; drawLib(); drawAll(); }]]);
 });
@@ -509,14 +510,15 @@ $('#stopBtn').addEventListener('click', () => { if (job) { job.stop = true; $('#
 async function save() { cur.tr.updated = Date.now(); try { await putTr(cur.tr); } catch (e) { toast('This change could not be saved on this device (its storage may be full). Save the transcript as a file now, so it is not lost.', 12000); throw e; } trs.set(cur.tr.id, cur.tr); drawLib(); }
 async function start(mode, text) {
   if (job) return; const d = cur.track.duration || cur.media.duration || 0;
-  if (!cur.tr) cur.tr = { id: cur.track.id, mode, words: mode === 'text' ? T.fromText(text) : [], upTo: 0, done: false, duration: d, updated: Date.now() };
+  const pt = !cur.tr && mode === 'heard' ? partChosen(cur) : null; if (pt === false) return; // only a part was asked for, and what was typed cannot be used
+  if (!cur.tr) cur.tr = { id: cur.track.id, mode, words: mode === 'text' ? T.fromText(text) : [], upTo: pt ? pt.a : 0, done: false, duration: d, updated: Date.now(), ...(pt ? { part: pt } : {}) };
   const tr = cur.tr; job = { stop: false }; $('#start').hidden = true; $('#cont').hidden = true; $('#run').hidden = false; drawAll(); $('#start').hidden = true; $('#cont').hidden = true;
   const st = $('#runSt'), bar = $('#runBar');
   let worker, spkWorker;
   try {
     const input = new M.Input({ source: new M.BlobSource(cur.blob), formats: M.ALL_FORMATS }), a = await input.getPrimaryAudioTrack(); if (!a) throw new Error('this file has no sound');
     if (!(await a.canDecode())) throw new Error(`this browser cannot decode its sound (${a.codec})`);
-    const dur = await a.computeDuration(); tr.duration = dur;
+    const whole = await a.computeDuration(); tr.duration = whole; const dur = tr.part ? Math.min(whole, tr.part.b) : whole; // a part ends where it was asked to
     worker = new Worker('../asr-worker.js', { type: 'module' }); const files = {};
     const hear = msg => new Promise((res, rej) => { worker.onmessage = m => { const x = m.data; if (x.type === 'load') { files[x.file] = x; const tot = Object.values(files).reduce((s, f) => s + (f.total || 0), 0), got = Object.values(files).reduce((s, f) => s + (f.loaded || 0), 0); st.textContent = `Getting the recogniser (once only): ${Math.round(got / 1e6)} of ${Math.round(tot / 1e6)} MB`; bar.style.width = (tot ? got / tot * 100 : 0) + '%'; } else if (x.type === 'window') res(x.words); else if (x.type === 'error') rej(new Error(x.message)); }; worker.onerror = e => rej(new Error(e.message || 'the recogniser could not start')); worker.postMessage(msg, [msg.audio.buffer]); });
     // who speaks when: a second worker, in step with the recogniser (transcripts only; a read-along has one narrator)
@@ -595,7 +597,8 @@ addEventListener('beforeunload', e => { if (job || dirtyEdit()) { e.preventDefau
 const Legal = await import('./legal.js').then(m => m.initLegal({ get cur() { return cur; }, get editing() { return editing; }, get job() { return job; }, T, KEYS, toast, esc, menu, dl, save, remember, drawText, saveEdit, shiftNotes, sensitive, SENS_LINE })).catch(e => { console.warn('Legal inserts did not load:', e); return { edited: (o, a, b, w) => w, imported() {}, exportMenu: menu }; });
 window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dirtyEdit(), keys: { open: keysHelp, host: '#menu', match: 'table.keys' } });
 initFollow({ toast, get cur() { return cur; } });
-initReverb({ M, toast, save, drawAll, window16k, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
+initPart({ toast, drawAll, get cur() { return cur; } });
+initReverb({ M, toast, save, drawAll, window16k, partChosen, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */
 await loadLib(); loadShelf();
 const want = new URLSearchParams(location.search).get('song'); if (want) select(want);

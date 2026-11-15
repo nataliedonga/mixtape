@@ -9,12 +9,15 @@
    "inbox"): this page writes the recording there as plain sound plus a small job note; the helper writes the words
    back; this page reads them and removes the files. See watch.py in that folder for the other half. */
 const KEY = 'mixtape-transcript-engine', $ = s => document.querySelector(s);
-let api, dir = null, lastStatus = null, statusT = 0;
+let api, dir = null, home = '', lastStatus = null, statusT = 0;
 
 /* ---- the chosen folder is remembered on this device ---- */
 const db = () => new Promise((res, rej) => { const r = indexedDB.open('mixtape-reverb', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const kv = async (mode, fn) => { const d = await db(); return new Promise((res, rej) => { const t = d.transaction('kv', mode), q = fn(t.objectStore('kv')); t.oncomplete = () => res(q.result); t.onerror = () => rej(t.error); }); };
-const allowed = async ask => { if (!dir) return false; const o = { mode: 'readwrite' }; try { if ((await dir.queryPermission(o)) === 'granted') return true; return ask ? (await dir.requestPermission(o)) === 'granted' : false; } catch (e) { return false; } };
+const allowed = async ask => { if (!dir) return false; const o = { mode: 'readwrite' }; try { if ((await dir.queryPermission(o)) !== 'granted' && !(ask && (await dir.requestPermission(o)) === 'granted')) return false; await inbox(); return true; } catch (e) { return false; } };
+// The helper watches the folder named "inbox" inside reverb-personal. Choosing reverb-personal itself is the natural
+// thing to do, so that works too: its inbox is found (or made) and used.
+async function inbox() { if (!dir || dir.name === 'inbox') return; try { const sub = await dir.getDirectoryHandle('inbox', { create: true }); home = dir.name; dir = sub; kv('readwrite', s => s.put(sub, 'inbox')).catch(() => {}); } catch (e) {} }
 const readJSON = async name => { try { const f = await (await dir.getFileHandle(name)).getFile(); return JSON.parse(await f.text()); } catch (e) { return null; } };
 const drop = async name => { try { await dir.removeEntry(name); } catch (e) {} };
 
@@ -27,15 +30,15 @@ function draw() {
   const s = box.querySelector('#engStatus'), pick = box.querySelector('#engPick'); s.hidden = pick.hidden = !personal;
   if (!can) { box.querySelector('#engNo').hidden = false; return; }
   if (!personal) return;
-  pick.textContent = dir ? `Folder: “${dir.name}” (change)` : 'Choose the Reverb folder…';
+  pick.textContent = dir ? `Folder: “${home ? home + ' › ' : ''}${dir.name}” (change)` : 'Choose the Reverb folder…';
   const st = lastStatus, alive = st && st.alive && Date.now() / 1000 - st.alive < 6;
   s.className = 'engstatus' + (alive && st.state !== 'loading' ? ' ok' : '');
-  s.textContent = !dir ? 'Once only: choose the folder named “inbox” inside your reverb-personal folder.'
+  s.textContent = !dir ? 'Once only: choose your reverb-personal folder.'
     : !st && lastStatus === null ? 'Looking for Reverb on this computer…'
-    : !alive ? 'Reverb is not running. In your reverb-personal folder, double-click “Start Reverb for Mixtape”, then come back here.'
+    : !alive ? 'Reverb’s helper is not running. In your reverb-personal folder, double-click “Start Reverb with Windows” (once: after that it is always ready), or “Start Reverb for Mixtape” for just this time.'
     : st.state === 'loading' ? 'Reverb is starting on this computer (a minute or two)…'
     : st.state === 'working' ? `Reverb is busy with “${st.name || 'another recording'}”; yours will wait its turn.`
-    : 'Reverb is ready on this computer.';
+    : 'Reverb is ready on this computer. Press Transcribe.';
 }
 async function refresh() { if (!reverbChosen() || !dir || document.hidden || !(await allowed(false))) return draw(); lastStatus = (await readJSON('status.json')) || false; draw(); }
 function build() {
@@ -51,23 +54,23 @@ function build() {
   go.parentNode.insertBefore(f, go);
   f.addEventListener('change', e => { if (e.target.name !== 'engine') return; try { localStorage.setItem(KEY, e.target.value); } catch (err) {} lastStatus = null; draw(); refresh(); });
   f.querySelector('#engPick').addEventListener('click', async () => {
-    try { const d = await showDirectoryPicker({ id: 'reverb-inbox', mode: 'readwrite' }); dir = d; await kv('readwrite', s => s.put(d, 'inbox')).catch(() => {}); lastStatus = null; await refresh(); }
-    catch (e) { if (e.name !== 'AbortError') api.toast('That folder could not be opened. Choose the “inbox” folder inside reverb-personal.', 6000); }
+    try { const d = await showDirectoryPicker({ id: 'reverb-inbox', mode: 'readwrite' }); dir = d; home = ''; await kv('readwrite', s => s.put(d, 'inbox')).catch(() => {}); await inbox(); lastStatus = null; await refresh(); }
+    catch (e) { if (e.name !== 'AbortError') api.toast('That folder could not be opened. Choose your reverb-personal folder.', 6000); }
   });
   draw(); clearInterval(statusT); statusT = setInterval(refresh, 2500); refresh();
 }
 
 /* ---- the sound, written into the folder as a 16 kHz mono WAV, a window at a time (hours never sit in memory) ---- */
-async function writeWav(name, track, dur, tick) {
+async function writeWav(name, track, t0, dur, tick) { // from t0 to dur: the whole recording, or only the part asked for
   const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); let frames = 0;
   const head = n => { const b = new ArrayBuffer(44), v = new DataView(b), S = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0))); S(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); S(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 16000, true); v.setUint32(28, 32000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); S(36, 'data'); v.setUint32(40, n * 2, true); return b; };
   try {
     await w.write(head(0));
-    for (let t = 0; t < dur; t += 30) {
+    for (let t = t0; t < dur; t += 30) {
       if (api.job.stop) throw Object.assign(new Error('stopped'), { stopped: true });
       const pcm = await api.window16k(track, t, Math.min(dur, t + 30)), out = new Int16Array(pcm.length);
       for (let i = 0; i < pcm.length; i++) { const x = Math.max(-1, Math.min(1, pcm[i])); out[i] = x < 0 ? x * 32768 : x * 32767; }
-      await w.write(out.buffer); frames += out.length; tick(Math.min(1, (t + 30) / dur));
+      await w.write(out.buffer); frames += out.length; tick(Math.min(1, (t + 30 - t0) / (dur - t0)));
     }
     await w.write({ type: 'write', position: 0, data: head(frames) }); await w.close();
   } catch (e) { try { await w.abort(); } catch (err) {} await drop(name); throw e; }
@@ -79,8 +82,9 @@ export async function startReverb() {
   if (!dir) return api.toast('Choose the Reverb folder first (the button under “Personal”).', 6000);
   if (!(await allowed(true))) return api.toast('Mixtape needs your permission to use the Reverb folder. Press Transcribe again and allow it.', 7000);
   const st0 = await readJSON('status.json');
-  if (!st0 || !st0.alive || Date.now() / 1000 - st0.alive > 8) return api.toast('Reverb is not running. In your reverb-personal folder, double-click “Start Reverb for Mixtape”, wait for “Ready”, then press Transcribe again.', 9000);
+  if (!st0 || !st0.alive || Date.now() / 1000 - st0.alive > 8) return api.toast('Reverb’s helper is not running. In your reverb-personal folder, double-click “Start Reverb with Windows” (once: after that it is always ready), or “Start Reverb for Mixtape” for just this time. Then press Transcribe again.', 12000);
   const id = String(cur.track.id).replace(/[^\w-]/g, '_'), wav = id + '.wav', jobF = id + '.job.json', outF = id + '.reverb.json', errF = id + '.error.json';
+  const pt = api.partChosen ? api.partChosen(cur) : null; if (pt === false) return; // only a part was asked for, and what was typed cannot be used
   const job = { stop: false }; api.setJob(job); const st = $('#runSt'), bar = $('#runBar');
   $('#start').hidden = true; $('#cont').hidden = true; $('#run').hidden = false; bar.style.width = '0%';
   const clean = async () => { for (const n of [jobF, wav, outF, errF]) await drop(n); };
@@ -88,9 +92,9 @@ export async function startReverb() {
     await clean();
     const input = new api.M.Input({ source: new api.M.BlobSource(cur.blob), formats: api.M.ALL_FORMATS }), a = await input.getPrimaryAudioTrack(); if (!a) throw new Error('this file has no sound');
     if (!(await a.canDecode())) throw new Error(`this browser cannot decode its sound (${a.codec})`);
-    const dur = await a.computeDuration();
+    const whole = await a.computeDuration(), t0 = pt ? pt.a : 0, dur = pt ? Math.min(whole, pt.b) : whole;
     st.textContent = 'Handing the recording to Reverb on this computer…';
-    await writeWav(wav, a, dur, p => { bar.style.width = Math.round(p * 10) + '%'; });
+    await writeWav(wav, a, t0, dur, p => { bar.style.width = Math.round(p * 10) + '%'; });
     const jw = await (await dir.getFileHandle(jobF, { create: true })).createWritable(); await jw.write(JSON.stringify({ audio: wav, name: cur.track.title || '', verbatim: 1 })); await jw.close();
     let quiet = 0;
     for (;;) {
@@ -100,16 +104,17 @@ export async function startReverb() {
       const got = await readJSON(outF);
       if (got && Array.isArray(got.words)) {
         const num = v => { const n = +v; return v == null || !isFinite(n) ? null : n; };
-        const words = got.words.map(w => ({ t: String(w.t), s: num(w.s), e: num(w.e), ...(w.p ? { p: true } : {}), ...(w.c != null && isFinite(+w.c) ? { c: +w.c } : {}) })); if (words[0]) words[0].p = true;
+        const at = v => { const n = num(v); return n == null ? null : Math.round((n + t0) * 1000) / 1000; }; /* Reverb heard only the part: its times start at the part's start */
+        const words = got.words.map(w => ({ t: String(w.t), s: at(w.s), e: at(w.e), ...(w.p ? { p: true } : {}), ...(w.c != null && isFinite(+w.c) ? { c: +w.c } : {}) })); if (words[0]) words[0].p = true;
         if (!words.length) throw new Error('Reverb heard no words in this recording');
-        cur.tr = { id: cur.track.id, mode: 'heard', words, upTo: dur, done: true, duration: dur, updated: Date.now(), speakers: false, engine: 'Reverb ASR v1 (Rev)', use: 'personal' };
+        cur.tr = { id: cur.track.id, mode: 'heard', words, upTo: dur, done: true, duration: whole, updated: Date.now(), speakers: false, engine: 'Reverb ASR v1 (Rev)', use: 'personal', ...(pt ? { part: pt } : {}) };
         await api.save(); await clean();
         api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb. Personal use only. Click any word to hear it.`, 7000); return;
       }
       const s = await readJSON('status.json'), alive = s && s.alive && Date.now() / 1000 - s.alive < 8; quiet = alive ? 0 : quiet + 1;
-      if (quiet > 8) throw new Error('Reverb stopped answering. Start it again (“Start Reverb for Mixtape”), then press Transcribe');
+      if (quiet > 8) throw new Error('Reverb’s helper stopped answering. Start it again from your reverb-personal folder, then press Transcribe');
       const mine = alive && s.file === id;
-      st.textContent = !alive ? 'Waiting for Reverb to answer…' : s.state === 'loading' ? 'Reverb is starting (a minute or two)…' : mine ? `Reverb is writing it down on this computer: ${Math.round((s.progress || 0) * 100)}%` : `Waiting for Reverb to finish “${s.name || 'another recording'}”…`;
+      st.textContent = !alive ? 'Waiting for Reverb to answer…' : s.state === 'loading' ? 'Reverb is waking up on this computer (a minute or two the first time)…' : mine ? `Reverb is writing it down on this computer: ${Math.round((s.progress || 0) * 100)}%` : `Waiting for Reverb to finish “${s.name || 'another recording'}”…`;
       bar.style.width = Math.round(10 + (mine ? (s.progress || 0) : 0) * 90) + '%';
     }
   } catch (e) {

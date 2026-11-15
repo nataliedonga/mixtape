@@ -1,5 +1,14 @@
 [
   {
+    "version": 91,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts can write down only a part of a recording. Before you press Transcribe, choose Only a part and say where it starts and ends (hours:minutes:seconds, or where the player is).",
+      "For a transcript of a part, Part's time in the player bar makes the clock, the slider and the times beside the paragraphs count from the start of the part, like a site that only has that part.",
+      "Personal (Reverb): choose your reverb-personal folder itself; and the helper can now start with Windows, so choosing Personal is all you do."
+    ]
+  },
+  {
     "version": 90,
     "date": "2026-11-15",
     "items": [
