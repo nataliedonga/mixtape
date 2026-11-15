@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Nothing on this page may contact another server: it can only load from, and talk to, the site it came from. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; connect-src 'self' blob:; manifest-src 'self'; object-src 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Privacy and storage · Mixtape</title>
+<meta name="theme-color" content="#F3F5F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D1220" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../icon-192.png" type="image/png">
+<link rel="stylesheet" href="storage.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the list of what is kept</a>
+<header class="top">
+  <a class="back" href="../home/">← Mixtape home</a>
+  <span class="where">Privacy and storage</span>
+</header>
+<main id="main">
+  <p class="sandbox" id="sandbox" hidden></p>
+  <h1>Privacy and storage</h1>
+  <div class="promise">
+    <p><strong>Nothing is sent anywhere.</strong> Your songs, recordings, transcripts and documents stay on this device. Mixtape has no account, no server of its own and no tracking, and this page is not able to contact any other site.</p>
+    <p>This page shows everything Mixtape keeps here, lets you copy it all into one file, and lets you remove it.</p>
+  </div>
+
+  <section aria-labelledby="keptH">
+    <h2 id="keptH">What is kept on this device</h2>
+    <div class="meter">
+      <p id="estimate">Looking at what is kept…</p>
+      <p id="protect"></p>
+      <button class="btn" id="protectBtn" type="button" hidden>Ask the browser to protect it</button>
+    </div>
+    <div class="tablewrap">
+      <table id="kept">
+        <caption class="vh">Everything Mixtape keeps on this device, with its size and a way to forget each one</caption>
+        <thead><tr><th scope="col">What</th><th scope="col">In it now</th><th scope="col" class="num">Size</th><th scope="col"><span class="vh">Forget</span></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="4" class="wait">Looking…</td></tr></tbody>
+      </table>
+    </div>
+    <p class="fine" id="others" hidden></p>
+    <p class="fine">Sizes are close, not exact: the browser does not say precisely how much room each thing takes. <button class="link" id="refreshBtn" type="button">Look again</button></p>
+  </section>
+
+  <section aria-labelledby="backH">
+    <h2 id="backH">Back up everything to one file</h2>
+    <p>One file holds your songs with their sound, playlists and favourites, lyrics, transcripts and the sensitive marks on them, Studio mixes and settings. Keep it on a USB stick or another disk. It is made on this device and goes only where you put it.</p>
+    <p class="fine">Not in the file: the Cutter’s last session and the Reader’s recent list (they point at files on this device, which a backup cannot carry), and the downloads, which Mixtape fetches again when needed.</p>
+    <p><button class="btn primary" id="backupBtn" type="button">Back up everything to one file</button></p>
+    <div class="work" id="backupWork" hidden><label for="backupBar" id="backupLbl">Writing the backup…</label><progress id="backupBar" max="1" value="0"></progress></div>
+    <div class="result" id="backupOut" role="status" aria-live="polite"></div>
+  </section>
+
+  <section aria-labelledby="restH">
+    <h2 id="restH">Restore from a backup</h2>
+    <p>Choose a backup file and Mixtape adds what is in it to what is already here. Nothing on this device is replaced or removed: a song, transcript or mix you already have is left exactly as it is. The whole file is checked first, and a file that is cut short or damaged is refused before anything is added.</p>
+    <p><button class="btn primary" id="restoreBtn" type="button">Choose a backup file…</button>
+      <input type="file" id="restoreIn" accept=".mixtape-backup" hidden aria-label="Backup file to restore from"></p>
+    <div class="work" id="restoreWork" hidden><label for="restoreBar" id="restoreLbl">Checking the file…</label><progress id="restoreBar" max="1" value="0"></progress></div>
+    <div class="result" id="restoreOut" role="status" aria-live="polite"></div>
+  </section>
+
+  <section aria-labelledby="forgH" class="danger-zone">
+    <h2 id="forgH">Forget everything on this device</h2>
+    <p>Removes all of the above from this browser: every song, recording, lyric, playlist, favourite, transcript, sensitive mark, Studio mix, the Cutter’s session, the Reader’s recent list, your settings and the downloaded recognisers. Mixtape’s own pages stay, so it still opens offline. The files on your disk that you added things from are not touched.</p>
+    <p><strong>This cannot be undone.</strong> Back up first if you might want any of it again, and close other Mixtape windows so they do not save things back.</p>
+    <p><button class="btn danger" id="forgetAllBtn" type="button">Forget everything on this device</button></p>
+    <div class="result" id="forgetOut" role="status" aria-live="polite"></div>
+  </section>
+</main>
+<footer class="foot">
+  <a href="../home/">Home</a><a href="../">Player</a><a href="../studio.html">Studio</a><a href="../cutter/">Cutter</a><a href="../transcribe/">Transcripts</a><a href="../reader/">Reader</a>
+</footer>
+<script type="module" src="storage.js"></script>
+</body>
+</html>

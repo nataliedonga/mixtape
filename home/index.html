@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Nothing on this page may contact another server: it can only load from, and talk to, the site it came from. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; connect-src 'self' blob:; manifest-src 'self'; object-src 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mixtape</title>
+<meta name="theme-color" content="#F3F5F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D1220" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../icon-192.png" type="image/png">
+<link rel="stylesheet" href="home.css">
+</head>
+<body>
+<header class="top">
+  <h1>Mixtape</h1>
+  <p class="status">Five tools. All of them work offline, and nothing you open leaves this device.</p>
+</header>
+<main>
+  <nav aria-label="Mixtape tools">
+    <ol class="tools">
+      <li>
+        <span class="no" aria-hidden="true">01</span>
+        <div class="txt">
+          <h2><a href="../index.html">Player</a></h2>
+          <p>Plays your own music files, with playlists, favourites and lyrics.</p>
+        </div>
+        <span class="fact" data-fact="songs"></span>
+        <span class="go" aria-hidden="true">Open <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </li>
+      <li>
+        <span class="no" aria-hidden="true">02</span>
+        <div class="txt">
+          <h2><a href="../studio.html">Studio</a></h2>
+          <p>Cuts and mixes your songs on a timeline, with effects, instruments and split-out vocals.</p>
+        </div>
+        <span class="fact" data-fact="mixes"></span>
+        <span class="go" aria-hidden="true">Open <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </li>
+      <li>
+        <span class="no" aria-hidden="true">03</span>
+        <div class="txt">
+          <h2><a href="../cutter/">Cutter</a></h2>
+          <p>Cuts or joins any sound or video file, exact to the frame, whatever its format.</p>
+        </div>
+        <span class="fact" data-fact="cutter"></span>
+        <span class="go" aria-hidden="true">Open <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </li>
+      <li>
+        <span class="no" aria-hidden="true">04</span>
+        <div class="txt">
+          <h2><a href="../transcribe/">Transcripts</a></h2>
+          <p>Turns a recording into words you can click to hear, correct and save.</p>
+        </div>
+        <span class="fact" data-fact="transcripts"></span>
+        <span class="go" aria-hidden="true">Open <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </li>
+      <li>
+        <span class="no" aria-hidden="true">05</span>
+        <div class="txt">
+          <h2><a href="../reader/">Reader</a></h2>
+          <p>Opens PDFs to read, mark up, fill in and sign.</p>
+        </div>
+        <span class="fact" data-fact="reader"></span>
+        <span class="go" aria-hidden="true">Open <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </li>
+    </ol>
+  </nav>
+  <aside class="keep" aria-labelledby="keepH">
+    <div>
+      <h2 id="keepH"><a href="../storage/">Privacy and storage</a></h2>
+      <p>See everything Mixtape keeps on this device, copy it all into one backup file, or have it forgotten.</p>
+    </div>
+    <span class="go" aria-hidden="true">Open <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+  </aside>
+</main>
+<script type="module" src="home.js"></script>
+</body>
+</html>

@@ -1,11 +1,12 @@
 // Mixtape offline cache. Bump VERSION whenever app files change so installed copies pick up the new version.
-const VERSION = 'mixtape-v80';
+const VERSION = 'mixtape-v81';
 const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', './dsp-worker.js', './dsp-shared.js', './midi.js', './long-mp3.js', './media-cut.js', './vendor/mediabunny/mediabunny.min.mjs', './lofi-worklet.js', './vendor/tone/Tone.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './cutter/', './cutter/index.html', './cutter/app.js', './cutter/engine.js', './cutter/model.js', './cutter/h264.js', './cutter/style.css', './cutter/host-mixtape.js', './cutter/olddecode.js', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.wasm',
   './lyrics-core.js', './lyrics.js', './lyrics.css', './asr-worker.js', './speaker-worker.js',
   './transcript-core.js', './transcribe/', './transcribe/index.html', './transcribe/app.js', './transcribe/style.css',
   './reader/', './reader/index.html', './reader/app.js', './reader/style.css', './vendor/embedpdf/embedpdf.js', './vendor/embedpdf/embedpdf-cl9qiF45.js', './vendor/embedpdf/browser-BKLM0ThC-BCLQGPD6.js', './vendor/embedpdf/direct-engine-DVLMOJWp.js', './vendor/embedpdf/worker-engine-BCCrxWYm.js', './vendor/embedpdf/pdfium.wasm',
   './vendor/embedpdf/fonts/NotoSans-Regular.ttf', './vendor/embedpdf/fonts/NotoSans-Bold.ttf', './vendor/embedpdf/fonts/NotoSans-Italic.ttf', './vendor/embedpdf/fonts/NotoSans-BoldItalic.ttf',
+  './home/', './home/index.html', './home/home.css', './home/home.js', './storage/', './storage/index.html', './storage/storage.css', './storage/storage.js', './backup-core.js',
   './vendor/fonts/BricolageGrotesque-latin-11f6ab2d.woff2', './vendor/fonts/BricolageGrotesque-latin-ext-094ba9c3.woff2', './vendor/fonts/Figtree-latin-57fd1acf.woff2', './vendor/fonts/Figtree-latin-ext-a310474d.woff2', './vendor/fonts/IBMPlexMono-latin-50879063.woff2', './vendor/fonts/IBMPlexMono-latin-ac5ee02b.woff2', './vendor/fonts/IBMPlexMono-latin-d5549a5e.woff2', './vendor/fonts/IBMPlexMono-latin-ext-4a23f6b8.woff2', './vendor/fonts/IBMPlexMono-latin-ext-b058013d.woff2', './vendor/fonts/IBMPlexMono-latin-ext-e35bab18.woff2', './vendor/fonts/IBMPlexSans-latin-d8b4e62d.woff2', './vendor/fonts/IBMPlexSans-latin-ext-69ec3099.woff2', './vendor/fonts/JetBrainsMono-latin-4f27206c.woff2', './vendor/fonts/JetBrainsMono-latin-ext-06ad3600.woff2', './vendor/fonts/MartianMono-latin-b1337618.woff2', './vendor/fonts/MartianMono-latin-ext-f877caae.woff2', './vendor/fonts/Newsreader-latin-5d70b133.woff2', './vendor/fonts/Newsreader-latin-ext-a40c6200.woff2', './vendor/fonts/cutter.css', './vendor/fonts/player.css', './vendor/fonts/studio.css', './vendor/fonts/transcripts.css'];
 // The AI stem splitter is large and changes rarely, so it lives in its own caches that app updates don't clear.
 const STEMS_RUNTIME = 'mixtape-stems-runtime-v1';   // ONNX Runtime + splitter code, saved on first use
@@ -57,7 +58,7 @@ self.addEventListener('fetch', e => {
   // answers with an error (a 404 after the GitHub account was renamed left the installed app showing "not found"
   // although its saved copy, and the songs, were still on the phone).
   if (req.mode === 'navigate') {
-    const key = path.endsWith('studio.html') ? './studio.html' : path.includes('/cutter/') ? './cutter/index.html' : path.includes('/transcribe/') ? './transcribe/index.html' : path.includes('/reader/') ? './reader/index.html' : './index.html'; // offline, each page falls back to itself
+    const key = path.endsWith('studio.html') ? './studio.html' : path.includes('/cutter/') ? './cutter/index.html' : path.includes('/transcribe/') ? './transcribe/index.html' : path.includes('/reader/') ? './reader/index.html' : path.includes('/home/') ? './home/index.html' : path.includes('/storage/') ? './storage/index.html' : './index.html'; // offline, each page falls back to itself
     e.respondWith(fetch(req).then(async r => {
       if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(key, copy)); return r; }
       return (await caches.match(key)) || r;
