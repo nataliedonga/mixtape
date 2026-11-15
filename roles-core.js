@@ -56,7 +56,7 @@ export function roles(words) {
 
 /* places that usually carry an insert in a legal transcript: [{ i, end, s, kind, say, text, quote }]
    (i, end: the turn's first and last word; text: the notation as it would stand in the transcript) */
-export function inserts(words) {
+export function inserts(words, style = '') {
   const out = [], seen = new Set();
   const add = (t, kind, say, m, text) => { const key = kind + '@' + t.i0; if (seen.has(key)) return; seen.add(key); const at = Math.max(0, m.index - 40); out.push({ i: t.i0, end: t.i1 - 1, s: t.s, kind, say, text, quote: t.low.slice(at, m.index + m[0].length + 40).trim() }); };
   for (const t of turns(words)) {
@@ -72,6 +72,17 @@ export function inserts(words) {
     if ((m = / (?:go|going|we are|we're) off the record /.exec(t.low))) add(t, 'off', 'Off the record from here', m, '(Discussion off the record.)');
     if ((m = / back on the record /.exec(t.low))) add(t, 'on', 'Back on the record here', m, '(Back on the record.)');
   }
-  return out;
+  return style === 'rev' ? out.map(revNotation) : out;
 }
-export const suggest = words => ({ roles: roles(words), inserts: inserts(words) });
+/* Rev's legal guide has its own wording, and only for some of these: an exhibit marked or received (digits for the
+   number), and a recess. Where it has none (an exhibit only offered, an oath, back on the record) the notation is
+   empty, so the place is pointed at and nothing is put in. */
+const NUM = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+export const digits = id => { const p = String(id).split(' '); if (p.every(w => w in NUM)) { const n = p.length === 2 ? (NUM[p[0]] >= 20 && NUM[p[1]] < 10 ? NUM[p[0]] + NUM[p[1]] : null) : NUM[p[0]]; if (n != null) return String(n); } return p.length === 2 && /^[a-z]$/.test(p[1]) ? (p[0] in NUM ? NUM[p[0]] : p[0]) + p[1].toUpperCase() : /^[a-z]$/.test(id) ? id.toUpperCase() : id; };
+function revNotation(x) {
+  if (x.kind === 'exhibit') { const m = /^Exhibit (.+?): (.*)$/.exec(x.say) || [], id = digits(m[1] || ''), how = m[2] || '';
+    return { ...x, say: `Exhibit ${id}: ${how}`, text: /^marked/.test(how) ? `(Exhibit ${id} was marked for identification.)` : /^received/.test(how) ? `(Exhibit ${id} was received into evidence.)` : '' }; }
+  if (x.kind === 'recess' || x.kind === 'off') return { ...x, text: '(A recess was taken.)' };
+  return { ...x, text: '' };
+}
+export const suggest = (words, style = '') => ({ roles: roles(words), inserts: inserts(words, style) });

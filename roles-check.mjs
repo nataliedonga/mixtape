@@ -2,7 +2,7 @@
 // The hearing below is invented (no real case, no real people). If the private fixture made from a real test recording
 // is on this computer (_test/roles/fixtures.json, never published), the same rules are checked on it too.
 import fs from 'node:fs';
-import { roles, inserts, turns } from './roles-core.js';
+import { roles, inserts, turns, digits } from './roles-core.js';
 let pass = 0, fail = 0; const check = (name, ok, got) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : '  |  got: ' + JSON.stringify(got)}`); ok ? pass++ : fail++; };
 const make = lines => { const out = []; let t = 0; for (const [sp, text] of lines) text.split(' ').forEach((w, k) => { out.push({ t: w, s: +(t += 0.3).toFixed(2), e: +(t + 0.2).toFixed(2), ...(k === 0 ? { p: true, sp } : {}) }); }); return out; };
 
@@ -52,6 +52,11 @@ for (const [kind, lines] of [['as heard', HEARING], ['with punctuation', MARKED]
   const ins = inserts(w), ts = turns(w);
   check('an oath, a recess, off and back on the record are pointed at', ins.map(x => x.kind).join() === 'oath,recess,off,on' && ins[0].text === '(Witness sworn.)', ins.map(x => [x.kind, x.text]));
   check('a notation already in the transcript is not read as speech', !ts.some(t => /sworn\./.test(t.text)), ts.map(t => t.text)); }
+
+{ const w = make([['A', 'i am marking this as exhibit twenty five for identification'], ['B', 'thank you'], ['A', 'i move exhibit seven into evidence'], ['C', 'exhibit seven is received'], ['A', "we'll take a short recess"], ['B', 'do you swear to tell the truth']]);
+  const ins = inserts(w, 'rev');
+  check('Rev style: its own wording, digits for the number, and nothing where it has no notation', ins.map(x => x.text).join('|') === '(Exhibit 25 was marked for identification.)||(Exhibit 7 was received into evidence.)|(A recess was taken.)|', ins.map(x => [x.kind, x.text]));
+  check('number words become digits', [digits('twenty five'), digits('twelve'), digits('three a'), digits('b'), digits('p9')].join() === '25,12,3A,B,p9', [digits('twenty five'), digits('twelve'), digits('three a'), digits('b'), digits('p9')]); }
 
 const priv = new URL('./_test/roles/fixtures.json', import.meta.url);
 if (fs.existsSync(priv)) {

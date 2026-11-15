@@ -1,9 +1,17 @@
 [
   {
+    "version": 103,
+    "date": "2026-11-16",
+    "items": [
+      "Transcripts: matters. Give a recording a matter (a case or a job) and its other recordings share its cast from Legal, and, if you tick “Remember named voices”, a speaker you named once is recognised by voice and named in the rest. Voiceprints stay in this browser and “Forget voices” removes them.",
+      "Transcripts: a style per matter. With “Rev, legal”, automatic notations use Rev’s wording and digits (for example “(Exhibit 25 was marked for identification.)”)."
+    ]
+  },
+  {
     "version": 102,
     "date": "2026-11-16",
     "items": [
-      "Transcripts: “From the words”. Above a finished transcript, Mixtape now says what the words show about numbered speakers (who asks, who answers, who says the court’s words, a voice that sounds like two people) and points at places where a legal insert may belong. No AI, nothing leaves the computer, and nothing changes until you press ✓."
+      "Transcripts: “Set from the words”. When a transcript is finished, Mixtape names numbered speakers from what they say (who asks, who answers, who says the court’s words) and, in a legal transcript, puts in notations where an exhibit, an oath or a recess is heard. Everything it sets is highlighted and listed above the text with Keep and Undo. No AI, nothing leaves the computer."
     ]
   },
   {
