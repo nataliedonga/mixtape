@@ -1,5 +1,5 @@
 // Mixtape offline cache. Bump VERSION whenever app files change so installed copies pick up the new version.
-const VERSION = 'mixtape-v95';
+const VERSION = 'mixtape-v96';
 const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', './dsp-worker.js', './dsp-shared.js', './midi.js', './long-mp3.js', './media-cut.js', './vendor/mediabunny/mediabunny.min.mjs', './lofi-worklet.js', './vendor/tone/Tone.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './cutter/', './cutter/index.html', './cutter/app.js', './cutter/engine.js', './cutter/model.js', './cutter/h264.js', './cutter/style.css', './cutter/host-mixtape.js', './cutter/olddecode.js', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.wasm',
   './lyrics-core.js', './lyrics.js', './lyrics.css', './asr-worker.js', './speaker-worker.js',
@@ -23,7 +23,10 @@ const ORCH_CACHE = 'mixtape-orch-v1'; // the orchestra's recordings, saved on fi
 self.addEventListener('install', e => {
   // cache: 'reload' skips the browser's own HTTP cache: GitHub Pages lets it keep files for 10 minutes, so a new version
   // installed soon after publishing could otherwise store the previous version's files
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))));
+  // ...and the site's own delivery network can go on handing out the previous copy of a file for some minutes after a
+  // release. A version that installed in that window kept a stale file (new page, old stylesheet) until the next release.
+  // Asking for each file with the version in its address gets the newly published copy; it is stored under its plain name.
+  e.waitUntil(caches.open(VERSION).then(c => Promise.all(CORE.map(async u => { const r = await fetch(new Request(u + (u.includes('?') ? '&' : '?') + 'v=' + VERSION, { cache: 'reload' })); if (!r.ok) throw new Error(u + ': ' + r.status); await c.put(u, r); }))));
 });
 // A new version waits until the page asks for it (the "Mixtape was updated: Reload" bar in shell.js) or every Mixtape
 // tab has closed, so an open page never ends up running half old, half new. A first install still starts at once.

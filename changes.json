@@ -1,5 +1,15 @@
 [
   {
+    "version": 96,
+    "date": "2026-11-15",
+    "items": [
+      "Transcripts and Backup Track now stay the same in both directions: the start, the clock choice and the left-out stretches you set in the 'follow a website' form are set in Backup Track too (when it has the same recording).",
+      "The length on the website comes from Backup Track by itself, also in a Mixtape window that was already open when the extension was loaded or updated.",
+      "The two clock buttons always show which one is chosen.",
+      "Updates fetch every file fresh, so a new version can no longer keep an old stylesheet."
+    ]
+  },
+  {
     "version": 95,
     "date": "2026-11-15",
     "items": [
