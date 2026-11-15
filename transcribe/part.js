@@ -46,6 +46,8 @@ export function partExport(r) {
 }
 // is this moment outside the part being shown (before it, after it, or in a stretch the website leaves out)?
 export function partHides(t) { const p = part(); return !!p && (t < p.a - 0.01 || t >= p.b || skipsOf(p).some(k => t >= k.a && t < k.b)); }
+// where this recording should be when the website's player is at t: by the part being shown, or the start being chosen in the form, or simply t
+export function partRecForSite(t) { const p = part(); if (p) return recAt(p, t); const c = api && api.cur; if (c && sel.on && sel.id === c.track.id) { const a = parseTime($('#partFrom').value); if (a != null) return recAt({ a, skips: cleanSkips(sel.skips, a, Infinity) }, t); } return t; }
 // once the part is written down: words inside a stretch the website leaves out are taken away, and what follows starts a new paragraph
 export function partTrim(tr) {
   const ks = tr && tr.part ? skipsOf(tr.part) : []; if (!ks.length || !tr.words.length) return 0;
@@ -245,5 +247,5 @@ export function initPart(a) {
     const p = part(), c = api.cur; if (!p || inSheet || !c || !c.media || c.media.paused) return; const m = c.media, t = m.currentTime, k = skipsOf(p).find(k => t >= k.a && t < k.b - 0.05);
     if (k) m.currentTime = k.b; else if (t >= p.b) { m.pause(); m.currentTime = Math.max(p.a, p.b - 0.05); } else if (t < p.a - 0.3) m.currentTime = p.a;
   }, 200);
-  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__part = { get zero() { return zero; }, get sel() { return sel; }, part, hms, parseTime, siteAt, recAt, partTrim };
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__part = { partRecForSite, get zero() { return zero; }, get sel() { return sel; }, part, hms, parseTime, siteAt, recAt, partTrim };
 }

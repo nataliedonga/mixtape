@@ -1,5 +1,12 @@
 [
   {
+    "version": 98,
+    "date": "2026-11-15",
+    "items": [
+      "One audio, wherever you put it. If Backup Track has no audio of its own, tick Follow Backup Track and the recording here plays with its sound, following the website. If Backup Track has the audio, it makes the sound and the recording here follows silently. Never two sounds at once."
+    ]
+  },
+  {
     "version": 97,
     "date": "2026-11-15",
     "items": [
