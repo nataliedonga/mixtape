@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Nothing on this page may contact another server: it can only load from, and talk to, the site it came from. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Transcripts · Mixtape</title>
 <meta name="theme-color" content="#F6F3EC" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#17191C" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../vendor/fonts/transcripts.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>

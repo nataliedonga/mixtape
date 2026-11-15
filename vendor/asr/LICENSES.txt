@@ -1,0 +1,7 @@
+The speech recogniser, served by Mixtape itself so that no other server is contacted.
+
+transformers.min.js.gz   transformers.js 4.3.1, Apache-2.0, Hugging Face (gzipped, otherwise unchanged)
+ort/                     ONNX Runtime Web 1.31.0-dev.20260914-8d85527a0, MIT, Microsoft
+models/onnx-community/whisper-base.en_timestamped   Whisper base.en, MIT, OpenAI; ONNX export by onnx-community
+models/onnx-community/pyannote-segmentation-3.0     pyannote segmentation 3.0, MIT; ONNX export by onnx-community
+models/wespeaker/voxceleb_resnet34.onnx             Wespeaker ResNet34 (VoxCeleb), Apache-2.0

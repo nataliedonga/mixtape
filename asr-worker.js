@@ -1,23 +1,31 @@
 /* Hears speech or singing and returns the words, each with its time: Mixtape's lyrics, transcripts and read-along.
    Whisper base.en (MIT, OpenAI; the ONNX export with word timings by onnx-community), run by transformers.js 4.3.1
-   (Apache-2.0) over ONNX Runtime Web (MIT). The library is fetched from jsDelivr at that exact version the first time
-   (it is not kept in this repository: GitHub's secret scanner mistakes one of its model names for an API key) and the
-   service worker keeps it for offline use; the model (~77 MB) downloads from Hugging Face once and stays in the
-   browser's cache.
+   (Apache-2.0) over ONNX Runtime Web (MIT). All three are served by Mixtape itself from vendor/asr/; the model
+   (~77 MB) is fetched from there the first time and stays in the browser's cache.
 
    In:  { audio: Float32Array (mono, 16 kHz) } — a whole song, heard in 30-second windows here; or
         { window: true, audio, offset, keepFrom, keepTo } — one window of a long recording, cut by the page (so hours of
         audio never sit in memory): words are returned with `offset` added, kept when keepFrom <= start < keepTo
    Out: { type: 'load', file, loaded, total } while the model downloads; { type: 'progress', done } (0..1) while listening;
         { type: 'done', words: [{ text, start, end }] }; or { type: 'error', message }. */
-const TRANSFORMERS = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/dist/transformers.min.js';
-const lib = import(TRANSFORMERS); // started now, awaited in the handler (so the first message is never missed); its ONNX Runtime files come from jsDelivr too, at the version it pins
+// Everything the recogniser needs is served by Mixtape itself (vendor/asr/): no other server is contacted, so nothing
+// about you or the recording, not even your address, reaches anyone. The library is kept gzipped because GitHub's
+// secret scanner mistakes one of its model names for an API key.
+const ASR = new URL('vendor/asr/', self.location.href).href;
+async function loadLib() {
+  const r = await fetch(ASR + 'transformers.min.js.gz'); if (!r.ok) throw new Error(`the recogniser could not be loaded (${r.status})`);
+  const raw = new Uint8Array(await r.arrayBuffer()), zipped = raw[0] === 0x1f && raw[1] === 0x8b; /* some servers unzip it on the way */
+  const js = zipped ? await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'))).blob() : new Blob([raw]);
+  const u = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }));
+  try { const TF = await import(u); TF.env.allowLocalModels = false; TF.env.remoteHost = ASR + 'models/'; TF.env.remotePathTemplate = '{model}/'; TF.env.backends.onnx.wasm.wasmPaths = { mjs: ASR + 'ort/ort-wasm-simd-threaded.asyncify.mjs', wasm: ASR + 'ort/ort-wasm-simd-threaded.asyncify.wasm' }; return TF; } finally { URL.revokeObjectURL(u); }
+}
+const lib = loadLib(); lib.catch(() => {}); // started now, awaited in the handler (so the first message is never missed)
 const MODEL = 'onnx-community/whisper-base.en_timestamped';
 const SR = 16000, WIN = 30, STEP = 25; // 30-second windows, 5 seconds of overlap so no word is cut in half
 let asr = null;
 
 async function ready() {
-  const { pipeline, env } = await lib; env.allowLocalModels = false;
+  const { pipeline } = await lib;
   if (!asr) asr = await pipeline('automatic-speech-recognition', MODEL, {
     dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' }, device: 'wasm',
     progress_callback: p => { if (p.status === 'progress') self.postMessage({ type: 'load', file: p.file, loaded: p.loaded, total: p.total }); },

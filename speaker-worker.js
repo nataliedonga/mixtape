@@ -7,15 +7,24 @@
    In:  { audio: Float32Array (16 kHz mono), offset, keepFrom, keepTo }
    Out: { type: 'speakers', turns: [{ s, e, g }], prints: [Float32Array] } (g indexes prints; -1 = too short to tell),
         { type: 'load', what, loaded, total }, or { type: 'error', message }. */
-const TRANSFORMERS = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/dist/transformers.min.js';
-const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.0-dev.20260914-8d85527a0/dist/';
-const WESPEAKER = 'https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34/resolve/main/voxceleb_resnet34.onnx';
+// Everything the recogniser needs is served by Mixtape itself (vendor/asr/): no other server is contacted, so nothing
+// about you or the recording, not even your address, reaches anyone. The library is kept gzipped because GitHub's
+// secret scanner mistakes one of its model names for an API key.
+const ASR = new URL('vendor/asr/', self.location.href).href;
+async function loadLib() {
+  const r = await fetch(ASR + 'transformers.min.js.gz'); if (!r.ok) throw new Error(`the recogniser could not be loaded (${r.status})`);
+  const raw = new Uint8Array(await r.arrayBuffer()), zipped = raw[0] === 0x1f && raw[1] === 0x8b; /* some servers unzip it on the way */
+  const js = zipped ? await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'))).blob() : new Blob([raw]);
+  const u = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }));
+  try { const TF = await import(u); TF.env.allowLocalModels = false; TF.env.remoteHost = ASR + 'models/'; TF.env.remotePathTemplate = '{model}/'; TF.env.backends.onnx.wasm.wasmPaths = { mjs: ASR + 'ort/ort-wasm-simd-threaded.asyncify.mjs', wasm: ASR + 'ort/ort-wasm-simd-threaded.asyncify.wasm' }; return TF; } finally { URL.revokeObjectURL(u); }
+}
+const ORT = ASR + 'ort/', WESPEAKER = ASR + 'models/wespeaker/voxceleb_resnet34.onnx';
 const SR = 16000;
 let seg = null, proc = null, spk = null, ort = null;
 
 async function ready() {
   if (!seg) {
-    const TF = await import(TRANSFORMERS); TF.env.allowLocalModels = false;
+    const TF = await loadLib();
     proc = await TF.AutoProcessor.from_pretrained('onnx-community/pyannote-segmentation-3.0');
     seg = await TF.AutoModelForAudioFrameClassification.from_pretrained('onnx-community/pyannote-segmentation-3.0', { dtype: 'q8', device: 'wasm', progress_callback: p => { if (p.status === 'progress') self.postMessage({ type: 'load', what: 'speaker turns', loaded: p.loaded, total: p.total }); } });
   }

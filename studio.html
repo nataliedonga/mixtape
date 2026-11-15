@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mixtape Studio</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png" type="image/png">
 <meta name="theme-color" content="#0E1014">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="vendor/fonts/studio.css">
 <style>
 /* Mixtape Studio: a dark audio workstation. Library on the left, coloured tracks in the middle,
    part editor docked under the tracks, inspector on the right. Deliberately single-theme (dark),
@@ -579,6 +579,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
         <input id="cutIn" type="file" accept="audio/*,video/*,.mp3,.m4a,.aac,.wav,.flac,.ogg,.opus,.aif,.aiff,.mp4,.m4v,.mov,.webm,.mkv" hidden>
         <input id="fileIn" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.aif,.aiff" multiple hidden>
         <input id="midiIn" type="file" accept=".mid,.midi,audio/midi" hidden>
+        <input id="mixIn" type="file" accept=".json,application/json" hidden>
         <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="libQ" type="search" placeholder="Search your songs" aria-label="Search your songs"></label>
         <p class="libhint"><b>Drag</b> a song onto a track, or press <b>Add</b> to put it at the end of the selected track.</p>
       </div>

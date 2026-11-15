@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Nothing on this page may contact another server: it can only load from, and talk to, the site it came from. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cutter · Mixtape</title>
 <meta name="description" content="Cut any audio or video file, exact to the frame or untouched. Works offline; nothing is uploaded.">
 <meta name="theme-color" content="#14302A">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Martian+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../vendor/fonts/cutter.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>

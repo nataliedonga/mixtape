@@ -1,14 +1,15 @@
 // Mixtape offline cache. Bump VERSION whenever app files change so installed copies pick up the new version.
-const VERSION = 'mixtape-v79';
+const VERSION = 'mixtape-v80';
 const CORE = ['./', './index.html', './app.js', './studio.html', './studio.js', './dsp-worker.js', './dsp-shared.js', './midi.js', './long-mp3.js', './media-cut.js', './vendor/mediabunny/mediabunny.min.mjs', './lofi-worklet.js', './vendor/tone/Tone.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './cutter/', './cutter/index.html', './cutter/app.js', './cutter/engine.js', './cutter/model.js', './cutter/h264.js', './cutter/style.css', './cutter/host-mixtape.js', './cutter/olddecode.js', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.mjs', './vendor/libav/libav-6.10.9.0-cutter-oldaudio.wasm.wasm',
   './lyrics-core.js', './lyrics.js', './lyrics.css', './asr-worker.js', './speaker-worker.js',
   './transcript-core.js', './transcribe/', './transcribe/index.html', './transcribe/app.js', './transcribe/style.css',
   './reader/', './reader/index.html', './reader/app.js', './reader/style.css', './vendor/embedpdf/embedpdf.js', './vendor/embedpdf/embedpdf-cl9qiF45.js', './vendor/embedpdf/browser-BKLM0ThC-BCLQGPD6.js', './vendor/embedpdf/direct-engine-DVLMOJWp.js', './vendor/embedpdf/worker-engine-BCCrxWYm.js', './vendor/embedpdf/pdfium.wasm',
-  './vendor/embedpdf/fonts/NotoSans-Regular.ttf', './vendor/embedpdf/fonts/NotoSans-Bold.ttf', './vendor/embedpdf/fonts/NotoSans-Italic.ttf', './vendor/embedpdf/fonts/NotoSans-BoldItalic.ttf'];
+  './vendor/embedpdf/fonts/NotoSans-Regular.ttf', './vendor/embedpdf/fonts/NotoSans-Bold.ttf', './vendor/embedpdf/fonts/NotoSans-Italic.ttf', './vendor/embedpdf/fonts/NotoSans-BoldItalic.ttf',
+  './vendor/fonts/BricolageGrotesque-latin-11f6ab2d.woff2', './vendor/fonts/BricolageGrotesque-latin-ext-094ba9c3.woff2', './vendor/fonts/Figtree-latin-57fd1acf.woff2', './vendor/fonts/Figtree-latin-ext-a310474d.woff2', './vendor/fonts/IBMPlexMono-latin-50879063.woff2', './vendor/fonts/IBMPlexMono-latin-ac5ee02b.woff2', './vendor/fonts/IBMPlexMono-latin-d5549a5e.woff2', './vendor/fonts/IBMPlexMono-latin-ext-4a23f6b8.woff2', './vendor/fonts/IBMPlexMono-latin-ext-b058013d.woff2', './vendor/fonts/IBMPlexMono-latin-ext-e35bab18.woff2', './vendor/fonts/IBMPlexSans-latin-d8b4e62d.woff2', './vendor/fonts/IBMPlexSans-latin-ext-69ec3099.woff2', './vendor/fonts/JetBrainsMono-latin-4f27206c.woff2', './vendor/fonts/JetBrainsMono-latin-ext-06ad3600.woff2', './vendor/fonts/MartianMono-latin-b1337618.woff2', './vendor/fonts/MartianMono-latin-ext-f877caae.woff2', './vendor/fonts/Newsreader-latin-5d70b133.woff2', './vendor/fonts/Newsreader-latin-ext-a40c6200.woff2', './vendor/fonts/cutter.css', './vendor/fonts/player.css', './vendor/fonts/studio.css', './vendor/fonts/transcripts.css'];
 // The AI stem splitter is large and changes rarely, so it lives in its own caches that app updates don't clear.
 const STEMS_RUNTIME = 'mixtape-stems-runtime-v1';   // ONNX Runtime + splitter code, saved on first use
-const LYRICS_RUNTIME = 'mixtape-lyrics-runtime-v1'; // the lyrics recogniser's runtime (transformers.js + ONNX Runtime), saved on first use
+const LYRICS_RUNTIME = 'mixtape-lyrics-runtime-v2'; // the speech recogniser's library and runtime (transformers.js + ONNX Runtime, from vendor/asr/), saved on first use
 // Only older copies of the app's own pages are cleared on an update. Everything else on this site address is left
 // alone: the downloaded recognisers (speech, speakers, stems, orchestra), and other apps that share the address
 // (Scanline lives beside Mixtape on the same GitHub Pages site, and each used to wipe the other's offline copy).
@@ -27,23 +28,16 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // Fonts: use the saved copy, refresh it in the background when online.
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    e.respondWith(caches.open(VERSION).then(async c => {
-      const hit = await c.match(req);
-      const net = fetch(req).then(r => { c.put(req, r.clone()); return r; }).catch(() => hit);
-      return hit || net;
-    }));
-    return;
-  }
-  // Lyrics recogniser runtime (transformers.js and its ONNX Runtime, at pinned versions from jsDelivr): saved on first use
-  // so lyrics can be timed offline later; the Whisper model itself is cached by transformers.js
-  if (url.hostname === 'cdn.jsdelivr.net' && /^\/npm\/(@huggingface\/transformers@4\.3\.1|onnxruntime-web@)/.test(url.pathname)) {
+  // Nothing is fetched from any other server: fonts and the speech recogniser are part of the app (vendor/).
+  if (url.origin !== location.origin) return;
+  const path = url.pathname;
+  // The speech recogniser: its models are kept by the recogniser itself; its library and runtime (30 MB) are saved the
+  // first time they are used, so transcripts and lyric timing also work offline later.
+  if (path.includes('/vendor/asr/models/')) return;
+  if (path.includes('/vendor/asr/')) {
     e.respondWith(caches.open(LYRICS_RUNTIME).then(async c => { const hit = await c.match(req); if (hit) return hit; const r = await fetch(req); if (r.ok) c.put(req, r.clone()); return r; }));
     return;
   }
-  if (url.origin !== location.origin) return;
-  const path = url.pathname;
   // Orchestra recordings: saved the first time each one is used, so the orchestra also works offline.
   if (path.includes('/orch/') || path.includes('/piano/') || path.includes('/gm/') || path.includes('/drums/')) {
     e.respondWith(caches.open(ORCH_CACHE).then(async c => { const hit = await c.match(req); if (hit) return hit; const r = await fetch(req); if (r.ok) c.put(req, r.clone()); return r; }));
