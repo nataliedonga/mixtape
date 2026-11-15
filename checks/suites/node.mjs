@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const needsBrowser = false;
-const SUITES = ['cutter/check.mjs', 'lyrics-check.cjs', 'transcript-check.cjs'];
+const SUITES = ['cutter/check.mjs', 'lyrics-check.cjs', 'transcript-check.cjs', 'roles-check.mjs'];
 
 export async function run(t) {
   for (const s of SUITES) {

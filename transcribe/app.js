@@ -8,6 +8,7 @@ import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
 import { initReverb, reverbChosen, startReverb } from './reverb.js';
 import { initFollow } from './follow.js';
 import { initRemove } from './remove.js';
+import { initRoles } from './roles.js';
 import { initPart, partChosen, partClock, partSeek, partShow, partExport, partTrim, partHides, partRecForSite } from './part.js';
 const T = window.TranscriptCore;
 const $ = s => document.querySelector(s);
@@ -601,6 +602,7 @@ const Legal = await import('./legal.js').then(m => m.initLegal({ get cur() { ret
 window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dirtyEdit(), keys: { open: keysHelp, host: '#menu', match: 'table.keys' } });
 initFollow({ toast, siteToRec: partRecForSite, get cur() { return cur; } });
 initRemove({ toast, get cur() { return cur; }, get job() { return job; }, reload: async () => { await loadLib(); drawLib(); } });
+initRoles({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
 initPart({ toast, drawAll, save, get cur() { return cur; } });
 initReverb({ M, toast, save, drawAll, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */
