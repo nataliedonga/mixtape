@@ -69,7 +69,8 @@ async function apply() {
   busy = false;
 }
 function draw() {
-  const c = api.cur, tr = c && c.tr; if (!tr || tr.mode !== 'heard') { row.hidden = true; lastKey = ''; return; }
+  const c = api.cur, tr = c && c.tr; if (!tr || tr.mode !== 'heard') { row.hidden = true; lastKey = ''; if (T().cleanStyle() !== '') T().setCleanStyle(''); return; }
+  if (T().cleanStyle() !== styleOf(tr)) { T().setCleanStyle(styleOf(tr)); api.drawAll(); } // the clean script follows the matter's style: drawn again when it changes
   apply();
   const ms = all(), names = Object.keys(ms).sort((a, b) => a.localeCompare(b)), m = tr.matter ? ms[tr.matter] : null;
   if (lastKey === 'new' && $('#matterNew')) return; // a name is being typed

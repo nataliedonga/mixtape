@@ -1,0 +1,75 @@
+/* Mixtape transcripts: "Choose what goes in the file".
+   One transcript, many kinds of file: with or without the speakers' names, with or without the time stamps, every word
+   that was said or the clean version a style asks for (Rev's legal guide leaves out "um" and "uh"; TranscribeMe's clean
+   verbatim leaves out fillers and a word said twice). Nothing is taken out of the transcript itself: the choices only
+   decide what is written into this file, and a preview shows it before it is saved. */
+import { partExport } from './part.js';
+import { styleOf, STYLES } from './matter.js';
+const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const KEY = 'mixtape-export-as';
+const LEAVES = { '': 'ums and uhs, a word said twice in a row, and openers like “So,” and “Well,”', rev: '“um” and “uh”, and cut-off part-words (Rev’s legal guide keeps everything else)', 'tm-clean': 'fillers (unless one is the whole answer) and a word said twice in a row', 'tm-full': 'nothing: full verbatim keeps every word' };
+let api, dlg;
+const T = () => window.TranscriptCore;
+const saved = () => { try { return Object.assign({ speakers: true, times: true, clean: false, kind: 'txt' }, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { return { speakers: true, times: true, clean: false, kind: 'txt' }; } };
+
+function make(o) { // the file's text and name, from the choices
+  const cur = api.cur, r = partExport(cur.tr), sens = api.sensitive(cur.track.id), words = r.words.map(w => (w.s == null ? { ...w, s: 0 } : w));
+  const base = (cur.track.title || 'transcript').replace(/[\\/:*?"<>|]+/g, '-') + (sens ? ' (SENSITIVE)' : ''), tag = [o.clean ? 'clean' : '', !o.speakers && o.kind === 'txt' ? 'no speakers' : '', !o.times && o.kind === 'txt' ? 'no times' : ''].filter(Boolean).join(', ');
+  const was = T().cleanStyle(); T().setCleanStyle(o.style); let text;
+  try {
+    if (o.kind === 'txt') { text = T().toTxt(words, { clean: o.clean, style: o.style, timestamps: o.times, speakers: o.speakers, caps: o.style === 'rev' }); if (sens) text = api.sensLine + '\n\n' + text; }
+    else { const timed = r.words.slice(0, T().timedUpTo(r.words)); text = o.kind === 'srt' ? T().toSrt(timed, o.clean) : T().toVtt(timed, o.clean); if (sens && o.kind === 'vtt') text = text.replace(/^WEBVTT[^\n]*\n+/, m => m.trimEnd() + '\n\nNOTE ' + api.sensLine + '\n\n'); }
+  } finally { T().setCleanStyle(was); }
+  return { text, name: `${base}${tag ? ` (${tag})` : ''}.${o.kind}` };
+}
+const read = () => ({ style: $('#xaStyle').value, speakers: $('#xaSpeakers').checked, times: $('#xaTimes').checked, clean: $('#xaClean').checked, kind: dlg.querySelector('input[name=xaKind]:checked').value });
+function show() {
+  const o = read(), sub = o.kind !== 'txt';
+  $('#xaSpeakers').disabled = $('#xaTimes').disabled = sub; $('#xaSubNote').hidden = !sub;
+  $('#xaLeaves').textContent = `Leaves out ${LEAVES[o.style] || LEAVES['']}.`;
+  let m; try { m = make(o); } catch (e) { $('#xaPreview').textContent = 'This cannot be made: ' + (e.message || e); return; }
+  $('#xaName').textContent = m.name; $('#xaPreview').textContent = m.text.split('\n').slice(0, 14).join('\n') + (m.text.split('\n').length > 14 ? '\n…' : '');
+}
+export function exportAs() {
+  const cur = api.cur; if (!cur || !cur.tr) return; const o = saved(), st = styleOf(cur.tr);
+  $('#xaStyle').value = st; $('#xaSpeakers').checked = o.speakers; $('#xaTimes').checked = o.times; $('#xaClean').checked = o.clean;
+  (dlg.querySelector(`input[name=xaKind][value="${o.kind}"]`) || dlg.querySelector('input[name=xaKind]')).checked = true;
+  show(); dlg.showModal(); $('#xaSave').focus();
+}
+export function initExportAs(a) {
+  api = a; const st = document.createElement('style');
+  st.textContent = `#exportAs { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 0; border: 1px solid var(--faint, #888); border-radius: 14px; background: var(--paper, Canvas); color: var(--ink, CanvasText); font: 15px/1.5 var(--f-ui, system-ui, sans-serif); }
+#exportAs::backdrop { background: rgba(0, 0, 0, .45); } #exportAs form { padding: 18px 20px; display: grid; gap: 12px; } #exportAs h2 { margin: 0; font-size: 19px; }
+#exportAs .xrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; } #exportAs label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+#exportAs select { height: 32px; padding: 0 8px; border: 1px solid var(--faint, #888); border-radius: 7px; background: var(--sheet, transparent); color: inherit; font: inherit; }
+#exportAs small { color: var(--muted, inherit); display: block; } #exportAs fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; } #exportAs legend { padding: 0; font-weight: 650; margin-bottom: 4px; }
+#exportAs pre { margin: 0; padding: 10px 12px; max-height: 200px; overflow: auto; border: 1px solid var(--faint, #8884); border-radius: 9px; background: var(--sheet, transparent); font: 13px/1.5 var(--f-mono, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+#exportAs .xname { font: 600 13px var(--f-mono, ui-monospace, monospace); overflow-wrap: anywhere; } #exportAs .xbtns { display: flex; justify-content: flex-end; gap: 8px; }
+#exportAs button { height: 36px; padding: 0 14px; border: 1px solid var(--faint, #888); border-radius: 9px; background: transparent; color: inherit; font: inherit; cursor: pointer; } #exportAs #xaSave { background: var(--accent, #1f6f78); border-color: var(--accent, #1f6f78); color: var(--accent-ink, #fff); font-weight: 650; }
+#exportAs :focus-visible { outline: 2px solid var(--accent, currentColor); outline-offset: 1px; }`;
+  document.head.appendChild(st);
+  dlg = document.createElement('dialog'); dlg.id = 'exportAs'; dlg.setAttribute('aria-labelledby', 'xaTitle');
+  dlg.innerHTML = `<form method="dialog"><h2 id="xaTitle">Choose what goes in the file</h2>
+    <small>The transcript itself is not changed. These choices only decide what is written into this file.</small>
+    <div class="xrow"><label for="xaStyle">Style</label><select id="xaStyle">${STYLES.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div>
+    <fieldset><legend>In the file</legend>
+      <label><input type="checkbox" id="xaSpeakers"> The speakers’ names</label>
+      <label><input type="checkbox" id="xaTimes"> A time stamp on each paragraph</label>
+      <label><input type="checkbox" id="xaClean"> Clean version: leave out what the style leaves out</label><small id="xaLeaves"></small>
+    </fieldset>
+    <fieldset><legend>Kind of file</legend><div class="xrow">
+      <label><input type="radio" name="xaKind" value="txt"> Text (.txt)</label><label><input type="radio" name="xaKind" value="srt"> Subtitles (.srt)</label><label><input type="radio" name="xaKind" value="vtt"> Web subtitles (.vtt)</label></div>
+      <small id="xaSubNote" hidden>Subtitles carry their own times and no speaker names.</small></fieldset>
+    <div><div class="xname" id="xaName"></div><pre id="xaPreview" aria-label="How the file begins" tabindex="0"></pre></div>
+    <div class="xbtns"><button type="button" id="xaCancel">Cancel</button><button type="button" id="xaSave">Save the file</button></div></form>`;
+  document.body.appendChild(dlg);
+  dlg.addEventListener('change', show);
+  $('#xaCancel').addEventListener('click', () => dlg.close());
+  $('#xaSave').addEventListener('click', () => {
+    const o = read(); let m; try { m = make(o); } catch (e) { return api.toast('The file could not be made: ' + (e.message || e), 7000); }
+    try { localStorage.setItem(KEY, JSON.stringify({ speakers: o.speakers, times: o.times, clean: o.clean, kind: o.kind })); } catch (e) {}
+    const a = document.createElement('a'), u = URL.createObjectURL(new Blob([m.text], { type: 'text/plain' })); a.href = u; a.download = m.name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 60e3);
+    dlg.close(); api.toast(`Saved “${m.name}”.`, 5000);
+  });
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__exportAs = { make, exportAs };
+}

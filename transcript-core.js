@@ -83,8 +83,26 @@
   const bare = t => String(t).toLowerCase().replace(/[^a-z']/g, '');
   /* the words a clean script leaves out: fillers anywhere; a word said twice in a row ("we, we"), the first time; and a
      starter ("So,", "Well,") that opens a sentence with a comma after it. "You know," and "I mean," at a sentence start too. */
-  function cleanHidden(words) {
+  /* Whose rules a clean script follows. '' is Mixtape's own (below). 'rev': Rev's legal guide leaves out only "um" and
+     "uh" and cut-off part-words, and keeps every full word, repeat and false start. 'tm-clean': TranscribeMe's clean
+     verbatim leaves out fillers (unless one is the whole answer) and a word said twice, and keeps openers.
+     'tm-full': full verbatim, nothing is left out. The page sets the style of the transcript in view; nothing is
+     ever taken out of the transcript, only out of what is shown or saved. */
+  let style0 = '';
+  const setCleanStyle = s => { style0 = s || ''; }, cleanStyle = () => style0;
+  const UMUH = new Set(['um', 'umm', 'uhm', 'uh', 'uhh', 'er', 'erm']);
+  function cleanHidden(words, style = style0) {
     const hide = new Set();
+    if (style === 'tm-full') return hide;
+    if (style === 'rev' || style === 'tm-clean') {
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i]; if (w.lg) continue; const b = bare(w.t), next = words[i + 1], alone = (i === 0 || w.p) && (!next || next.p);
+        if (style === 'rev') { if (UMUH.has(b) || (/[a-z]-$/i.test(w.t) && next && !next.p && b && bare(next.t).startsWith(b) && bare(next.t) !== b)) hide.add(i); continue; }
+        if (FILLERS.has(b)) { if (!alone) hide.add(i); continue; }
+        if (next && b && bare(next.t) === b && !next.p && /[,-]$|^\w+$/.test(w.t) && b.length < 12) hide.add(i);
+      }
+      return hide;
+    }
     for (let i = 0; i < words.length; i++) {
       const w = words[i], b = bare(w.t), prev = words[i - 1], next = words[i + 1], startsSentence = i === 0 || w.p || (prev && endsSentence(prev.t));
       if (FILLERS.has(b)) { hide.add(i); continue; }
@@ -142,8 +160,9 @@
     return out;
   }
   function toTxt(words, opts = {}) {
-    const hidden = opts.clean ? cleanHidden(words) : null, ps = paragraphs(words);
-    return ps.map(p => ({ p, text: joinShown(words, p.i0, p.i1, hidden) })).filter(x => x.text).map(({ p, text }) => `${opts.timestamps === false ? '' : `[${hms(p.start)}] `}${p.speaker ? p.speaker + ': ' : ''}${text}`).join('\n\n') + '\n';
+    // opts: clean (leave out what the style leaves out), style, timestamps: false, speakers: false, caps (speaker labels in capitals, as Rev's legal guide has them)
+    const hidden = opts.clean ? cleanHidden(words, opts.style ?? style0) : null, ps = paragraphs(words);
+    return ps.map(p => ({ p, text: joinShown(words, p.i0, p.i1, hidden) })).filter(x => x.text).map(({ p, text }) => `${opts.timestamps === false ? '' : `[${hms(p.start)}] `}${p.speaker && opts.speakers !== false ? (opts.caps ? p.speaker.toUpperCase() : p.speaker) + ': ' : ''}${text}`).join('\n\n') + '\n';
   }
   /* subtitle cues: at most `maxWords` words and `maxDur` seconds each, broken at sentence ends and pauses */
   function cues(words, maxWords = 14, maxDur = 6, clean = false) {
@@ -251,6 +270,6 @@
   /* the rest of the suggestions after one was taken: those after it move by the change in length */
   const shiftFixes = (fixes, at, delta) => fixes.map(f => (f.at > at ? { ...f, at: f.at + delta } : f));
 
-  const api = { reviewStretches, locateFix, applyFix, shiftFixes, speakerAt, labelHeard, clusterVoice, renameSpeaker, speakerNames, cleanHidden, joinShown, FILLERS, tidyHeard, fromText, matchBatch, timedUpTo, fromHeard, append, paragraphs, wordAt, editParagraph, setSpeaker, search, toTxt, toSrt, toVtt, cues, hms, short, wordCount };
+  const api = { setCleanStyle, cleanStyle, reviewStretches, locateFix, applyFix, shiftFixes, speakerAt, labelHeard, clusterVoice, renameSpeaker, speakerNames, cleanHidden, joinShown, FILLERS, tidyHeard, fromText, matchBatch, timedUpTo, fromHeard, append, paragraphs, wordAt, editParagraph, setSpeaker, search, toTxt, toSrt, toVtt, cues, hms, short, wordCount };
   root.TranscriptCore = api; if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);

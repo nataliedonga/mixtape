@@ -121,4 +121,19 @@ ok(r.ptr === 18 && Date.now() - t0 < 500, 'a long text costs no more per window 
   ok(p0.words[0].p && p0.words[0].sp === 'Speaker 2', 'a fix on a paragraph’s first word keeps the paragraph and its speaker');
 }
 
+// styles: what a clean script leaves out, by whose rules; and the choices for a saved file
+{ const mk = lines => { const o = []; let tt = 0; for (const [sp, x] of lines) x.split(' ').forEach((w, k) => o.push({ t: w, s: +(tt += 0.4).toFixed(2), e: +(tt + 0.3).toFixed(2), ...(k === 0 ? { p: true, sp } : {}) })); return o; };
+  const w = mk([['Speaker 1', 'So, um, where were you, uh, that night?'], ['Speaker 2', 'Um.'], ['Speaker 1', 'Well, th- that was, was a Tuesday, um, right?'], ['Speaker 2', 'Yeah, I, I was at home.']]);
+  const flat = o => T.toTxt(w, { timestamps: false, ...o }).replace(/\n\n/g, ' / ').trim(), n0 = w.length;
+  const all = 'Speaker 1: So, um, where were you, uh, that night? / Speaker 2: Um. / Speaker 1: Well, th- that was, was a Tuesday, um, right? / Speaker 2: Yeah, I, I was at home.';
+  ok(flat({}) === all, 'styles: with nothing left out, every word is in the file');
+  ok(flat({ clean: true, style: 'tm-full' }) === all, 'styles: TranscribeMe full verbatim leaves nothing out');
+  ok(flat({ clean: true, style: 'rev', caps: true }) === 'SPEAKER 1: So, where were you, that night? / SPEAKER 1: Well, that was, was a Tuesday, right? / SPEAKER 2: Yeah, I, I was at home.', 'styles: Rev legal leaves out um, uh and the cut-off part-word, keeps repeats and openers, labels in capitals: ' + flat({ clean: true, style: 'rev', caps: true }));
+  ok(flat({ clean: true, style: 'tm-clean' }) === 'Speaker 1: So, where were you, that night? / Speaker 2: Um. / Speaker 1: Well, th- that was a Tuesday, right? / Speaker 2: Yeah, I was at home.', 'styles: TranscribeMe clean leaves out fillers and a word said twice, keeps a filler that is the whole answer: ' + flat({ clean: true, style: 'tm-clean' }));
+  ok(/^Speaker 1: Where were you, that night\?/.test(flat({ clean: true, style: '' })), 'styles: Mixtape’s own clean script is as before: ' + flat({ clean: true, style: '' }));
+  ok(flat({ speakers: false }).startsWith('So, um, where') && !/Speaker/.test(flat({ speakers: false })), 'file choices: without the speakers’ names');
+  ok(/^\[\d\d:\d\d(:\d\d)?\] Speaker 1: /.test(T.toTxt(w, {})) && !/\[\d/.test(T.toTxt(w, { timestamps: false })), 'file choices: with and without time stamps');
+  T.setCleanStyle('rev'); ok(T.cleanStyle() === 'rev' && T.cleanHidden(w).size === 5, 'styles: the page sets the style in view (Rev hides 5 here): ' + T.cleanHidden(w).size); T.setCleanStyle('');
+  ok(w.length === n0 && w.map(x => x.t).join(' ').includes('um,'), 'styles: nothing is ever taken out of the transcript itself'); }
+
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

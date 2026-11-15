@@ -1,5 +1,13 @@
 [
   {
+    "version": 105,
+    "date": "2026-11-16",
+    "items": [
+      "Transcripts: “Choose what goes in the file”, at the top of Save as a file. Pick a style, and whether the file has the speakers’ names, a time stamp on each paragraph, and every word or the clean version, and see how it begins before you save. The transcript itself is never changed.",
+      "Transcripts: the Clean script now follows the matter’s style. Rev legal hides only “um”, “uh” and cut-off part-words; TranscribeMe clean hides fillers and a word said twice; TranscribeMe full hides nothing. Hidden words stay in the transcript."
+    ]
+  },
+  {
     "version": 104,
     "date": "2026-11-16",
     "items": [

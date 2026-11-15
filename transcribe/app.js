@@ -10,6 +10,7 @@ import { initFollow } from './follow.js';
 import { initRemove } from './remove.js';
 import { initRoles } from './roles.js';
 import { initMatter } from './matter.js';
+import { initExportAs, exportAs } from './exportas.js';
 import { initPart, partChosen, partClock, partSeek, partShow, partExport, partTrim, partHides, partRecForSite } from './part.js';
 const T = window.TranscriptCore;
 const $ = s => document.querySelector(s);
@@ -467,7 +468,8 @@ function markHits() { document.querySelectorAll('.w.hit').forEach(x => x.classLi
 const SENS_LINE = 'SENSITIVE: this transcript is from a recording marked sensitive. Do not share or upload it.';
 $('#exportBtn').addEventListener('click', e => {
   const r = partExport(cur.tr), sens = sensitive(cur.track.id), mark = t => sens ? SENS_LINE + '\n\n' + t : t, base = (cur.track.title || 'transcript').replace(/[\\/:*?"<>|]+/g, '-') + (sens ? ' (SENSITIVE)' : ''), timedWords = r.words.slice(0, T.timedUpTo(r.words));
-  Legal.exportMenu(e.currentTarget, [[V.clean ? 'Save the clean script as' : 'Save the text (full verbatim) as', null],
+  Legal.exportMenu(e.currentTarget, [['Your own choice', null], ['Choose what goes in the file…', exportAs],
+    [V.clean ? 'Save the clean script as' : 'Save the text (full verbatim) as', null],
     ['Text with timestamps (.txt)', () => dl(mark(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { clean: V.clean })), base + (V.clean ? ' (clean)' : '') + '.txt')],
     ['Plain text (.txt)', () => dl(mark(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { timestamps: false, clean: V.clean })), base + (V.clean ? ' (clean, plain)' : ' (plain)') + '.txt')],
     ['Subtitles (.srt)', () => dl(T.toSrt(timedWords, V.clean), base + '.srt')],
@@ -604,6 +606,7 @@ window.MixtapeShell?.init({ tool: 'transcripts', toast, busy: () => !!job || dir
 initFollow({ toast, siteToRec: partRecForSite, get cur() { return cur; } });
 initRemove({ toast, get cur() { return cur; }, get job() { return job; }, reload: async () => { await loadLib(); drawLib(); } });
 initMatter({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
+initExportAs({ toast, sensitive, sensLine: SENS_LINE, get cur() { return cur; } });
 initRoles({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
 initPart({ toast, drawAll, save, get cur() { return cur; } });
 initReverb({ M, toast, save, drawAll, remember, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
