@@ -83,6 +83,7 @@ const mediaDuration = blob => new Promise(res => { const a = document.createElem
 /* ---------- one recording ---------- */
 async function select(id) {
   if (job) { toast('Pause the current transcript first.'); return; }
+  if (dirtyEdit()) return holdEdit();
   $('#rail').classList.remove('open'); if (editing) cancelEdit();
   const t = await getTrack(id); if (!t) return toast('That recording is no longer in the library.'); const blob = blobOf(t); if (!blob) return toast('That recording has no sound saved on this device.');
   if (cur && cur.url) URL.revokeObjectURL(cur.url);
@@ -191,10 +192,15 @@ $('#text').addEventListener('click', e => {
 });
 
 /* ---------- correcting the words, naming the speakers ---------- */
+// Text typed into an open correction is never thrown away without a word: moving to another paragraph or recording is
+// held until it is saved or cancelled; a view switch saves it (Ctrl + Z undoes); closing the page asks first.
+const editText = () => { const ta = editing && editing.p.querySelector('textarea'); return ta ? ta.value : null; };
+const dirtyEdit = () => { const v = editText(); return v != null && v !== editing.text; };
+function holdEdit() { toast('Save or cancel the paragraph you are correcting first (Ctrl + Enter saves, Esc cancels).', 5000); const ta = editing.p.querySelector('textarea'); ta.scrollIntoView({ block: 'center' }); ta.focus(); }
 function startEdit(p, atWord) {
-  if (editing) cancelEdit(); if (job) return toast('Pause first, then correct the text.');
+  if (dirtyEdit()) return holdEdit(); if (editing) cancelEdit(); if (job) return toast('Pause first, then correct the text.');
   const i0 = +p.dataset.i0, i1 = +p.dataset.i1, words = cur.tr.words, text = words.slice(i0, i1).map(w => w.t).join(' ');
-  const box = p.querySelector('.words'); editing = { p, i0, i1, html: box.innerHTML };
+  const box = p.querySelector('.words'); editing = { p, i0, i1, html: box.innerHTML, text };
   box.innerHTML = `<div class="edit"><textarea aria-label="Correct the paragraph">${esc(text)}</textarea><div class="row"><span class="hint">Words you keep keep their timing. A blank line splits the paragraph. <b>Tab</b> plays / pauses.</span><span class="sp"></span><button class="btn sm" data-x="cancel">Cancel</button><button class="btn sm primary" data-x="save">Save</button></div></div>`;
   const ta = box.querySelector('textarea'); ta.focus(); let caret = ta.value.length; if (atWord != null && atWord >= i0) { caret = words.slice(i0, atWord).map(w => w.t).join(' ').length + (atWord > i0 ? 1 : 0); } ta.setSelectionRange(caret, caret);
   ta.addEventListener('keydown', ev => { if (ev.key === 'Tab') { ev.preventDefault(); ev.stopPropagation(); ev.shiftKey ? back(10) : togglePlay(); } else if (ev.key === 'Escape') { ev.preventDefault(); cancelEdit(); } else if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); saveEdit(ta.value); } });
@@ -230,7 +236,7 @@ async function undo() {
   // a change made in another recording, or before more of this one was written down, is not this recording's to undo
   while (undoStack.length && (!cur || !cur.tr || undoStack[undoStack.length - 1].id !== cur.tr.id || undoStack[undoStack.length - 1].upTo !== cur.tr.upTo)) undoStack.pop();
   if (!undoStack.length || !cur || !cur.tr) return toast('Nothing to undo.'); const u = JSON.parse(undoStack.pop().snap); cur.tr.words = u.words; cur.tr.notes = u.notes || []; if (u.review) cur.tr.review = u.review; else delete cur.tr.review; await save(); drawText(); toast('Undone.'); }
-$('#tools').addEventListener('change', e => { const k = e.target.dataset.v; if (!k) return; V[k] = e.target.checked; saveV(); drawText(); });
+$('#tools').addEventListener('change', async e => { const k = e.target.dataset.v; if (!k) return; V[k] = e.target.checked; saveV(); if (dirtyEdit()) { await saveEdit(editText()); toast('Your correction was saved first. Ctrl + Z undoes it.', 4000); } else if (editing) cancelEdit(); drawText(); });
 $('#tools').addEventListener('click', e => { if (aiClick(e)) return; const nl = e.target.closest('[data-notes]'); if (nl) return notesList(nl); const c = e.target.closest('[data-ren]'); if (c) return askName(c, `Rename “${c.dataset.ren}” everywhere`, c.dataset.ren, n => renameAll(c.dataset.ren, n)); if (e.target.closest('#keysBtn')) keysHelp(); });
 
 /* ---------- sensitive recordings: nothing leaves this computer ----------
@@ -430,7 +436,7 @@ function notesList(btn) {
 }
 function notesMD() {
   const ns = [...(cur.tr.notes || [])].sort((a, b) => a.i0 - b.i0);
-  return `# Notes on “${cur.track.title}”\n\n${ns.length} note${ns.length === 1 ? '' : 's'}, ${new Date().toLocaleString()}\n\n` + ns.map((n, k) => `## ${k + 1}. At ${T.short(noteTime(n))}\n\n> ${quoteOf(n)}\n\n${n.text}\n`).join('\n');
+  return `# Notes on “${cur.track.title}”\n\n${sensitive(cur.track.id) ? SENS_LINE + '\n\n' : ''}${ns.length} note${ns.length === 1 ? '' : 's'}, ${new Date().toLocaleString()}\n\n` + ns.map((n, k) => `## ${k + 1}. At ${T.short(noteTime(n))}\n\n> ${quoteOf(n)}\n\n${n.text}\n`).join('\n');
 }
 async function sendNotes() {
   if (sensitive(cur.track.id)) return toast('This recording is marked sensitive: its notes and the words they quote are not sent anywhere. Save them as a file instead.', 7000);
@@ -449,13 +455,15 @@ $('#q').addEventListener('keydown', e => { if (e.key === 'Enter' && hits.length)
 function markHits() { document.querySelectorAll('.w.hit').forEach(x => x.classList.remove('hit')); const n = Math.max(1, cur && cur.tr ? window.LyricsCore.tokens($('#q').value).length : 1); for (const i of hits) for (let k = 0; k < n; k++) { const el = $(`.w[data-i="${i + k}"]`); if (el) el.classList.add('hit'); } }
 
 /* ---------- export ---------- */
+// every file saved from a sensitive recording says so: in its name (subtitles have no place for a remark) and, where the format allows, in its first line
+const SENS_LINE = 'SENSITIVE: this transcript is from a recording marked sensitive. Do not share or upload it.';
 $('#exportBtn').addEventListener('click', e => {
-  const r = cur.tr, base = (cur.track.title || 'transcript').replace(/[\\/:*?"<>|]+/g, '-'), timedWords = r.words.slice(0, T.timedUpTo(r.words));
+  const r = cur.tr, sens = sensitive(cur.track.id), mark = t => sens ? SENS_LINE + '\n\n' + t : t, base = (cur.track.title || 'transcript').replace(/[\\/:*?"<>|]+/g, '-') + (sens ? ' (SENSITIVE)' : ''), timedWords = r.words.slice(0, T.timedUpTo(r.words));
   menu(e.currentTarget, [[V.clean ? 'Save the clean script as' : 'Save the text (full verbatim) as', null],
-    ['Text with timestamps (.txt)', () => dl(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { clean: V.clean }), base + (V.clean ? ' (clean)' : '') + '.txt')],
-    ['Plain text (.txt)', () => dl(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { timestamps: false, clean: V.clean }), base + (V.clean ? ' (clean, plain)' : ' (plain)') + '.txt')],
+    ['Text with timestamps (.txt)', () => dl(mark(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { clean: V.clean })), base + (V.clean ? ' (clean)' : '') + '.txt')],
+    ['Plain text (.txt)', () => dl(mark(T.toTxt(r.words.map(w => w.s == null ? { ...w, s: 0 } : w), { timestamps: false, clean: V.clean })), base + (V.clean ? ' (clean, plain)' : ' (plain)') + '.txt')],
     ['Subtitles (.srt)', () => dl(T.toSrt(timedWords, V.clean), base + '.srt')],
-    ['Web subtitles (.vtt)', () => dl(T.toVtt(timedWords, V.clean), base + '.vtt')],
+    ['Web subtitles (.vtt)', () => dl(sens ? T.toVtt(timedWords, V.clean).replace(/^WEBVTT[^\n]*\n+/, m => m.trimEnd() + '\n\nNOTE ' + SENS_LINE + '\n\n') : T.toVtt(timedWords, V.clean), base + '.vtt')],
     ['Words with times (.json)', () => dl(JSON.stringify({ title: cur.track.title, mode: r.mode, ...(sensitive(cur.track.id) ? { sensitive: true } : {}), words: r.words }, null, 1), base + '.json')],
     ['Start again…', null],
     ['Start again (this transcript is deleted)', async () => { if (!confirm(`Delete the ${r.mode === 'text' ? 'read-along' : 'transcript'} of “${cur.track.title}” and start again? Save it as a file first if you want to keep it.`)) return; await tx(trDB, 'transcripts', 'readwrite', o => o.delete(r.id)); trs.delete(r.id); cur.tr = null; hits = []; drawLib(); drawAll(); }]]);
@@ -578,7 +586,7 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.closest('.edit')) b.blur(); });
 addEventListener('resize', () => { $('#menu').hidden = true; }); // a pop-up placed for the old window size would hang off the new one
-addEventListener('beforeunload', e => { if (job) { e.preventDefault(); e.returnValue = ''; } });
+addEventListener('beforeunload', e => { if (job || dirtyEdit()) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- start ---------- */
 await loadLib(); loadShelf();
