@@ -103,7 +103,7 @@ const disarmClose = twoPress($('#closeAll'), () => `Close all ${files.length}?`,
 });
 function renderFiles() {
   const el = $('#fileList'); $('#filesHint').hidden = files.length > 0; $('#closeAll').hidden = files.length < 2; if (files.length < 2) disarmClose(); $('#joinBtn').disabled = files.filter(f => f.state === 'ok').length < 2;
-  el.innerHTML = files.map((f, i) => `<div class="fi${f === cur ? ' on' : ''}" data-i="${i}" title="${esc(f.media.file.name)}"><span class="k">${f.state === 'ok' ? (f.media.v ? '▣' : '♪') : f.state === 'error' ? '!' : '…'}</span><span class="n">${esc(f.media.file.name)}</span><button class="x" data-x="${i}" title="Close this file" aria-label="Close ${esc(f.media.file.name)}">✕</button>${f.state === 'ok' ? `<span class="d">${C.fmtTime(f.media.duration, f.media.fps)}</span>` : f.state === 'error' ? `<span class="err">${esc(f.error)}</span>` : `<span class="d">${esc(f.note || 'opening…')}</span>`}</div>`).join('');
+  el.innerHTML = files.map((f, i) => `<div class="fi${f === cur ? ' on' : ''}" data-i="${i}" title="${esc(f.media.file.name)}"><span class="k">${f.state === 'ok' ? (f.media.v ? '▣' : '♪') : f.state === 'error' ? '!' : '…'}</span><button class="n"${f === cur ? ' aria-current="true"' : ''}>${esc(f.media.file.name)}</button><button class="x" data-x="${i}" title="Close this file" aria-label="Close ${esc(f.media.file.name)}">✕</button>${f.state === 'ok' ? `<span class="d">${C.fmtTime(f.media.duration, f.media.fps)}</span>` : f.state === 'error' ? `<span class="err">${esc(f.error)}</span>` : `<span class="d">${esc(f.note || 'opening…')}</span>`}</div>`).join('');
 }
 $('#fileList').addEventListener('click', e => {
   const x = e.target.closest('[data-x]'); if (x) { const i = +x.dataset.x, f = files[i]; files.splice(i, 1); forget(f.id); if (f === cur) { player.stop(); cur = null; select(files.find(z => z.state === 'ok') || null); } renderFiles(); return; }
@@ -226,7 +226,7 @@ $('#tLoop').addEventListener('click', () => setLoop(!S.loop));
 const stepSize = () => (S.skip === 'frame' ? step() : +S.skip);
 const stepLabel = () => (S.skip === 'frame' ? 'one frame' : `${S.skip} s`);
 function showStep() { $('#skipSel').value = String(S.skip); $('#tBack').title = `Back ${stepLabel()} (←; Shift: one frame; Ctrl: ten seconds)`; $('#tFwd').title = `Forward ${stepLabel()} (→; Shift: one frame; Ctrl: ten seconds)`; $('#tBack').setAttribute('aria-label', `Back ${stepLabel()}`); $('#tFwd').setAttribute('aria-label', `Forward ${stepLabel()}`); }
-$('#skipSel').addEventListener('change', e => { S.skip = e.target.value === 'frame' ? 'frame' : e.target.value; saveSettings(); showStep(); e.target.blur(); toast(`◀ ▶ and the arrow keys now move ${stepLabel()}.`); });
+$('#skipSel').addEventListener('change', e => { S.skip = e.target.value === 'frame' ? 'frame' : e.target.value; saveSettings(); showStep(); letGo(e.target); toast(`◀ ▶ and the arrow keys now move ${stepLabel()}.`); });
 const nudge = (dir, ev) => { movePH(ph + dir * (ev.ctrlKey || ev.metaKey ? 10 : ev.shiftKey ? step() : stepSize())); revealT(ph); };
 function togglePlay() { if (!cur) return; if (player.playing) { player.stop(); ph = C.snapFrame(player.at ?? ph, fps()); phBox.set(ph); $('#tPlay').textContent = '▶ Play'; drawMonitor(); dirty(); } else playFrom(ph); }
 $('#tPlay').addEventListener('click', togglePlay);
@@ -238,10 +238,14 @@ showStep(); $('#tLoop').setAttribute('aria-pressed', S.loop);
 /* Volume (↑ ↓, or the slider): how loud playback is here; the files you export are never changed by it */
 function setVol(v, say) { S.vol = Math.round(Math.max(0, Math.min(100, v)) / 5) * 5; player.setVolume(S.vol / 100); $('#volSl').value = S.vol; $('#volN').textContent = `${S.vol}%`; saveSettings(); if (say) toast(S.vol ? `Volume ${S.vol}%` : 'Volume off', 1200); }
 $('#volSl').addEventListener('input', e => setVol(+e.target.value, false));
-$('#volSl').addEventListener('change', e => e.target.blur());
+$('#volSl').addEventListener('change', e => letGo(e.target));
 setVol(S.vol ?? 100, false);
 // buttons do not keep focus: Space must reach the player, not press the last button again
-document.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.closest('.sheet')) b.blur(); });
+/* A control that was clicked gives the focus back, so the keys are shortcuts again. One the keyboard is on (it shows
+   the last thing used was a key, not the mouse) keeps it: otherwise every press would lose the keyboard's place. */
+let viaKeys = false; addEventListener('keydown', () => { viaKeys = true; }, true); addEventListener('pointerdown', () => { viaKeys = false; }, true);
+function letGo(n) { if (!viaKeys) n.blur(); }
+document.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.closest('.sheet')) letGo(b); });
 
 /* ---------- the timeline ---------- */
 const tl = $('#tl'), tctx = tl.getContext('2d'), ov = $('#ov'), octx = ov.getContext('2d');
@@ -257,7 +261,7 @@ function setView(a, b, fromSlider = false) {
 function zoomAt(t, factor) { const a = t - (t - view.t0) * factor, b = t + (view.t1 - t) * factor; setView(a, b); }
 $('#zoom').addEventListener('input', e => { if (!cur) return; const D = dur(), z = +e.target.value / 1000, span = D / Math.pow(D / minSpan(), z), c = player.playing || (ph >= view.t0 && ph <= view.t1) ? ph : (view.t0 + view.t1) / 2; setView(c - span / 2, c + span / 2, true); });
 // a slider, tick box or list that was just used lets go of the keyboard, so Space, I, O, N and the arrows work again
-for (const id of ['#zoom', '#showKeys', '#fmtSel']) $(id).addEventListener('change', e => e.target.blur());
+for (const id of ['#zoom', '#showKeys', '#fmtSel']) $(id).addEventListener('change', e => letGo(e.target));
 $('#zoomIn').addEventListener('click', () => zoomAt(ph, 0.5));
 $('#zoomOut').addEventListener('click', () => zoomAt(ph, 2));
 $('#zoomFit').addEventListener('click', () => setView(0, dur()));
@@ -383,7 +387,7 @@ function updateExportBar() {
   if (m && !video) S.tracksNow = 'audio'; else S.tracksNow = S.tracks;
   if (m && video && !hasA && S.tracksNow !== 'video') S.tracksNow = 'video';
   const tr = S.tracksNow, soundOnly = tr === 'audio';
-  for (const [id, key, val] of [['#segMode', 'mode', S.mode], ['#segOut', 'out', S.out], ['#segPrec', 'prec', S.prec], ['#segTracks', 'tracks', tr]]) $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === val));
+  for (const [id, key, val] of [['#segMode', 'mode', S.mode], ['#segOut', 'out', S.out], ['#segPrec', 'prec', S.prec], ['#segTracks', 'tracks', tr]]) $(id).querySelectorAll('button').forEach(b => { b.classList.toggle('on', b.dataset.v === val); b.setAttribute('aria-pressed', b.dataset.v === val); });
   $('#segTracks').hidden = !!m && !video; $('#segTracks').querySelector('[data-v="audio"]').disabled = !hasA; $('#segTracks').querySelector('[data-v="both"]').disabled = !hasA;
   // the format list: the original's own, then what this browser can write for the tracks chosen
   const own = m ? `Same as the original` : 'Same as the original';
@@ -556,19 +560,28 @@ async function snapshot() {
 $('#snapBtn').addEventListener('click', snapshot);
 
 /* ---------- sheets and menus ---------- */
-let sheetClose = null;
-function openSheet(html, { onClose } = {}) { const w = $('#sheet'); w.hidden = false; w.innerHTML = `<div class="sheet" role="dialog">${html}</div>`; sheetClose = onClose || null; return w.querySelector('.sheet'); }
-function closeSheet() { const w = $('#sheet'); if (exporting) return; w.hidden = true; w.innerHTML = ''; const f = sheetClose; sheetClose = null; f && f(); }
+let sheetClose = null, sheetRelease = null;
+/* A sheet is a dialog: it is named by its heading, Tab stays inside it, and closing it puts the focus back where it was. */
+function openSheet(html, { onClose } = {}) {
+  const w = $('#sheet'), back = sheetRelease ? null : document.activeElement; if (sheetRelease && w.hidden) { sheetRelease(); sheetRelease = null; }
+  w.hidden = false; w.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetH">${html}</div>`; sheetClose = onClose || null;
+  const sh = w.querySelector('.sheet'), h = sh.querySelector('h3'); if (h) h.id = 'sheetH';
+  if (!sheetRelease && window.MixtapeShell?.trap) sheetRelease = window.MixtapeShell.trap(w, { back });
+  setTimeout(() => { if (sh.isConnected && !w.contains(document.activeElement)) (sh.querySelector('button.primary:not([disabled])') || sh.querySelector('button:not([disabled]), input, select'))?.focus(); }, 80);
+  return sh;
+}
+function closeSheet() { const w = $('#sheet'); if (exporting) return; w.hidden = true; w.innerHTML = ''; const rel = sheetRelease; sheetRelease = null; if (rel) rel(); const f = sheetClose; sheetClose = null; f && f(); }
 $('#sheet').addEventListener('pointerdown', e => { if (e.target.id === 'sheet' && !exporting) closeSheet(); });
-let menuEl = null;
+let menuEl = null, menuBack = null;
 function menu(x, y, items, above = false) {
-  closeMenu(); menuEl = document.createElement('div'); menuEl.className = 'menu'; menuEl.innerHTML = items.map((it, i) => `<button data-m="${i}">${esc(it[0])}</button>`).join(''); document.body.appendChild(menuEl);
+  closeMenu(); menuBack = document.activeElement; menuEl = document.createElement('div'); menuEl.className = 'menu'; menuEl.setAttribute('role', 'menu'); menuEl.innerHTML = items.map((it, i) => `<button role="menuitem" data-m="${i}">${esc(it[0])}</button>`).join(''); document.body.appendChild(menuEl);
+  menuEl.querySelector('button')?.focus({ preventScroll: true }); /* the keyboard goes into the menu: up and down move, Enter chooses, Esc or Tab closes */
   const h = menuEl.offsetHeight, w = menuEl.offsetWidth; menuEl.style.left = Math.max(8, Math.min(innerWidth - w - 8, x)) + 'px'; menuEl.style.top = Math.max(8, above ? y - h : y) + 'px';
   menuEl.addEventListener('click', e => { const b = e.target.closest('[data-m]'); if (!b) return; const f = items[+b.dataset.m][1]; closeMenu(); f(); });
   setTimeout(() => document.addEventListener('pointerdown', outside), 0);
 }
 function outside(e) { if (menuEl && !menuEl.contains(e.target)) closeMenu(); }
-function closeMenu() { if (menuEl) { menuEl.remove(); menuEl = null; } document.removeEventListener('pointerdown', outside); }
+function closeMenu() { if (menuEl) { const had = menuEl.contains(document.activeElement); menuEl.remove(); menuEl = null; if (had && menuBack && menuBack.isConnected) menuBack.focus({ preventScroll: true }); } menuBack = null; document.removeEventListener('pointerdown', outside); }
 $('#helpBtn').addEventListener('click', help);
 function help() {
   const sh = openSheet(`<h3>Keys and tips</h3><div class="keys">
@@ -580,7 +593,8 @@ function help() {
     <kbd>I O</kbd><span>The selected part starts / ends at the playhead</span><kbd>B</kbd><span>Split the part under the playhead</span>
     <kbd>↑ ↓</kbd><span>Volume up / down (playback only)</span><kbd>Shift ↑ ↓</kbd><span>Select the previous / next part</span><kbd>Delete</kbd><span>Remove the selected part</span>
     <kbd>Ctrl Z</kbd><span>Undo (Ctrl Y or Ctrl Shift Z: redo)</span><kbd>+ − 0</kbd><span>Zoom in / out / whole file</span>
-    <kbd>S</kbd><span>Save the frame at the playhead as a picture</span><kbd>E</kbd><span>Export</span></div>
+    <kbd>S</kbd><span>Save the frame at the playhead as a picture</span><kbd>E</kbd><span>Export</span>
+    <kbd>F6</kbd><span>Move to the next button or box, as Tab does elsewhere (Shift F6: the one before). Enter or Space presses it</span></div>
     <p class="lead" style="margin-top:14px"><b>Mouse:</b> drag across the timeline to mark a part; drag a part's edges to change it (they stick to the playhead and to keyframes; hold Alt to stop that); the wheel zooms, Shift + wheel moves along.</p>
     <p class="lead"><b>Exact or untouched.</b> Exact cuts where you marked: for H.264 video only the few frames at each edge are re-encoded and the rest is copied as it is. Untouched re-encodes nothing, in any format, but a video cut can only start and end on keyframes (the orange ticks), so it widens to them.</p>
     <p class="lead">Nothing leaves this computer: files are read and written in the browser. Built on mediabunny (MPL-2.0).</p>
@@ -596,6 +610,20 @@ function help() {
 /* ---------- keys ---------- */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { const a = document.activeElement; if (menuEl) closeMenu(); else if (!$('#sheet').hidden) closeSheet(); else if (a && a.matches('select, input[type=range], input[type=checkbox]')) a.blur(); /* Esc on the Step or Format list hands the keys back */ return; }
+  // inside an open menu: up and down move along it, Home and End jump, Tab closes it; nothing else reaches the shortcuts
+  if (menuEl && menuEl.contains(e.target)) {
+    const its = [...menuEl.querySelectorAll('button')], at = its.indexOf(e.target), k = e.key;
+    const to = k === 'ArrowDown' ? (at + 1) % its.length : k === 'ArrowUp' ? (at + its.length - 1) % its.length : k === 'Home' ? 0 : k === 'End' ? its.length - 1 : -1;
+    if (to >= 0) { e.preventDefault(); its[to].focus(); } else if (k === 'Tab') { e.preventDefault(); closeMenu(); }
+    return;
+  }
+  // F6 moves the keyboard focus to the next button or box (Shift + F6: the one before), from anywhere. It is the way
+  // round the controls while a file is open, because Tab is play / pause then.
+  if (e.key === 'F6' && $('#sheet').hidden && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const f = [...document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled])')].filter(n => n.getClientRects().length && !n.closest('.mxs')), at = f.indexOf(document.activeElement);
+    const to = f[at < 0 ? (e.shiftKey ? f.length - 1 : 0) : (at + (e.shiftKey ? f.length - 1 : 1)) % f.length];
+    e.preventDefault(); if (to) { to.focus(); to.scrollIntoView({ block: 'nearest' }); } return;
+  }
   // Tab plays and pauses from anywhere, even while typing a time or a name, as in Transcripts; Shift + Tab goes back
   // 3 seconds (it keeps playing if it was). Inside a sheet or a menu Tab still moves between its controls.
   if (e.key === 'Tab' && cur && $('#sheet').hidden && !menuEl && !e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -605,6 +633,8 @@ document.addEventListener('keydown', e => {
   const tag = e.target.tagName; if ((tag === 'INPUT' && !/^(range|checkbox)$/.test(e.target.type)) || tag === 'SELECT' || tag === 'TEXTAREA' || !$('#sheet').hidden) return;
   if (e.key === '?') { help(); e.preventDefault(); return; }
   if (!cur) return; const k = e.key, ctrl = e.ctrlKey || e.metaKey;
+  if (k === ' ' && byKeyboard(e.target)) return; // Space presses the button the keyboard is on; anywhere else it plays
+  if (e.target.type === 'range' && e.target.matches(':focus-visible') && /^(Arrow|Home$|End$|Page)/.test(k)) return; // a slider the keyboard is on is moved by the arrows
   if (ctrl && (k === 'z' || k === 'Z')) { e.shiftKey ? redo() : undo(); e.preventDefault(); return; }
   if (ctrl && (k === 'y' || k === 'Y')) { redo(); e.preventDefault(); return; }
   if (ctrl && k !== 'ArrowLeft' && k !== 'ArrowRight') return;
@@ -621,7 +651,10 @@ document.addEventListener('keydown', e => {
   };
   const f = acts[k] || acts[k.toLowerCase()]; if (f) { e.preventDefault(); f(); }
 });
-document.addEventListener('keyup', e => { if (e.key === ' ' && e.target.tagName === 'BUTTON') e.preventDefault(); });
+/* A button the keyboard moved onto (it shows the focus ring), or one in a sheet or a menu: Space presses it, as everywhere.
+   A button that only has the focus because it was clicked: Space stays play / pause. */
+function byKeyboard(t) { try { return !!(t && t.closest && (t.closest('#sheet, .menu, .mxs') || t.matches('button:focus-visible, a:focus-visible, input[type="checkbox"]:focus-visible'))); } catch (e) { return false; } }
+document.addEventListener('keyup', e => { if (e.key === ' ' && e.target.tagName === 'BUTTON' && !byKeyboard(e.target)) e.preventDefault(); });
 
 /* ---------- opening: button, drop, launch from the OS ---------- */
 // Chrome and Edge: the system picker gives a handle, so the file can be found again after you leave (nothing is copied)

@@ -18,7 +18,8 @@
 <style>
 /* Layout: one scrolling library column under a sticky header, a docked transport bar at the bottom, and a full-screen Now Playing sheet */
 :root{
-  --bg:#ECEEE8; --surface:#F7F8F4; --raise:#FFFFFF; --ink:#1C1922; --muted:#67636F; --line:#D6D9D0;
+  --bg:#ECEEE8; --surface:#F7F8F4; --raise:#FFFFFF; --ink:#1C1922; --muted:#64606C; --line:#D6D9D0;
+  --field:color-mix(in srgb,var(--muted) 75%,var(--bg)); /* the edge of a box you type or choose in: 3:1 against the page */
   --accent:#5A2C84; --accent-ink:#FFFFFF; --accent-soft:#E6DCEF; --danger:#B3261E; --danger-ink:#FFFFFF;
   --scrim:rgba(20,16,26,.45); --shadow:rgba(20,16,26,.28);
   --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
@@ -55,8 +56,8 @@ button,input,select{font:inherit;color:inherit}
   background:radial-gradient(circle,var(--accent) 0 22%,var(--bg) 23% 28%,var(--ink) 29% 100%)}
 body.playing .logo{animation:spin 3.2s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.search{flex:1 1 280px;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:0 12px;height:40px;color:var(--muted)}
-.search:focus-within{border-color:var(--accent)}
+.search{flex:1 1 280px;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--field);border-radius:10px;padding:0 12px;height:40px;color:var(--muted)}
+.search:focus-within{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .search input{border:0;background:transparent;color:var(--ink);flex:1;min-width:0;height:100%;outline:0}
 .adds{display:flex;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap}
@@ -80,7 +81,7 @@ main{padding-block:20px calc(var(--barH) + 48px + env(safe-area-inset-bottom,0px
 .viewhead h2{font:700 clamp(28px,4.4vw,40px)/1.05 var(--f-display);margin:0;letter-spacing:-.02em;text-wrap:balance}
 .viewhead p{margin:6px 0 0;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
 .viewact{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-select.sel{height:40px;border-radius:10px;border:1px solid var(--line);background:var(--surface);padding:0 10px;cursor:pointer}
+select.sel{height:40px;border-radius:10px;border:1px solid var(--field);background:var(--surface);padding:0 10px;cursor:pointer}
 .list{list-style:none;margin:0;padding:0}
 .row{display:grid;grid-template-columns:30px 44px minmax(0,1fr) 40px 48px 40px;align-items:center;gap:12px;padding:7px 8px;border-radius:10px;cursor:pointer}
 .row:hover{background:var(--surface)}
@@ -183,7 +184,8 @@ select.sel{height:40px;border-radius:10px;border:1px solid var(--line);backgroun
 /* menu, modal, toast, drop */
 .menu{position:fixed;z-index:60;min-width:210px;max-width:calc(100vw - 16px);background:var(--raise);border:1px solid var(--line);border-radius:12px;padding:6px;box-shadow:0 18px 40px -14px var(--shadow);max-height:60vh;overflow:auto}
 .menu button{display:block;width:100%;text-align:left;padding:9px 12px;border:0;background:none;border-radius:8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.menu button:hover,.menu button:focus-visible{background:var(--surface);outline:0}
+.menu button:hover,.menu button:focus-visible{background:var(--surface)}
+.menu button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .menu button.danger{color:var(--danger)}
 .menu hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
 .menu .lbl{padding:6px 12px 4px;font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -191,8 +193,8 @@ select.sel{height:40px;border-radius:10px;border:1px solid var(--line);backgroun
 .modal{background:var(--raise);border-radius:14px;padding:20px;width:min(100%,400px);display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 60px -20px var(--shadow)}
 .modal h3{font:700 20px var(--f-display);margin:0}
 .modal p{margin:0;color:var(--muted)}
-.modal input{height:42px;border-radius:10px;border:1px solid var(--line);background:var(--surface);padding:0 12px;outline:0}
-.modal input:focus{border-color:var(--accent)}
+.modal input{height:42px;border-radius:10px;border:1px solid var(--field);background:var(--surface);padding:0 12px;outline:0}
+.modal input:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .mact{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--barH) + 18px + env(safe-area-inset-bottom,0px));z-index:80;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;max-width:calc(100vw - 32px);box-shadow:0 10px 30px -10px var(--shadow)}
 .drop{position:fixed;inset:12px;z-index:90;border:2px dashed var(--accent);border-radius:20px;background:color-mix(in srgb,var(--bg) 82%,transparent);display:grid;place-items:center;font:700 28px var(--f-display);color:var(--accent);pointer-events:none}
@@ -200,6 +202,15 @@ select.sel{height:40px;border-radius:10px;border:1px solid var(--line);backgroun
 @media (max-width:760px){
   :root{--barH:66px}
   .search{order:3;flex-basis:100%}
+  /* the buttons beside the name: one row that slides sideways (like the views under it), Add songs first, so the page is never wider than the phone */
+  .adds{flex:1 1 100%;min-width:0;overflow-x:auto;scrollbar-width:none;padding:3px;margin:-3px}
+  .adds::-webkit-scrollbar{display:none}
+  .adds .btn{flex:none}
+  .adds [data-act="add"]{order:-1}
+  .chip,.pill{height:40px}
+  .now .rng{height:40px}
+  .meta span,.np-meta span,.viewhead p{font-size:14px}
+  .foot{font-size:13px}
   #folderBtn .lbltxt{display:none}
   .row{grid-template-columns:44px minmax(0,1fr) 44px 36px;gap:10px;padding-inline:4px}
   .row .idx,.row .fav{display:none}
@@ -312,7 +323,7 @@ select.sel{height:40px;border-radius:10px;border:1px solid var(--line);backgroun
   </div>
 </footer>
 
-<section class="now" id="now" hidden aria-label="Now Playing">
+<section class="now" id="now" hidden role="dialog" aria-modal="true" aria-label="Now Playing">
   <div class="now-in">
     <div class="now-top">
       <button class="ib" data-act="close" aria-label="Close Now Playing"><svg class="i"><use href="#i-down"/></svg></button>
@@ -356,10 +367,10 @@ select.sel{height:40px;border-radius:10px;border:1px solid var(--line);backgroun
 
 <div class="menu" id="menu" role="menu" hidden></div>
 <div class="modalwrap" id="modal" hidden>
-  <form class="modal" id="modalForm">
+  <form class="modal" id="modalForm" role="dialog" aria-modal="true" aria-labelledby="mTitle" aria-describedby="mText">
     <h3 id="mTitle"></h3>
     <p id="mText"></p>
-    <input id="mInput" type="text" autocomplete="off" maxlength="80">
+    <input id="mInput" type="text" autocomplete="off" maxlength="80" aria-labelledby="mTitle">
     <div class="mact"><button type="button" class="btn" id="mCancel">Cancel</button><button type="submit" class="btn primary" id="mOk">OK</button></div>
   </form>
 </div>

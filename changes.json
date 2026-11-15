@@ -1,5 +1,15 @@
 [
   {
+    "version": 85,
+    "date": "2026-11-15",
+    "items": [
+      "Easier to use with the keyboard: menus and dialogs take the keyboard and give it back, every control shows where you are, and in the Cutter F6 moves between controls (Tab still plays and pauses).",
+      "Easier to read: faint text is darker, and boxes have clearer edges.",
+      "Works better on a phone: nothing runs off the side, and buttons are finger-sized.",
+      "Studio: the top bar wraps to a second line on smaller screens instead of pushing Export off the edge, and the tempo label no longer blocks clicks."
+    ]
+  },
+  {
     "version": 84,
     "date": "2026-11-15",
     "items": [

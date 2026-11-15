@@ -16,8 +16,7 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.6 7.6 20 18M8.6 16.4 20 6"/></svg><b>Cutter</b><small>any sound or video</small></div>
-  <a class="homelink" href="../home/" title="All of Mixtape's tools, and Privacy and storage">← Mixtape</a>
+  <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.6 7.6 20 18M8.6 16.4 20 6"/></svg><h1>Cutter</h1><small>any sound or video</small></div>
   <button id="openBtn" class="primary">Open files</button>
   <input id="fileIn" type="file" multiple hidden accept="video/*,audio/*,.mkv,.mka,.mov,.m4v,.m4a,.ts,.mts,.flac,.opus,.ogg,.wav,.aif,.aiff">
   <div class="pills" id="pills"></div>
@@ -35,14 +34,14 @@
 
   <section class="stage">
     <div class="monitor" id="monitor">
-      <canvas id="mon" width="1280" height="720" aria-label="The picture at the playhead"></canvas>
+      <canvas id="mon" width="1280" height="720" role="img" aria-label="The picture at the playhead"></canvas>
       <div class="soundcard" id="soundcard" hidden><div class="sc-name" id="scName"></div><div class="sc-meta" id="scMeta"></div></div>
       <div class="empty" id="empty"><div class="drop"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.6 7.6 20 18M8.6 16.4 20 6"/></svg><p><b>Open a sound or video file to cut.</b><br>MP4, MOV, MKV, WebM, MP3, M4A, WAV, FLAC, Ogg and more. Hours long is fine.</p><button class="primary" id="openBtn2">Open files</button></div></div>
     </div>
     <div class="transport">
       <button id="tStart" class="ic" title="To the start (Home)" aria-label="To the start">⏮</button>
       <button id="tBack" class="ic" title="Back one frame (←; Shift: one second)" aria-label="Back one frame">◀</button>
-      <button id="tPlay" class="play" title="Play / pause (Space, or Tab from anywhere)">▶ Play</button>
+      <button id="tPlay" class="play" title="Play / pause (Space, or Tab from anywhere; F6 moves between the buttons)">▶ Play</button>
       <button id="tFwd" class="ic" title="Forward one frame (→; Shift: one second)" aria-label="Forward one frame">▶</button>
       <button id="tEnd" class="ic" title="To the end (End)" aria-label="To the end">⏭</button>
       <button id="tLoop" class="loopbtn" title="Loop: play the selected part over and over, or the whole file when no part is selected (L)" aria-pressed="false">⟲ Loop</button>
@@ -79,8 +78,8 @@
     <button id="zoomIn" class="ic sm" title="Zoom in (+)" aria-label="Zoom in">+</button>
     <button id="zoomFit" class="sm" title="Show the whole file (0)">Whole file</button>
   </div>
-  <canvas id="tl" data-h="168" height="168" aria-label="Timeline: click to move the playhead, drag to mark a part, drag a part's edges to change it"></canvas>
-  <canvas id="ov" data-h="26" height="26" aria-label="Overview of the whole file: drag the window to move along"></canvas>
+  <canvas id="tl" data-h="168" height="168" role="img" aria-label="Timeline: click to move the playhead, drag to mark a part, drag a part's edges to change it. With the keyboard: the arrow keys move the playhead, N makes a part there, I and O set its start and end; the Parts list has every part with its times."></canvas>
+  <canvas id="ov" data-h="26" height="26" role="img" aria-label="Overview of the whole file: drag the window to move along. With the keyboard: plus and minus zoom, 0 shows the whole file."></canvas>
 </section>
 
 <footer class="exportbar">

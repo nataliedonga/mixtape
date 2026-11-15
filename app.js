@@ -119,7 +119,7 @@ function renderNav() {
 }
 function rowHTML(t, n) {
   const cur = t.id === curId;
-  return `<li class="row${cur ? ' is-cur' : ''}" data-id="${esc(t.id)}" tabindex="0">
+  return `<li class="row${cur ? ' is-cur' : ''}" data-id="${esc(t.id)}" tabindex="0"${cur ? ' aria-current="true"' : ''}>
     <span class="idx">${cur ? '<span class="eq"><i></i><i></i><i></i></span>' : n}</span>
     <span class="art sm">${artHTML(t)}</span>
     <span class="meta"><b>${esc(t.title)}</b><span>${esc(t.artist || 'Unknown artist')}${t.album ? ' · ' + esc(t.album) : ''}</span></span>
@@ -129,7 +129,10 @@ function rowHTML(t, n) {
 }
 function renderList() {
   const ids = visibleIds(), list = $('#list'), empty = $('#empty');
+  /* the list is redrawn whole; a row (or a button in it) that had the keyboard focus gets it back */
+  const fa = document.activeElement, frow = fa && list.contains(fa) ? fa.closest('.row') : null, fid = frow && frow.dataset.id, fbtn = fid && fa !== frow ? fa.dataset.row : null;
   list.innerHTML = ids.map((id, i) => rowHTML(tracks.get(id), i + 1)).join('');
+  if (fid) { const again = [...list.children].find(r => r.dataset.id === fid), to = again && (fbtn ? again.querySelector(`[data-row="${fbtn}"]`) : again); if (to) to.focus({ preventScroll: true }); }
   list.classList.toggle('paused', audio.paused);
   $('#viewTitle').textContent = viewName();
   const total = ids.reduce((s, id) => s + (tracks.get(id).duration || 0), 0);
@@ -263,7 +266,7 @@ function applyVol() {
 }
 function toggleMute() { if (S.muted || S.vol === 0) { S.muted = false; if (S.vol === 0) S.vol = 60; } else S.muted = true; applyVol(); save(); }
 function setVol(v) { S.vol = Math.max(0, Math.min(100, Math.round(v))); S.muted = false; applyVol(); save(); }
-function setSeekUI(v, t) { $$('.seek').forEach(r => { r.value = v; r.style.setProperty('--p', v / 10 + '%'); }); $$('.js-cur').forEach(e => e.textContent = fmt(t)); }
+function setSeekUI(v, t) { $$('.seek').forEach(r => { r.value = v; r.style.setProperty('--p', v / 10 + '%'); r.setAttribute('aria-valuetext', fmt(t)); }); $$('.js-cur').forEach(e => e.textContent = fmt(t)); }
 
 /* queue edits */
 function playNext(id) { if (!curId) return playFrom([id], id); S.queue.splice(S.qi + 1, 0, id); S.orig.splice(S.orig.indexOf(curId) + 1, 0, id); toast(`“${tracks.get(id).title}” plays next`); renderUpNext(); save(); }
@@ -624,9 +627,9 @@ async function updateStorage() {
 }
 
 /* ---------- menus, dialogs, toast ---------- */
-const menu = $('#menu'); let menuItems = [];
+const menu = $('#menu'); let menuItems = [], menuAnchor = null;
 function openMenu(anchor, items) {
-  menuItems = items;
+  menuItems = items; menuAnchor = anchor;
   menu.innerHTML = items.map((it, i) => it.sep ? '<hr>' : it.lbl ? `<div class="lbl">${esc(it.lbl)}</div>` : `<button role="menuitem" data-i="${i}" class="${it.danger ? 'danger' : ''}">${esc(it.label)}</button>`).join('');
   menu.hidden = false;
   const r = anchor.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
@@ -635,7 +638,18 @@ function openMenu(anchor, items) {
   menu.style.left = left + 'px'; menu.style.top = top + 'px';
   const first = menu.querySelector('button'); if (first) first.focus({ preventScroll: true });
 }
-const closeMenu = () => { menu.hidden = true; };
+/* Closing a menu the keyboard was in puts the focus back on the button that opened it. */
+const closeMenu = () => { const back = !menu.hidden && menu.contains(document.activeElement) ? menuAnchor : null; menu.hidden = true; if (back && back.isConnected) back.focus({ preventScroll: true }); };
+/* Keys inside an open menu: up and down move along it, Home and End jump, Tab closes it. Nothing typed in a menu
+   reaches the Player's own shortcuts (Esc still does: it closes the menu). */
+window.addEventListener('keydown', e => {
+  if (menu.hidden || !menu.contains(e.target) || e.key === 'Escape') return;
+  const its = [...menu.querySelectorAll('button')], at = its.indexOf(document.activeElement), k = e.key;
+  const to = k === 'ArrowDown' ? (at + 1) % its.length : k === 'ArrowUp' ? (at + its.length - 1) % its.length : k === 'Home' ? 0 : k === 'End' ? its.length - 1 : -1;
+  e.stopPropagation();
+  if (to >= 0 && its.length) { e.preventDefault(); its[to].focus(); }
+  else if (k === 'Tab') { e.preventDefault(); closeMenu(); }
+}, true);
 menu.addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (!b) return; const it = menuItems[+b.dataset.i]; closeMenu(); it.act(); });
 document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); }, true);
 window.addEventListener('resize', closeMenu);
@@ -654,17 +668,19 @@ function trackMenu(id, anchor) {
   openMenu(anchor, items);
 }
 
-const modal = $('#modal'), mInput = $('#mInput'); let modalResolve = null;
+const modal = $('#modal'), mInput = $('#mInput'); let modalResolve = null, modalRelease = null;
 function ask({ title, text = '', input = null, placeholder = '', ok = 'OK', danger = false }) {
   return new Promise(res => {
     $('#mTitle').textContent = title; $('#mText').textContent = text; $('#mText').hidden = !text;
     mInput.hidden = input === null; mInput.value = input || ''; mInput.placeholder = placeholder;
     $('#mOk').textContent = ok; $('#mOk').className = 'btn ' + (danger ? 'danger' : 'primary');
-    modal.hidden = false; modalResolve = res;
+    if (modalRelease) modalRelease(); modalRelease = null;
+    const back = document.activeElement; modal.hidden = false; modalResolve = res;
+    if (window.MixtapeShell && MixtapeShell.trap) modalRelease = MixtapeShell.trap($('#modalForm'), { back }); /* Tab stays in the question; the focus goes back afterwards */
     setTimeout(() => (input === null ? $('#mOk') : mInput).focus(), 0);
   });
 }
-function closeModal(v) { modal.hidden = true; const r = modalResolve; modalResolve = null; if (r) r(v); }
+function closeModal(v) { modal.hidden = true; const rel = modalRelease; modalRelease = null; if (rel) rel(); const r = modalResolve; modalResolve = null; if (r) r(v); }
 $('#modalForm').addEventListener('submit', e => { e.preventDefault(); if (mInput.hidden) return closeModal(true); const v = mInput.value.trim(); if (!v) return mInput.focus(); closeModal(v); });
 $('#mCancel').addEventListener('click', () => closeModal(null));
 modal.addEventListener('click', e => { if (e.target === modal) closeModal(null); });
@@ -672,8 +688,17 @@ modal.addEventListener('click', e => { if (e.target === modal) closeModal(null);
 const toastEl = $('#toast'); let toastT = null;
 function toast(msg, ms = 2600) { toastEl.textContent = msg; toastEl.hidden = false; clearTimeout(toastT); if (ms) toastT = setTimeout(() => { toastEl.hidden = true; }, ms); }
 
-function openNow() { if (!curId) { if (tracks.size) togglePlay(); else return toast('Add some songs first.'); } $('#now').hidden = false; document.body.style.overflow = 'hidden'; renderPlayer(); $('#now [data-act="close"]').focus(); }
-function closeNow() { $('#now').hidden = true; document.body.style.overflow = ''; }
+let nowBack = null;
+function openNow() { if (!curId) { if (tracks.size) togglePlay(); else return toast('Add some songs first.'); } if ($('#now').hidden) nowBack = document.activeElement; $('#now').hidden = false; document.body.style.overflow = 'hidden'; renderPlayer(); $('#now [data-act="close"]').focus(); }
+function closeNow() { const was = !$('#now').hidden && $('#now').contains(document.activeElement); $('#now').hidden = true; document.body.style.overflow = ''; if (was && nowBack && nowBack.isConnected) nowBack.focus({ preventScroll: true }); nowBack = null; }
+/* Now Playing covers the whole window, so Tab goes round inside it and never to the library hidden behind it.
+   A menu or a sheet opened over it looks after its own keys. */
+window.addEventListener('keydown', e => {
+  const now = $('#now'), a = document.activeElement; if (e.key !== 'Tab' || now.hidden || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (a && a !== document.body && !now.contains(a)) return;
+  const f = [...now.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])')].filter(n => n.getClientRects().length), at = f.indexOf(a);
+  if (f.length && (e.shiftKey ? at <= 0 : at === f.length - 1 || at < 0)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+});
 
 /* ---------- wiring ---------- */
 const acts = {
@@ -698,13 +723,13 @@ function rowActivate(e) {
   if (id === curId) togglePlay(); else playFrom(visibleIds(), id);
 }
 $('#list').addEventListener('click', rowActivate);
-$('#list').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList.contains('row')) rowActivate(e); });
+$('#list').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('row')) { e.preventDefault(); rowActivate(e); } });
 $('#upList').addEventListener('click', e => {
   const row = e.target.closest('.row'); if (!row) return; const i = +row.dataset.qi;
   if (e.target.closest('[data-up="rm"]')) return removeFromQueue(i);
   S.qi = i; loadTrack(S.queue[i], true);
 });
-$('#upList').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList.contains('row')) { S.qi = +e.target.dataset.qi; loadTrack(S.queue[S.qi], true); } });
+$('#upList').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('row')) { e.preventDefault(); S.qi = +e.target.dataset.qi; loadTrack(S.queue[S.qi], true); } });
 
 $$('.seek').forEach(r => {
   r.addEventListener('input', () => { seeking = true; setSeekUI(+r.value, r.value / 1000 * (audio.duration || 0)); });

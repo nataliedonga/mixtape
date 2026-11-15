@@ -17,7 +17,7 @@
    with its own type and colour so it reads as a different app from the player. */
 :root{
   --bg:#0E1014; --panel:#15181E; --panel-2:#1A1E25; --raise:#222731; --line:#2A2F39; --line-2:#363C48;
-  --ink:#E8EBF0; --muted:#8C94A3; --dim:#5E6675;
+  --ink:#E8EBF0; --muted:#8C94A3; --dim:#848C9B; --field:#646C7C; /* --field: the edge of a box you type or choose in, 3:1 against the panels */
   --accent:#F5A524; --accent-ink:#1B1306; --sel:rgba(245,165,36,.22);
   --danger:#FF5F5F; --danger-ink:#1C0707;
   --scrim:rgba(5,6,8,.66); --shadow:rgba(0,0,0,.6);
@@ -45,13 +45,16 @@ button,input,select{font:inherit;color:inherit}
 .tb-right{flex:1 0 auto;justify-content:flex-end}
 .transport{flex:none}
 @media (max-width:1500px){.mark span{display:none}.lcd{min-width:150px;padding:2px 10px}.clock{font-size:18px}}
-@media (max-width:1320px){.mark{display:none}.top .sepv:first-of-type{display:none}.transport .btn.sm{padding:0 8px}}
-.mark{display:flex;align-items:center;gap:8px;font:600 13px var(--f-ui);letter-spacing:.02em;white-space:nowrap}
+@media (max-width:1320px){.mark{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.top .sepv:first-of-type{display:none}.transport .btn.sm{padding:0 8px}}
+.mark{display:flex;align-items:center;gap:8px;font:600 13px var(--f-ui);letter-spacing:.02em;white-space:nowrap;margin:0}
+/* a window too narrow for the whole bar on one line: the right-hand tools go onto a second line, so nothing is cut off */
+@media (max-width:1780px){#app{grid-template-rows:auto minmax(0,1fr)}.top{flex-wrap:wrap;row-gap:6px;padding-block:8px}.recbanner{top:108px}}
 .mark i{width:22px;height:22px;border-radius:6px;background:conic-gradient(from 200deg,#F5A524,#E5649A,#4F8EF7,#2EC4B6,#F5A524);display:block}
 .mark span{color:var(--muted);font-weight:500}
 .sepv{width:1px;height:24px;background:var(--line);flex:none}
 .top .name{font:600 14px var(--f-ui);border:1px solid transparent;background:transparent;border-radius:6px;padding:5px 8px;width:200px;min-width:60px;flex:0 1 200px}
 .top .name:hover,.top .name:focus{border-color:var(--line-2);outline:0;background:var(--bg)}
+.top .name:focus-visible{border-color:var(--accent)}
 .transport{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px}
 .lcd{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:170px;padding:2px 14px;border-left:1px solid var(--line);border-right:1px solid var(--line)}
 .clock{font:500 20px/1.1 var(--f-mono);font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap;letter-spacing:.02em}
@@ -101,7 +104,7 @@ button,input,select{font:inherit;color:inherit}
 .insp-tools{position:sticky;top:-14px;z-index:6;display:flex;gap:6px;align-items:center;background:var(--panel);padding:8px 0 8px;margin:-8px 0 2px;border-bottom:1px solid var(--line)}
 .insp-tools .tsz{padding:0 7px;min-height:calc(28px * var(--ts, 1.15))}
 .findwrap{position:relative;flex:1;min-width:0}
-#inspFind{width:100%;box-sizing:border-box;height:calc(30px * var(--ts, 1.15));border-radius:7px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink);padding:0 9px;font:calc(12.5px * var(--ts, 1.15)) var(--f-ui)}
+#inspFind{width:100%;box-sizing:border-box;height:calc(30px * var(--ts, 1.15));border-radius:7px;border:1px solid var(--field);background:var(--raise);color:var(--ink);padding:0 9px;font:calc(12.5px * var(--ts, 1.15)) var(--f-ui)}
 #inspFind:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .findlist{position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--raise);border:1px solid var(--line-2);border-radius:8px;padding:4px;display:grid;gap:2px;z-index:7;box-shadow:0 8px 24px rgba(0,0,0,.45)}
 .findhit{display:grid;text-align:left;gap:1px;border:0;background:transparent;color:var(--ink);padding:6px 8px;border-radius:6px;cursor:pointer;font:calc(12.5px * var(--ts, 1.15)) var(--f-ui)}
@@ -129,7 +132,7 @@ button,input,select{font:inherit;color:inherit}
 .br-head{padding:14px 14px 10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
 .br-head .row{display:flex;align-items:center;justify-content:space-between}
 .br-head .count{font:12px var(--f-mono);color:var(--dim)}
-.search{display:flex;align-items:center;gap:8px;height:32px;border:1px solid var(--line-2);border-radius:7px;background:var(--bg);padding:0 10px;color:var(--dim)}
+.search{display:flex;align-items:center;gap:8px;height:32px;border:1px solid var(--field);border-radius:7px;background:var(--bg);padding:0 10px;color:var(--dim)}
 .search:focus-within{border-color:var(--accent)}
 .search input{border:0;background:transparent;outline:0;flex:1;min-width:0;color:var(--ink)}
 .libhint{margin:0;font-size:12px;color:var(--muted);line-height:1.4}
@@ -144,8 +147,8 @@ button,input,select{font:inherit;color:inherit}
 .lib b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lib .li-sub{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lib .bk{display:inline-block;margin-top:4px;font:11px var(--f-mono);color:var(--accent);background:rgba(245,165,36,.1);border-radius:4px;padding:1px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.lib .bk.busy{color:var(--muted);background:var(--raise)}
-.lib .acts{display:flex;flex-direction:column;gap:4px;opacity:.45;transition:opacity .12s}
+.lib .bk.finding{color:var(--muted);background:var(--raise)}
+.lib .acts{display:flex;flex-direction:column;gap:4px;opacity:.8;transition:opacity .12s}
 .lib li:hover .acts,.lib li:focus-within .acts{opacity:1}
 @media (hover:none){.lib .acts{opacity:1}}
 .lib .acts button{height:24px;padding:0 9px;border-radius:5px;border:1px solid var(--line-2);background:var(--raise);font-size:11px;font-weight:600;cursor:pointer;color:var(--ink);white-space:nowrap}
@@ -188,6 +191,7 @@ button,input,select{font:inherit;color:inherit}
 .lh-top{display:flex;align-items:center;gap:3px}
 .lh-top input{flex:1;min-width:0;border:1px solid transparent;background:transparent;border-radius:5px;padding:2px 4px;font-weight:600;outline:0;font-size:13px}
 .lh-top input:focus{border-color:var(--line-2);background:var(--bg)}
+.lh-top input:focus-visible{border-color:var(--accent)}
 .tg{width:24px;height:22px;border-radius:5px;border:1px solid var(--line-2);background:var(--raise);font:600 11px var(--f-mono);cursor:pointer;padding:0;color:var(--muted)}
 .tg:hover{color:var(--ink)}
 .tg.on.m{background:#E8B931;border-color:#E8B931;color:#1A1405}
@@ -240,7 +244,7 @@ ol.steps{margin:8px 0 8px 18px;padding:0;display:grid;gap:6px;font-size:13px;lin
 .trow:has(input:checked){border-color:var(--accent)}
 .trow .dim{color:var(--muted)}
 .tg.on.a{background:#4FD1A5;border-color:#4FD1A5;color:#05140F}
-.auto-row select{grid-column:2;min-width:0;background:var(--bg);color:var(--ink);border:1px solid var(--line-2);border-radius:4px;font:11px var(--f-mono);padding:1px 2px}
+.auto-row select{grid-column:2;min-width:0;background:var(--bg);color:var(--ink);border:1px solid var(--field);border-radius:4px;font:11px var(--f-mono);padding:1px 2px}
 .auto-row .mini{width:26px;height:20px;border:1px solid var(--line-2);border-radius:4px;background:var(--raise);color:var(--muted);cursor:pointer;padding:0}
 svg.auto{position:absolute;left:0;top:0;z-index:3;cursor:crosshair;background:rgba(6,9,12,.35);touch-action:none}
 svg.auto polyline{fill:none;stroke:#4FD1A5;stroke-width:2}
@@ -366,7 +370,7 @@ svg.auto .aread{fill:#4FD1A5;font:600 11px var(--f-mono);pointer-events:none}
 .cuerow.stale .tc{color:var(--danger)}
 .hit{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px;align-items:center;font-size:12px}
 .hit .tc{font:11px var(--f-mono);color:#C4B5FD;font-variant-numeric:tabular-nums;cursor:pointer}
-.hit input{height:24px;border:1px solid var(--line-2);border-radius:5px;background:var(--bg);padding:0 6px;min-width:0}
+.hit input{height:24px;border:1px solid var(--field);border-radius:5px;background:var(--bg);padding:0 6px;min-width:0}
 .hit.sel input{border-color:#C4B5FD}
 .hit button{height:24px;width:24px;border:0;background:transparent;color:var(--muted);cursor:pointer;border-radius:5px}
 .hit button:hover{background:var(--raise);color:var(--ink)}
@@ -424,7 +428,7 @@ body{padding-bottom:22px}
 .field{display:grid;grid-template-columns:82px minmax(0,1fr) 52px;align-items:center;gap:8px;font-size:12px}
 .field output{font:11px var(--f-mono);text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
 .field label{color:var(--muted)}
-.field select,.sec select,.field input[type=number]{height:28px;border-radius:6px;border:1px solid var(--line-2);background:var(--bg);padding:0 6px;min-width:0;width:100%}
+.field select,.sec select,.field input[type=number]{height:28px;border-radius:6px;border:1px solid var(--field);background:var(--bg);padding:0 6px;min-width:0;width:100%}
 .kv{display:grid;grid-template-columns:82px 1fr;gap:4px 8px;font-size:12px;margin:0}
 .kv dt{color:var(--muted)}.kv dd{margin:0;font-family:var(--f-mono);font-size:12px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .btnrow{display:flex;flex-wrap:wrap;gap:6px}
@@ -440,7 +444,8 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
 /* overlays */
 .menu{position:fixed;z-index:60;min-width:230px;background:var(--raise);border:1px solid var(--line-2);border-radius:10px;padding:5px;box-shadow:0 18px 40px -12px var(--shadow)}
 .menu button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;background:none;border-radius:6px;cursor:pointer;color:var(--ink);font-size:13px}
-.menu button:hover,.menu button:focus-visible{background:#2E3442;outline:0}
+.menu button:hover,.menu button:focus-visible{background:#2E3442}
+.menu button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .menu button:disabled{opacity:.35;cursor:default}
 .menu button.danger{color:var(--danger)}
 .menu hr{border:0;border-top:1px solid var(--line-2);margin:4px 6px}
@@ -466,7 +471,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
 .trim-fields{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;margin-top:4px}
 .trim-f{display:flex;align-items:center;gap:8px}
 .trim-f label{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
-.trim-f input{width:120px;background:var(--bg);border:1px solid var(--line-2);border-radius:6px;color:var(--ink);font:15px var(--f-mono);padding:6px 8px}
+.trim-f input{width:120px;background:var(--bg);border:1px solid var(--field);border-radius:6px;color:var(--ink);font:15px var(--f-mono);padding:6px 8px}
 .trim-f input:focus{border-color:var(--accent);outline:none}
 .trim-f input.tf{width:112px;letter-spacing:.08em;text-align:center}
 .trim-f input.tf::selection{background:var(--accent);color:var(--accent-ink)}
@@ -476,7 +481,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
 .trim-act{display:flex;gap:8px;align-items:center;margin-top:6px}.trim-act .sp{flex:1}
 .modal h3{font:600 17px var(--f-ui);margin:0}
 .modal p{margin:0;color:var(--muted);font-size:13px}
-.modal input{height:36px;border-radius:7px;border:1px solid var(--line-2);background:var(--bg);padding:0 10px;outline:0}
+.modal input{height:36px;border-radius:7px;border:1px solid var(--field);background:var(--bg);padding:0 10px;outline:0}
 .modal input:focus{border-color:var(--accent)}
 .mact{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 .busy{position:fixed;inset:0;z-index:75;background:var(--scrim);display:grid;place-items:center}
@@ -487,7 +492,10 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
 .phone{height:100%;display:grid;place-items:center;padding:24px 16px;text-align:center}
 .phone div{max-width:40ch;display:flex;flex-direction:column;gap:12px;align-items:center}
 .phone h1{font:600 22px var(--f-ui);margin:0}
-.phone p{margin:0;color:var(--muted)}
+.phone p{margin:0;color:var(--muted);font-size:15px}
+.phone .btn{height:44px;padding:0 18px;font-size:15px}
+.phone nav{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.phone:not([hidden]) ~ .hintbar{display:none}
 @media (max-width:1180px){.work{--libw:250px;--inspw:calc(270px * var(--ts, 1.15))}.work.nolib{--libw:30px}.work.noinsp{--inspw:30px}.lcd{min-width:150px}.top .name{width:140px}}
 @media (prefers-reduced-motion:reduce){.rec.on .dot{animation:none}.pbar i{transition:none}}
 </style>
@@ -512,13 +520,14 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
   <symbol id="i-pright" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></symbol>
 </svg>
 
-<div class="phone" id="phoneNote" hidden>
+<main class="phone" id="phoneNote" hidden>
   <div>
     <h1>The Studio is on your laptop</h1>
     <p>Cutting and mixing needs a bigger screen and a mouse. Open Mixtape on your laptop to use the Studio. Songs you save there show up in your laptop's library.</p>
-    <a class="btn primary" href="./">Back to the player</a>
+    <p>Already on a computer? This window is too narrow for the Studio. Make it wider, or zoom out (Ctrl and minus), then reload.</p>
+    <nav aria-label="Ways back"><a class="btn primary" href="./">Back to the player</a><a class="btn" href="home/">Mixtape home</a></nav>
   </div>
-</div>
+</main>
 
 <div id="app">
   <header class="top">
@@ -528,7 +537,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
       <a class="btn ghost" href="cutter/" title="Cut any sound or video file, in any format">Cutter</a>
       <a class="btn ghost" href="transcribe/" title="Transcripts and read-along">Transcribe</a>
       <div class="sepv"></div>
-      <div class="mark"><i aria-hidden="true"></i>Mixtape <span>Studio</span></div>
+      <h1 class="mark"><i aria-hidden="true"></i>Mixtape <span>Studio</span></h1>
       <input class="name" id="projName" value="My mix" aria-label="Mix name" maxlength="60" title="Name of this mix">
       <span class="saved" id="savedLbl" aria-live="polite"></span>
     </div>
@@ -572,7 +581,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
     <aside class="panel" aria-label="Library">
       <button class="rail" data-act="togglelib" title="Show the library (B)"><span>▸</span><span class="rl">Library</span></button>
       <div class="br-head">
-        <div class="row"><h2 class="ptitle">Library</h2><span class="count" id="libCount"></span><button class="headbtn panel-fold" data-act="togglelib" title="Fold the library away for more room (B)">◂</button></div>
+        <div class="row"><h2 class="ptitle">Library</h2><span class="count" id="libCount"></span><button class="headbtn panel-fold" data-act="togglelib" aria-label="Fold the library away" title="Fold the library away for more room (B)">◂</button></div>
         <button class="btn primary block" data-act="import" title="Pick music files from this computer"><svg class="i"><use href="#i-import"/></svg>Import audio files</button>
         <input id="vidIn" type="file" accept="video/*,.mp4,.webm,.mov,.m4v" hidden>
         <input id="mkIn" type="file" accept=".json,.csv,.txt,application/json,text/csv" hidden>
@@ -588,7 +597,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
       <ul class="lib" id="lib"></ul>
     </aside>
 
-    <section class="mid">
+    <section class="mid" role="main" aria-label="Tracks and timeline">
       <div class="overview" id="overview" hidden title="The whole mix. Drag the box to move around, drag its edges to zoom."><canvas id="ovCanvas"></canvas></div>
       <div class="tl" id="tl">
         <div class="tl-empty" id="tlEmpty" hidden>
@@ -603,7 +612,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
           </div>
         </div>
         <div class="tl-inner" id="tlInner">
-          <div class="ruler-row"><div class="corner"><button class="headbtn" id="headBtn" data-act="slimhead" aria-pressed="false" title="Fold the track names away for more room">◂</button><span class="ptitle">Tracks</span><span class="hsz" role="group" aria-label="Track height"><button data-act="lh" data-h="s" title="Small tracks">S</button><button data-act="lh" data-h="m" title="Medium tracks">M</button><button data-act="lh" data-h="l" title="Tall tracks">L</button></span><button class="ampbtn" id="ampBtn" data-act="amp" title="Draw every waveform taller (or Alt + Shift + wheel). The sound does not change. To make one track bigger: Alt + wheel over it, or its ↕ button.">Wave ×1</button></div><canvas id="ruler"></canvas></div>
+          <div class="ruler-row"><div class="corner"><button class="headbtn" id="headBtn" data-act="slimhead" aria-pressed="false" aria-label="Fold the track names away" title="Fold the track names away for more room">◂</button><span class="ptitle">Tracks</span><span class="hsz" role="group" aria-label="Track height"><button data-act="lh" data-h="s" title="Small tracks">S</button><button data-act="lh" data-h="m" title="Medium tracks">M</button><button data-act="lh" data-h="l" title="Tall tracks">L</button></span><button class="ampbtn" id="ampBtn" data-act="amp" title="Draw every waveform taller (or Alt + Shift + wheel). The sound does not change. To make one track bigger: Alt + wheel over it, or its ↕ button.">Wave ×1</button></div><canvas id="ruler"></canvas></div>
           <div id="vrow" hidden></div>
           <div id="lanes"></div>
           <div id="mklines"></div>
@@ -646,10 +655,10 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
 </div>
 <div class="menu" id="menu" role="menu" hidden></div>
 <div class="modalwrap" id="modal" hidden>
-  <form class="modal" id="modalForm">
+  <form class="modal" id="modalForm" role="dialog" aria-modal="true" aria-labelledby="mTitle">
     <h3 id="mTitle"></h3>
     <p id="mText"></p>
-    <input id="mInput" type="text" autocomplete="off" maxlength="80">
+    <input id="mInput" type="text" autocomplete="off" maxlength="80" aria-labelledby="mTitle">
     <div id="mExtra"></div>
     <div class="mact"><button type="button" class="btn" id="mCancel">Cancel</button><button type="submit" class="btn primary" id="mOk">OK</button></div>
   </form>

@@ -93,4 +93,10 @@
 .mxs-tour .mxs-acts { margin-top: 2px; }
 .mxs-tour .mxs-link { font-weight: 500; font-size: .93em; }
 @media (prefers-reduced-motion: reduce) { .mxs-ring, .mxs-tour { transition: none; } .mxs .mxs-btn { transition: none; } }
-@media (max-width: 520px) { .mxs-update { left: 8px; right: 8px; max-width: none; } }
+@media (max-width: 520px) {
+  .mxs-update { left: 8px; right: 8px; max-width: none; }
+  /* finger-sized on a phone */
+  .mxs .mxs-btn, .mxs .mxs-btn:hover:not(:disabled) { height: 40px; }
+  .mxs .mxs-link, .mxs .mxs-link:hover:not(:disabled) { padding: 10px 2px; }
+  .mxs-toastbtn, .mxs-toastbtn:hover, button.mxs-toastbtn:hover:not(:disabled) { height: 40px; line-height: 38px; }
+}

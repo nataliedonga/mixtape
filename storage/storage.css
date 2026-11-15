@@ -31,7 +31,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .skip:focus { top: 10px; }
 
 .top { display: flex; align-items: baseline; gap: 16px; max-width: 980px; margin: 0 auto; padding: 18px max(20px, env(safe-area-inset-right)) 14px max(20px, env(safe-area-inset-left)); border-bottom: 2px solid var(--rule); }
-.top .back { font-weight: 600; text-decoration: none; padding: 6px 0; }
+.top .back { font-weight: 600; text-decoration: none; padding: 9px 0; }
 .top .back:hover { text-decoration: underline; }
 .top .where { margin-left: auto; font: 500 12px/1 var(--f-num); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 main { max-width: 980px; margin: 0 auto; padding: 8px max(20px, env(safe-area-inset-right)) 40px max(20px, env(safe-area-inset-left)); }
@@ -92,7 +92,7 @@ progress { width: 100%; height: 10px; accent-color: var(--accent); }
 .danger-zone h2 { color: var(--danger); }
 
 .foot { max-width: 980px; margin: 0 auto; padding: 18px 20px 40px; border-top: 2px solid var(--rule); display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 15px; }
-.foot a { padding: 8px 0; }
+.foot a { padding: 10px 0; }
 
 @media (max-width: 720px) {
   thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -107,6 +107,7 @@ progress { width: 100%; height: 10px; accent-color: var(--accent); }
   tr.group { padding: 0; }
   tr.group th { padding: 12px 16px; }
   .top .where { display: none; }
+  .link { padding: 10px 2px; } /* a finger-sized target for the one button that sits in a sentence */
   h2 { font-size: 24px; }
 }
 @media (prefers-reduced-motion: no-preference) { .btn { transition: background-color .12s, color .12s, border-color .12s; } .skip { transition: top .12s; } }

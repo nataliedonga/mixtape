@@ -2397,12 +2397,12 @@ function renderLanes() {
       <div class="lane-head">
         <div class="lh-slim" title="${esc(l.name)}"><b>${esc(l.name.slice(0, 2))}</b><button class="tg m${l.mute ? ' on' : ''}" data-lf="mute" title="Mute ${esc(l.name)}" aria-pressed="${l.mute}">M</button><button class="tg s${l.solo ? ' on' : ''}" data-lf="solo" title="Hear only ${esc(l.name)}" aria-pressed="${l.solo}">S</button><button class="tg lk${l.locked ? ' on' : ''}" data-lf="lock" title="${l.locked ? 'Unlock' : 'Lock'} ${esc(l.name)}" aria-pressed="${!!l.locked}"><svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></button></div>
         <div class="lh-top">
-          <button class="fold" data-lf="fold" aria-expanded="${!l.folded}" title="${l.folded ? 'Open this track' : 'Fold this track to a slim bar'} (Alt+click: all tracks)">${l.folded ? '▸' : '▾'}</button>
+          <button class="fold" data-lf="fold" aria-expanded="${!l.folded}" aria-label="Fold or open ${esc(l.name)}" title="${l.folded ? 'Open this track' : 'Fold this track to a slim bar'} (Alt+click: all tracks)">${l.folded ? '▸' : '▾'}</button>
           ${l.type === 'group' ? '<span class="ltag" title="Group track">GRP</span>' : l.type === 'return' ? '<span class="ltag" title="Effect return">RTN</span>' : l.out ? '<span class="ltag dim" title="Plays through a group">→</span>' : ''}<input value="${esc(l.name)}" data-lf="name" aria-label="Track name" maxlength="40">
           <button class="tg m${l.mute ? ' on' : ''}" data-lf="mute" title="Mute this track" aria-pressed="${l.mute}">M</button>
           <button class="tg s${l.solo ? ' on' : ''}" data-lf="solo" title="Hear only this track" aria-pressed="${l.solo}">S</button>
           <button class="tg a${l.auto.show ? ' on' : ''}${l.auto.vol.length || l.auto.pan.length ? ' has' : ''}" data-lf="auto" title="Automation: draw how the volume or pan changes over time" aria-pressed="${!!l.auto.show}">A</button>
-          <button class="tg lk${l.locked ? ' on' : ''}" data-lf="lock" title="${l.locked ? 'Unlock this track' : 'Lock this track: its parts cannot be moved, trimmed, cut or deleted'}" aria-pressed="${!!l.locked}"><svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></button>
+          <button class="tg lk${l.locked ? ' on' : ''}" data-lf="lock" aria-label="Lock ${esc(l.name)}" title="${l.locked ? 'Unlock this track' : 'Lock this track: its parts cannot be moved, trimmed, cut or deleted'}" aria-pressed="${!!l.locked}"><svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></button>
           <button class="tg grow" data-lf="grow" title="Make just this track bigger, or back to normal (or Alt + wheel over it)" aria-label="Make this track bigger or smaller">↕</button>
           <button class="tg x" data-lf="del" title="Delete track" aria-label="Delete track">✕</button>
         </div>
@@ -2801,7 +2801,7 @@ function renderInspector() {
     ${masteringHTML()}
     <div class="sec"><h3>Keys</h3><div class="keys"><kbd>Space</kbd> play/pause · <kbd>Home</kbd> start · <kbd>L</kbd> loop<br><kbd>Del</kbd> remove selection or part · <kbd>K</kbd> keep only<br><kbd>Ctrl</kbd>+<kbd>E</kbd> split · <kbd>Ctrl</kbd>+<kbd>D</kbd> repeat<br><kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd> copy/paste · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo<br><kbd>B</kbd> library · <kbd>I</kbd> settings · <kbd>X</kbd> mixer<br><kbd>M</kbd> hit point · <kbd>V</kbd> video · <kbd>T</kbd> tempo change<br><kbd>C</kbd> click · <kbd>+</kbd>/<kbd>−</kbd> zoom · click the time for bars</div></div>`;
   html = `<button class="rail" data-act="toggleinsp" title="Show the settings (I)"><span>◂</span><span class="rl">Settings</span></button>
-    <div class="insp-tools"><button class="headbtn" data-act="toggleinsp" title="Fold the settings away for more room (I)">▸</button>
+    <div class="insp-tools"><button class="headbtn" data-act="toggleinsp" aria-label="Fold the settings away" title="Fold the settings away for more room (I)">▸</button>
       <div class="findwrap"><input id="inspFind" type="search" placeholder="Find a setting  ( / )" aria-label="Find a setting" autocomplete="off" value="${esc(findQ)}"><div class="findlist" id="findList" hidden></div></div>
       <button class="btn sm ghost tsz" data-act="txtsize" data-d="-1" title="Smaller settings text" aria-label="Smaller settings text">A−</button><button class="btn sm ghost tsz" data-act="txtsize" data-d="1" title="Bigger settings text" aria-label="Bigger settings text">A+</button></div>` + html;
   const ins = $('#insp'), st = ins.scrollTop, hadFind = document.activeElement && document.activeElement.id === 'inspFind'; applyTextScale(); ins.innerHTML = html; foldSections(); if (hadFind) { const f = $('#inspFind'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); runFind(); } requestAnimationFrame(() => document.querySelectorAll('canvas.eqcv').forEach(drawEQ)); ins.scrollTop = st; applyTips();
@@ -2868,9 +2868,9 @@ function renderLibrary() {
   const q = $('#libQ').value.trim().toLowerCase();
   const list = lib.filter(t => !t.stemOf && t.kind !== 'video' && (!q || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q)));
   $('#lib').innerHTML = list.length ? list.map(t => { const a = ana[t.id];
-    const info = a ? `<span class="bk">${a.bpm ? a.bpm + ' BPM' : 'no steady beat'} · ${esc(a.keyName)}</span>` : analyzing.has(t.id) ? '<span class="bk busy">finding tempo and key…</span>' : '';
+    const info = a ? `<span class="bk">${a.bpm ? a.bpm + ' BPM' : 'no steady beat'} · ${esc(a.keyName)}</span>` : analyzing.has(t.id) ? '<span class="bk finding">finding tempo and key…</span>' : '';
     return `<li draggable="true" data-drag="${t.id}" title="Drag onto a track"><button class="lp${libPrev && libPrev.id === t.id ? ' on' : ''}" data-libprev="${t.id}" title="${libPrev && libPrev.id === t.id ? 'Stop listening' : 'Listen'}" aria-label="${libPrev && libPrev.id === t.id ? 'Stop listening to' : 'Listen to'} ${esc(t.title)}">${libPrev && libPrev.id === t.id ? '■' : '▶'}</button><div style="min-width:0"><b title="${esc(t.title)}">${esc(t.title)}</b><span class="li-sub">${esc(t.artist || 'Unknown artist')} · ${(t.duration >= 3600 ? fmtH(t.duration) : fmtT(t.duration)).replace(/\.\d$/, '')}</span>${info}</div>
-      <div class="acts"><button data-cut="${t.id}" title="Cut a part out of this song: exact, with no loss of quality">✂</button><button data-add="append" data-id="${t.id}" title="Add to the end of the selected track">Add</button><button data-add="layer" data-id="${t.id}" title="Put it on a new track at the playhead">New track</button></div></li>`; }).join('')
+      <div class="acts"><button data-cut="${t.id}" aria-label="Cut a part out of ${esc(t.title)}" title="Cut a part out of this song: exact, with no loss of quality">✂</button><button data-add="append" data-id="${t.id}" title="Add to the end of the selected track">Add</button><button data-add="layer" data-id="${t.id}" title="Put it on a new track at the playhead">New track</button></div></li>`; }).join('')
     : `<li class="empty-note">${lib.length ? 'No songs match your search.' : 'No songs yet. Press “Import audio files” above, or drop music files onto the timeline.'}</li>`;
   const n = lib.filter(t => !t.stemOf && t.kind !== 'video').length; $('#libCount').textContent = `${n} song${n === 1 ? '' : 's'}`;
 }
@@ -3981,8 +3981,9 @@ window.addEventListener('dragover', e => { if (isFileDrag(e)) e.preventDefault()
 window.addEventListener('drop', e => { if (isFileDrag(e) && !e.target.closest('#tl')) { e.preventDefault(); toast('Drop music files on the timeline to add them.'); } });
 
 /* ---------- right-click menu on a part ---------- */
-const menu = $('#menu'); let menuItems = [];
+const menu = $('#menu'); let menuItems = [], menuBack = null;
 function openMenu(x, y, items) {
+  if (menu.hidden || !menu.contains(document.activeElement)) menuBack = document.activeElement;
   menuItems = items;
   menu.innerHTML = items.map((it, i) => it.sep ? '<hr>' : `<button role="menuitem" data-i="${i}" class="${it.danger ? 'danger' : ''}" ${it.disabled ? 'disabled' : ''}>${esc(it.label)}</button>`).join('');
   menu.hidden = false;
@@ -3990,7 +3991,18 @@ function openMenu(x, y, items) {
   menu.style.left = Math.min(x, innerWidth - mw - 8) + 'px'; menu.style.top = Math.min(y, innerHeight - mh - 8) + 'px';
   const first = menu.querySelector('button:not(:disabled)'); if (first) first.focus({ preventScroll: true });
 }
-const closeMenu = () => { menu.hidden = true; };
+/* Closing a menu the keyboard was in puts the focus back where it came from. */
+const closeMenu = () => { const back = !menu.hidden && menu.contains(document.activeElement) ? menuBack : null; menu.hidden = true; if (back && back.isConnected && back !== document.body) { try { back.focus({ preventScroll: true }); } catch (e) {} } };
+/* Keys inside an open menu: up and down move along it, Home and End jump, Tab closes it. Nothing typed in a menu
+   reaches the Studio's shortcuts (Esc is handled below: it closes the menu). */
+window.addEventListener('keydown', e => {
+  if (menu.hidden || !menu.contains(e.target) || e.key === 'Escape') return;
+  const its = [...menu.querySelectorAll('button:not(:disabled)')], at = its.indexOf(document.activeElement), k = e.key;
+  const to = k === 'ArrowDown' ? (at + 1) % its.length : k === 'ArrowUp' ? (at + its.length - 1) % its.length : k === 'Home' ? 0 : k === 'End' ? its.length - 1 : -1;
+  e.stopPropagation();
+  if (to >= 0 && its.length) { e.preventDefault(); its[to].focus(); }
+  else if (k === 'Tab') { e.preventDefault(); closeMenu(); }
+}, true);
 menu.addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (!b || b.disabled) return; const it = menuItems[+b.dataset.i]; closeMenu(); it.act(); });
 document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); }, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) closeMenu(); }, true);
@@ -4988,11 +5000,14 @@ function ask({ title, text = '', input = null, ok = 'OK', danger = false, extra 
     mInput.hidden = input === null; mInput.value = input || '';
     $('#mExtra').innerHTML = extra; modalRead = read;
     $('#mOk').textContent = ok; $('#mOk').className = 'btn ' + (danger ? 'danger' : 'primary');
-    $('#modal').hidden = false; modalResolve = res;
+    if (modalRelease) modalRelease(); modalRelease = null;
+    const back = document.activeElement; $('#modal').hidden = false; modalResolve = res;
+    if (window.MixtapeShell && MixtapeShell.trap) modalRelease = MixtapeShell.trap($('#modalForm'), { back }); /* Tab stays in the dialog; the focus goes back afterwards */
     setTimeout(() => { if (input === null) $('#mOk').focus(); else { mInput.focus(); mInput.select(); } }, 0);
   });
 }
-function closeModal(v) { $('#modal').hidden = true; $('#mExtra').innerHTML = ''; modalRead = null; const r = modalResolve; modalResolve = null; if (r) r(v); }
+let modalRelease = null;
+function closeModal(v) { $('#modal').hidden = true; $('#mExtra').innerHTML = ''; modalRead = null; const rel = modalRelease; modalRelease = null; if (rel) rel(); const r = modalResolve; modalResolve = null; if (r) r(v); }
 $('#modalForm').addEventListener('submit', e => {
   e.preventDefault();
   const v = mInput.value.trim();

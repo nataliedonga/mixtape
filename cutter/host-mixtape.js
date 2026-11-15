@@ -11,7 +11,7 @@
   const blobOf = t => t.blob || (t.buf ? new Blob([t.buf], { type: t.type || '' }) : null);
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
   window.CUTTER_HOST = {
-    name: 'Mixtape', backHref: '../',
+    name: 'Mixtape', backHref: '../home/',
     async listSongs() {
       const all = await tx('readonly', o => o.getAll());
       return all.filter(t => t.blob || t.buf).map(t => ({ id: t.id, title: t.title || t.name || 'Untitled', artist: t.artist || '', album: t.album || '', duration: t.duration || 0, video: t.kind === 'video', size: t.size || 0, added: t.added || 0 })).sort((a, b) => b.added - a.added);

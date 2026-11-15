@@ -15,7 +15,7 @@ if (core.SANDBOX) { const s = $('#sandbox'); s.hidden = false; s.textContent = `
    first (so a double-click or a bounce does nothing) and within 4 s (after which it goes back to how it was). */
 const ARM_MIN = 600, ARM_MAX = 4000;
 let armed = null;
-function disarm() { if (!armed) return; clearTimeout(armed.timer); armed.btn.textContent = armed.label; armed.btn.classList.remove('armed'); if (armed.note) { armed.note.hidden = true; armed.note.textContent = ''; } armed = null; }
+function disarm() { if (!armed) return; clearTimeout(armed.timer); armed.btn.textContent = armed.label; if (armed.aria) armed.btn.setAttribute('aria-label', armed.aria); armed.btn.classList.remove('armed'); if (armed.note) { armed.note.hidden = true; armed.note.textContent = ''; } armed = null; }
 function twoPress(btn, { again, note, warning, run }) {
   btn.addEventListener('click', async () => {
     if (busy) return;
@@ -25,8 +25,8 @@ function twoPress(btn, { again, note, warning, run }) {
       disarm(); await run(); return;
     }
     disarm();
-    armed = { btn, at: now, label: btn.textContent, note, timer: setTimeout(disarm, ARM_MAX) };
-    btn.textContent = again; btn.classList.add('armed');
+    armed = { btn, at: now, label: btn.textContent, aria: btn.getAttribute('aria-label'), note, timer: setTimeout(disarm, ARM_MAX) };
+    btn.textContent = again; btn.classList.add('armed'); if (armed.aria) btn.setAttribute('aria-label', again + armed.aria.slice(armed.aria.indexOf(':'))); /* the spoken name follows the words on the button */
     if (note) { note.textContent = warning; note.hidden = false; }
   });
 }
