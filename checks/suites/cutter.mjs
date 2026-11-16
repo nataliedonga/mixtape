@@ -98,6 +98,35 @@ export async function run(t) {
       /22050 Hz mp3/.test(rate) && got.length === 2 && got.every(g => g.skipped || (g.done && g.seconds != null && Math.abs(g.seconds - 2) <= 0.06 && g.peak > 0.05)) && got[0].done === true, { source: rate, got });
     await page.eval(setSelect('#fmtSel', 'same')); }
 
+  // ---- one side only: a call with each person on their own side is saved with one of them silenced ----
+  { const n0 = await page.eval(`__cutter.files.length`);
+    const monoShown = await page.eval(`(() => { const i = __cutter.files.findIndex(f => f.media && f.media.audio && f.media.audio.ch === 1); return i < 0 ? null : i; })()`);
+    await page.setFiles('#fileIn', [t.media.get('two-sides.mp3')]);
+    await page.waitFor(`__cutter.files.length === ${n0 + 1} && __cutter.files[${n0}].state !== 'opening'`, 30000, 'the two-sided clip to open');
+    await page.eval(`(() => { const f = __cutter.files[${n0}]; if (f.state === 'ok' && __cutter.cur !== f) document.querySelectorAll('#fileList > *')[${n0}].click(); return true; })()`);
+    await page.waitFor(`__cutter.cur === __cutter.files[${n0}] && !document.querySelector('#segSide').hidden`, 8000, 'the side choice to show for a stereo file');
+    // how much of each tone is in each side of a saved file (Goertzel), measured in the page
+    const TONES = `async file => { const ctx = new OfflineAudioContext(2, 1, 44100), buf = await ctx.decodeAudioData(await file.arrayBuffer()), sr = buf.sampleRate, g = (d, hz) => { const w = 2 * Math.PI * hz / sr, c = 2 * Math.cos(w); let a = 0, b = 0; const n = Math.min(d.length, sr * 3), s0 = Math.floor(sr * 0.3); for (let i = s0; i < n; i++) { const x = d[i] + c * a - b; b = a; a = x; } return Math.sqrt(Math.max(0, a * a + b * b - c * a * b)) / (n - s0); }; const out = { seconds: +(buf.length / sr).toFixed(3), ch: buf.numberOfChannels }; for (let k = 0; k < buf.numberOfChannels; k++) { const d = buf.getChannelData(k); out['c' + k] = [g(d, 300), g(d, 1000)].map(v => +v.toFixed(4)); } return out; }`;
+    await page.eval(setSelect('#fmtSel', 'same')); await page.click('#segPrec [data-v="copy"]');
+    const got = {};
+    for (const [v, word] of [['R', 'right'], ['L', 'left']]) {
+      await page.click(`#segSide [data-v="${v}"]`);
+      const sum = await page.eval(`document.querySelector('#sum').textContent`);
+      await page.eval(`(__saved.length = 0, true)`); await page.click('#exportBtn');
+      const rr = await finished(`the ${word} side to be written`);
+      const s = await page.eval(`(async () => { const s = __saved[__saved.length - 1]; return s ? { name: s.name, ...(await (${TONES})(s.file)) } : null; })()`);
+      got[v] = { done: rr.done, fail: rr.fail ? rr.text.slice(0, 140) : undefined, sum, ...(s || {}) }; await closeSheet();
+    }
+    const only = (g, keep, drop) => g && g.done && g.ch === 2 && Math.abs(g.seconds - 4.08) < 0.08 && [g.c0, g.c1].every(c => c[keep] > 0.05 && c[drop] < c[keep] / 30);
+    t.check('one side only', 'with “Right only” chosen (a real click) and Untouched still on, the saved file has the right side’s 1000 Hz tone on both sides and none of the left’s 300 Hz; “Left only” the other way round; each file is as long as the original (4.08 s), its name says which side, and the export line says so before saving',
+      only(got.R, 1, 0) && only(got.L, 0, 1) && /right side only/.test(got.R.name) && /left side only/.test(got.L.name) && /right side only/.test(got.R.sum) && /left side only/.test(got.L.sum), got);
+    await page.click('#segSide [data-v=""]');
+    await page.eval(`(__saved.length = 0, true)`); await page.click('#exportBtn'); const rb = await finished('both sides, untouched');
+    const both = await page.eval(`(async () => { const s = __saved[__saved.length - 1]; return s ? { name: s.name, ...(await (${TONES})(s.file)) } : null; })()`); await closeSheet();
+    t.check('both sides again', 'back on “Both voices”, the file is saved as before: the left tone on the left, the right tone on the right, the name unchanged, still an MP3', rb.done && both && /\.mp3$/.test(both.name) && !/side only/.test(both.name) && both.c0[0] > 0.05 && both.c0[1] < both.c0[0] / 30 && both.c1[1] > 0.05 && both.c1[0] < both.c1[1] / 30, both);
+    if (monoShown != null) { await page.eval(`(document.querySelectorAll('#fileList > *')[${monoShown}].click(), true)`); await page.waitFor(`__cutter.cur === __cutter.files[${monoShown}]`, 8000, 'the one-channel file'); t.check('no side choice for one channel', 'a file with one channel does not offer the choice', await page.eval(`document.querySelector('#segSide').hidden`), 'hidden'); }
+    await page.click('#segPrec [data-v="exact"]'); }
+
   // ---- the joined file, opened again, shows where each clip begins ----
   const before = await page.eval(`__cutter.files.length`);
   await page.eval(`(__joinedKeep && __cutter.openFiles([__joinedKeep], { show: true }), true)`);

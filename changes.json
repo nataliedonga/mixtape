@@ -1,5 +1,12 @@
 [
   {
+    "version": 115,
+    "date": "2026-11-16",
+    "items": [
+      "Cutter: silence one person in a two-sided recording. Calls are often recorded with each person on their own side; next to the volume, choose “Left only” or “Right only” to hear just that side, in both ears. While a side is chosen, files you export or join are saved with only that side: the export line says so before you save and the file name says so after. The choice is not remembered between visits, and your original files are never changed."
+    ]
+  },
+  {
     "version": 114,
     "date": "2026-11-16",
     "items": [

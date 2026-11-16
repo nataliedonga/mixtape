@@ -237,6 +237,11 @@ $('#tBack').addEventListener('click', e => nudge(-1, e));
 $('#tFwd').addEventListener('click', e => nudge(1, e));
 showStep(); $('#tLoop').setAttribute('aria-pressed', S.loop);
 /* Volume (↑ ↓, or the slider): how loud playback is here; the files you export are never changed by it */
+/* one side only: for calls recorded with each person on their own side. Not remembered between visits, so a file is
+   never saved with a person missing by surprise; the export line says so whenever it is on. */
+let side = '';
+const stereo = m => !!(m && m.audio && m.audio.ch === 2), sideNow = () => (cur && stereo(cur.media) ? side : ''), sideWord = s => (s === 'L' ? 'left' : 'right');
+$('#segSide').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; side = b.dataset.v; player.setSide(sideNow()); updateExportBar(); if (side) toast(`Only the ${sideWord(side)} side is heard, and the other is silenced. Files you export or join now are saved that way too.`, 4000); else toast('Both sides again.', 2500); });
 function setVol(v, say) { S.vol = Math.round(Math.max(0, Math.min(100, v)) / 5) * 5; player.setVolume(S.vol / 100); $('#volSl').value = S.vol; $('#volN').textContent = `${S.vol}%`; saveSettings(); if (say) toast(S.vol ? `Volume ${S.vol}%` : 'Volume off', 1200); }
 $('#volSl').addEventListener('input', e => setVol(+e.target.value, false));
 $('#volSl').addEventListener('change', e => letGo(e.target));
@@ -385,6 +390,7 @@ seg('#segMode', 'mode'); seg('#segOut', 'out'); seg('#segPrec', 'prec'); seg('#s
 $('#fmtSel').addEventListener('change', e => { S.fmt = e.target.value; saveSettings(); updateExportBar(); renderParts(); dirty(); });
 function updateExportBar() {
   const m = cur?.media, video = !!m?.v, hasA = !!m?.a;
+  $('#segSide').hidden = !stereo(m); $('#segSide').querySelectorAll('button').forEach(b => { const on = b.dataset.v === sideNow(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); player.setSide(sideNow());
   if (m && !video) S.tracksNow = 'audio'; else S.tracksNow = S.tracks;
   if (m && video && !hasA && S.tracksNow !== 'video') S.tracksNow = 'video';
   const tr = S.tracksNow, soundOnly = tr === 'audio';
@@ -402,7 +408,7 @@ function updateExportBar() {
   $('#segPrec').querySelector('[data-v="copy"]').title = video && !soundOnly ? 'Nothing is re-encoded, in any format. The cut moves out to the nearest keyframes.' : 'Nothing is re-encoded. The cut lands within about 20 ms (WAV and other PCM files are always exact).';
   const rs = exportRangesNow(), n = !m ? 0 : S.out === 'join' ? (rs.length ? 1 : 0) : rs.length;
   const total = C.totalLength(rs);
-  $('#sum').innerHTML = !m ? '' : !rs.length ? (S.mode === 'remove' && cur.parts.length ? 'The parts cover the whole file: nothing would be left.' : '') : `<b>${n}</b> file${n === 1 ? '' : 's'} · <b>${C.fmtTime(total, fps())}</b>${S.mode === 'keep' && !cur.parts.length ? ' · the whole file' : ''}`;
+  $('#sum').innerHTML = !m ? '' : !rs.length ? (S.mode === 'remove' && cur.parts.length ? 'The parts cover the whole file: nothing would be left.' : '') : `<b>${n}</b> file${n === 1 ? '' : 's'} · <b>${C.fmtTime(total, fps())}</b>${S.mode === 'keep' && !cur.parts.length ? ' · the whole file' : ''}${sideNow() ? ` · <b>${sideWord(sideNow())} side only</b>` : ''}`;
   $('#exportBtn').disabled = !m || !n; $('#exportBtn').textContent = n > 1 ? `Export ${n} files` : 'Export';
 }
 function exportRangesNow() { if (!cur) return []; if (S.mode === 'keep' && !cur.parts.length) return [{ t0: 0, t1: dur(), name: '', index: 1 }]; return C.exportRanges(cur.parts, S.mode, dur(), fps()); }
@@ -438,6 +444,7 @@ async function startExport(jobsIn, title) {
     st.textContent = 'Starting…'; row.scrollIntoView({ block: 'nearest' });
     try {
       const t0 = performance.now();
+      if (j.spec.side) { const fn = j.spec.fileName, word = sideWord(j.spec.side); j.spec = { ...j.spec, fileName: ext => fn(ext).replace(/(\.[a-z0-9]+)?$/i, (x, e1) => ` (${word} side only)${e1 || ''}`) }; } // the name says a person was left out
       const res = await writeCut({ ...j.spec, signal: ac.signal, onProgress: (v, text) => { bar.style.width = Math.round(v * 100) + '%'; st.textContent = text ? `${Math.round(v * 100)}% · ${text}` : `${Math.round(v * 100)}%`; } });
       const saved = await saveFile(res.file, res.name); if (saved.folder) res.cleanup();
       row.classList.add('done'); bar.style.width = '100%'; row.querySelector('.nm').textContent = saved.name;
@@ -464,7 +471,7 @@ function clipList(joinedName, clips) {
   let t = 0; const rows = clips.map((c, i) => { const a = t; t += c.length; return [i + 1, stamp(a), stamp(t), c.length.toFixed(3), c.name].join('\t'); });
   return [`Clip list for “${joinedName}”`, `${clips.length} clips, ${stamp(t)} in all. Times are hours:minutes:seconds.thousandths from the start of the joined file.`, '', ['No.', 'Starts', 'Ends', 'Seconds', 'Clip'].join('\t'), ...rows, ''].join('\r\n');
 }
-function specBase() { return { precision: S.prec, tracks: S.tracksNow || S.tracks, format: S.fmt }; }
+function specBase() { return { precision: S.prec, tracks: S.tracksNow || S.tracks, format: S.fmt, side: sideNow() }; }
 $('#exportBtn').addEventListener('click', () => {
   if (!cur) return; const m = cur.media, rs = exportRangesNow(); if (!rs.length) return toast('Nothing to export.');
   const R = r => ({ media: m, t0: r.t0, t1: r.t1 });
@@ -485,7 +492,7 @@ $('#joinBtn').addEventListener('click', () => {
     w.hidden = !(sel.length >= 2 && (mixed || (S.prec === 'copy' && S.fmt === 'same' && !sameTracks(sel))));
     w.textContent = mixed ? 'Some of these have a picture and some do not; only their sound can be joined (choose “Sound only”).' : 'These files differ in format or settings, so they cannot be joined untouched; they will be joined exactly (re-encoded where needed).';
     sh.querySelector('#jGo').disabled = sel.length < 2; jl.scrollTop = top;
-    sh.querySelector('#jSum').textContent = `${sel.length} of ${order.length} files · ${C.fmtLength(sel.reduce((t, m) => t + m.duration, 0))}`;
+    sh.querySelector('#jSum').textContent = `${sel.length} of ${order.length} files · ${C.fmtLength(sel.reduce((t, m) => t + m.duration, 0))}${side && sel.some(stereo) ? ` · ${sideWord(side)} side only` : ''}`;
   };
   sh.querySelector('#jSort').addEventListener('click', () => { order.sort((a, b) => a.f.media.file.name.localeCompare(b.f.media.file.name, undefined, { numeric: true, sensitivity: 'base' })); draw(); });
   sh.querySelector('#jAll').addEventListener('click', () => { order.forEach(o => { o.on = true; }); draw(); });
@@ -497,8 +504,8 @@ $('#joinBtn').addEventListener('click', () => {
   sh.querySelector('#jGo').addEventListener('click', () => {
     const sel = order.filter(o => o.on).map(o => o.f.media), anyV = sel.some(m => m.v), allV = sel.every(m => m.v);
     let tracks = S.tracks; if (!allV) tracks = 'audio'; if (anyV && !allV && S.tracks !== 'audio') { toast('Some files have no picture: joining their sound only.', 5000); }
-    const prec = (S.prec === 'copy' || S.fmt === 'same') && sameTracks(sel) ? 'copy' : 'exact', base = sel[0].name; /* whole files of one kind, kept in their own format, are joined untouched whatever the precision says: nothing is cut inside them, so untouched is exact, and nothing is lost to a second encoding */
-    closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` }, clips: sel.map(m => ({ name: m.file.name, length: m.duration })), listFile: S.clipList !== false }], 'Joining files');
+    const jside = side && sel.some(stereo) ? side : '', prec = (S.prec === 'copy' || S.fmt === 'same') && sameTracks(sel) && !jside ? 'copy' : 'exact', base = sel[0].name; /* whole files of one kind, kept in their own format, are joined untouched whatever the precision says: nothing is cut inside them, so untouched is exact, and nothing is lost to a second encoding */
+    closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, side: jside, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` }, clips: sel.map(m => ({ name: m.file.name, length: m.duration })), listFile: S.clipList !== false }], 'Joining files');
   });
 });
 

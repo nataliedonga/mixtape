@@ -185,7 +185,7 @@ export class Player {
      scheduled back to back on the audio clock, so a loop runs without a gap (no stop and start at each turn). */
   async play(media, from, to = media.duration, loop = null) {
     this.stop(); const run = ++this.run; this.media = media;
-    this.ctx ||= new AudioContext(); if (!this.gain) { this.gain = this.ctx.createGain(); this.gain.connect(this.ctx.destination); } this.gain.gain.value = this.vol ?? 1;
+    this.ctx ||= new AudioContext(); if (!this.gain) { this.gain = this.ctx.createGain(); this.route(); } this.gain.gain.value = this.vol ?? 1;
     await this.ctx.resume(); if (run !== this.run) return;
     this.loop = loop && loop.b - loop.a > 0.02 ? { a: loop.a, b: Math.min(loop.b, media.duration) } : null;
     this.rate = 1; this.from = from; this.to = this.loop ? this.loop.b : Math.min(to, media.duration); this.ctxStart = this.ctx.currentTime + 0.1; this.playing = true;
@@ -234,6 +234,15 @@ export class Player {
     requestAnimationFrame(tick);
   }
   // listening volume, 0 to 1 (playback only: exports are never touched); changes at once, even mid-play
+  /* One side only ('L' or 'R'; '' for both): a call recorded with each person on their own side is heard with one of
+     them silenced. The side chosen goes to both ears. */
+  setSide(side) { this.side = side === 'L' || side === 'R' ? side : ''; this.route(); }
+  route() {
+    if (!this.gain) return; this.gain.disconnect(); if (this.split) { this.split.disconnect(); this.merge.disconnect(); }
+    if (!this.side) return void this.gain.connect(this.ctx.destination);
+    this.split ||= this.ctx.createChannelSplitter(2); this.merge ||= this.ctx.createChannelMerger(2); const k = this.side === 'R' ? 1 : 0;
+    this.gain.connect(this.split); this.split.connect(this.merge, k, 0); this.split.connect(this.merge, k, 1); this.merge.connect(this.ctx.destination);
+  }
   setVolume(v) { this.vol = Math.max(0, Math.min(1, v)); if (this.gain) this.gain.gain.setTargetAtTime(this.vol, this.ctx.currentTime, 0.02); }
   stop() { if (this.playing) this.at = Math.min(this.to, this.time); this.run++; this.playing = false; for (const n of this.nodes) { try { n.stop(); } catch (e) {} } this.nodes.clear(); }
 }
@@ -349,6 +358,7 @@ class SoundFeeder {
         this.it = null; this.i++; continue;
       }
       const s = n.value, sr = s.sampleRate, sch = s.numberOfChannels, buf = new Float32Array(s.numberOfFrames * sch); s.copyTo(buf, { planeIndex: 0, format: 'f32' }); const ts = s.timestamp; s.close();
+      if (this.side && sch > 1) { const k = this.side === 'R' ? 1 : 0; for (let i = 0; i < buf.length; i += sch) { const v = buf[i + k]; for (let c = 0; c < sch; c++) buf[i + c] = v; } } // one side only: the other person is left out, and the one kept goes to both sides
       const from = Math.max(0, Math.round((r.t0 - ts) * sr)), to = Math.min(buf.length / sch, Math.round((r.t1 - ts) * sr)); if (to <= from) continue;
       // where it lands; a gap left by the decoder is filled with silence
       const at = this.rStart + Math.round(Math.max(0, ts + from / sr - r.t0) * this.sr);
@@ -416,7 +426,7 @@ async function exactSoundJob(ranges, opts) {
   const ext = family === 'm4a' ? '.m4a' : family === 'mka' ? '.mka' : EXT[family] || '.mka', name = opts.fileName(ext);
   const tgt = await opfsTarget(name), output = new M.Output({ format: outputFormat(family === 'm4a' ? 'mp4' : family === 'mka' ? 'mkv' : family, false), target: tgt.target });
   const src = await soundSource(codec, ch, sr); output.addAudioTrack(src);
-  const feeder = new SoundFeeder(src, ranges, sr, ch, joined);
+  const feeder = new SoundFeeder(src, ranges, sr, ch, joined); feeder.side = opts.side || '';
   await run(output, tgt, async () => { await output.start(); for (let t = 5; t < feeder.total + 5; t += 5) { J.check(); await feeder.until(t); J.progress(Math.min(0.99, t / feeder.total)); } src.close(); await output.finalize(); });
   const file = await tgt.file(); await checkTracks(file, ['audio']).catch(async e => { await tgt.remove(); throw e; });
   return { file, name, how: 'exact', length: feeder.total, cleanup: tgt.remove, note: `Exact to the sample${lossless ? ' and lossless' : ''}${!lossless && codec !== m0.audio.codec ? ` (saved as ${codec.toUpperCase()}: this browser cannot write ${m0.audio.codec.toUpperCase()})` : ''}.` };
@@ -495,7 +505,7 @@ async function smartJob(ranges, opts) {
   const tgt = await opfsTarget(name), output = new M.Output({ format: outputFormat(family, big), target: tgt.target });
   const vsrc = new M.EncodedVideoPacketSource('avc'); output.addVideoTrack(vsrc, { rotation: rot, frameRate: ranges.every(r => Math.abs(r.media.fps - fpsOut) < 0.01) ? fpsOut : undefined });
   let feeder = null, sound = null;
-  if (withSound) { const ms = ranges.find(r => r.media.a)?.media; sound = await exactSoundCodec(ms, family); const ch = Math.max(...ranges.map(r => r.media.audio?.ch || 0)) || 2, sr = await soundRate(sound.codec, ch, Math.max(...ranges.map(r => r.media.audio?.sr || 0)) || 48000); const asrc = await soundSource(sound.codec, ch, sr); output.addAudioTrack(asrc); feeder = new SoundFeeder(asrc, ranges, sr, ch, ranges.length > 1); feeder.srcRef = asrc; }
+  if (withSound) { const ms = ranges.find(r => r.media.a)?.media; sound = await exactSoundCodec(ms, family); const ch = Math.max(...ranges.map(r => r.media.audio?.ch || 0)) || 2, sr = await soundRate(sound.codec, ch, Math.max(...ranges.map(r => r.media.audio?.sr || 0)) || 48000); const asrc = await soundSource(sound.codec, ch, sr); output.addAudioTrack(asrc); feeder = new SoundFeeder(asrc, ranges, sr, ch, ranges.length > 1); feeder.side = opts.side || ''; feeder.srcRef = asrc; }
   const report = { copied: 0, redone: 0, parts: [] };
   await run(output, tgt, async () => {
     await output.start(); let first = true, off = 0, lastFed = 0;
@@ -581,11 +591,11 @@ async function convertJob(ranges, opts) {
 export async function writeCut(spec) {
   const m0 = spec.ranges[0].media, tracks = spec.tracks || 'both';
   if (spec.format && spec.format !== 'same') return convertJob(spec.ranges, spec);
-  const picture = !!m0.v && tracks !== 'audio';
-  if (picture) return spec.precision === 'copy' ? copyJob(spec.ranges, spec) : smartJob(spec.ranges, spec);
+  const picture = !!m0.v && tracks !== 'audio', oneSide = !!spec.side && spec.ranges.some(r => r.media.audio?.ch > 1); /* one side only: the sound has to be written again, so it cannot be an untouched copy */
+  if (picture) return spec.precision === 'copy' && !oneSide ? copyJob(spec.ranges, spec) : smartJob(spec.ranges, spec);
   if (!m0.a) throw new Error('There is no sound to save.');
   // sound on its own: PCM is always cut exactly (it is lossless and costs nothing); compressed sound is copied or re-encoded
-  if (spec.precision === 'copy' && !PCM.has(m0.audio.codec)) return copyJob(spec.ranges, { ...spec, tracks: 'audio' });
+  if (spec.precision === 'copy' && !oneSide && !PCM.has(m0.audio.codec)) return copyJob(spec.ranges, { ...spec, tracks: 'audio' });
   return exactSoundJob(spec.ranges, spec);
 }
 /* Can these files be joined untouched (same codecs, same settings)? */
