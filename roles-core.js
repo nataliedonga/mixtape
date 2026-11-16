@@ -85,4 +85,24 @@ function revNotation(x) {
   if (x.kind === 'recess' || x.kind === 'off') return { ...x, text: '(A recess was taken.)' };
   return { ...x, text: '' };
 }
+/* Reverb sometimes writes two forms of one word as a single word: the full form and the one that was said ("will" and
+   "'ll" as "willll", "because" and "'cause" as "becausecause", "seven" and "7" as "seven7"), or a false start and the
+   word ("turnturnover", "preservpreserve-"). These three shapes are repaired; anything less certain is left alone.
+   Returns { words, fixed: [{ i, from, to }] }; each repaired word keeps what Reverb wrote in w.o, so it can be put back. */
+const TAILS = { will: ['ll'], would: ['d'], had: ['d'], has: ['s'], is: ['s'], have: ['ve'], are: ['re'], am: ['m'], them: ['em'], because: ['cause'], not: ['nt'] };
+const NUMS = { zero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10' };
+export function unglue(words) {
+  const seen = new Map(); for (const w of words) { const b = String(w.t).toLowerCase().replace(/[^a-z]/g, ''); if (b) seen.set(b, (seen.get(b) || 0) + 1); }
+  const fixed = [], out = words.map((w, i) => {
+    if (w.lg || w.o) return w;
+    const m = /^([("']*)(.*?)([-.,?!;:)"']*)$/.exec(String(w.t)), core = m[2], low = core.toLowerCase(), flat = low.replace(/'/g, ''); let to = '';
+    for (const [full, tails] of Object.entries(TAILS)) for (const t of tails) if (flat === full + t) to = core.slice(0, full.length);
+    const n = /^([a-z]+)(\d+)$/.exec(low); if (!to && n && NUMS[n[1]] === n[2]) to = core.slice(0, n[1].length);
+    if (!to) for (let k = 3; k <= flat.length - 4; k++) { const A = low.slice(0, k), B = low.slice(k); if (B.length > A.length && B.startsWith(A) && /^[a-z]+$/.test(A) && (seen.get(flat) || 0) <= 1 && (seen.has(B.replace(/[^a-z]/g, '')) || seen.has(A))) { to = core.slice(k); break; } }
+    if (!to || to.toLowerCase() === low) return w;
+    if (/^[A-Z]/.test(core) && /^[a-z]/.test(to)) to = to[0].toUpperCase() + to.slice(1);
+    const t = m[1] + to + m[3]; fixed.push({ i, from: w.t, to: t }); return { ...w, t, o: w.t };
+  });
+  return { words: out, fixed };
+}
 export const suggest = (words, style = '') => ({ roles: roles(words), inserts: inserts(words, style) });

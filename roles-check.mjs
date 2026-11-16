@@ -2,7 +2,7 @@
 // The hearing below is invented (no real case, no real people). If the private fixture made from a real test recording
 // is on this computer (_test/roles/fixtures.json, never published), the same rules are checked on it too.
 import fs from 'node:fs';
-import { roles, inserts, turns, digits } from './roles-core.js';
+import { roles, inserts, turns, digits, unglue } from './roles-core.js';
 let pass = 0, fail = 0; const check = (name, ok, got) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : '  |  got: ' + JSON.stringify(got)}`); ok ? pass++ : fail++; };
 const make = lines => { const out = []; let t = 0; for (const [sp, text] of lines) text.split(' ').forEach((w, k) => { out.push({ t: w, s: +(t += 0.3).toFixed(2), e: +(t + 0.2).toFixed(2), ...(k === 0 ? { p: true, sp } : {}) }); }); return out; };
 
@@ -57,6 +57,12 @@ for (const [kind, lines] of [['as heard', HEARING], ['with punctuation', MARKED]
   const ins = inserts(w, 'rev');
   check('Rev style: its own wording, digits for the number, and nothing where it has no notation', ins.map(x => x.text).join('|') === '(Exhibit 25 was marked for identification.)||(Exhibit 7 was received into evidence.)|(A recess was taken.)|', ins.map(x => [x.kind, x.text]));
   check('number words become digits', [digits('twenty five'), digits('twelve'), digits('three a'), digits('b'), digits('p9')].join() === '25,12,3A,B,p9', [digits('twenty five'), digits('twelve'), digits('three a'), digits('b'), digits('p9')]); }
+
+{ const said = "i willll go becausecause we wouldd see themem at seven7 and it hass to turnturnover the preservpreserve- file. Because'cause i said turn it over to preserve the barbarian murmur seven77 hello".split(' ');
+  const r = unglue(said.map((t, k) => ({ t, s: k, e: k + 0.5 }))), got = r.words.map(w => w.t).join(' ');
+  check('words Reverb glued are repaired, and nothing else is touched', got === 'i will go because we would see them at seven and it has to turnover the preserve- file. Because i said turn it over to preserve the barbarian murmur seven77 hello', got);
+  check('each repair remembers what Reverb wrote, and is listed', r.fixed.length === 9 && r.words[1].o === 'willll' && r.fixed[0].from === 'willll' && r.fixed[0].to === 'will' && r.words[0].o === undefined, r.fixed);
+  check('repairing twice changes nothing more', unglue(r.words).fixed.length === 0, unglue(r.words).fixed); }
 
 const priv = new URL('./_test/roles/fixtures.json', import.meta.url);
 if (fs.existsSync(priv)) {

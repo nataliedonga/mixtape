@@ -1,5 +1,12 @@
 [
   {
+    "version": 109,
+    "date": "2026-11-16",
+    "items": [
+      "Transcripts: words the recogniser glued together are repaired when a transcript is opened or finished (“willll” to “will”, “becausecause” to “because”, “seven7” to “seven”, “turnturnover” to “turnover”). They are listed above the text with Keep and Undo; what was written is kept."
+    ]
+  },
+  {
     "version": 108,
     "date": "2026-11-16",
     "items": [

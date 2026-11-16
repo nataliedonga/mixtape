@@ -6,7 +6,7 @@
    a witness is sworn, a recess is taken or the record stops. A person then goes over it: everything set this way is
    highlighted in the text and listed in a bar above it, each with its evidence, a Keep and an Undo. Ctrl + Z undoes
    the lot. A voice that sounds like two people cannot be put right by rule, so it is only pointed at. */
-import { suggest } from '../roles-core.js';
+import { suggest, unglue } from '../roles-core.js';
 import { styleOf } from './matter.js';
 const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let api, bar, open = true, lastKey = '', busy = false;
@@ -32,6 +32,14 @@ const T = () => window.TranscriptCore, L = () => window.LegalCore;
 const numbered = l => /^Speaker \d+$/.test(l);
 const autoIns = words => { const out = []; words.forEach((w, i) => { if (w.lg && w.lg.auto) { let n = 1; while (i + n < words.length && !words[i + n].p) n++; out.push({ i, n, s: w.s, text: words.slice(i, i + n).map(x => x.t).join(' '), quote: w.lg.auto }); } }); return out; };
 
+/* once per transcript: words the recogniser glued together ("willll", "becausecause", "seven7") are repaired.
+   What it wrote is kept on each word (w.o), so Undo puts every one back. */
+async function applyGlue() {
+  const r = api.cur.tr; if (!r || r.unglued || r.mode !== 'heard' || !r.done || api.job) return false;
+  const ug = unglue(r.words); r.unglued = true;
+  if (ug.fixed.length) { api.remember(); r.words = ug.words; r.glue = { n: ug.fixed.length, list: ug.fixed.slice(0, 8).map(f => `${f.from} → ${f.to}`) }; api.drawAll(); }
+  try { await api.save(); } catch (e) {} return ug.fixed.length > 0;
+}
 /* once per transcript: what the words show goes onto it */
 async function applyAuto() {
   const c = api.cur, r = c.tr; if (!r || r.auto || r.mode !== 'heard' || !r.done || !r.words.length || api.job) return;
@@ -55,7 +63,8 @@ function state() {
   const mixed = sg.roles.filter(x => x.role === 'mixed' && numbered(x.label) && !sn.no.includes(x.label + ':mixed'));
   const legal = !!(r.legal && r.legal.on); // outside a legal transcript, and where the style has no wording for it, a place is only pointed at
   const points = sg.inserts.filter(x => (!legal || !x.text) && !sn.ins.includes(x.kind + '@' + x.i));
-  return names.length || put.length || mixed.length || points.length ? { names, put, mixed, points } : null;
+  const glue = r.glue && r.glue.n && r.words.some(w => w.o) ? r.glue : null;
+  return names.length || put.length || mixed.length || points.length || glue ? { names, put, mixed, points, glue } : null;
 }
 function mark(o) { // the highlight in the text: the names set from the words, and the notations put in
   const set = new Set(o ? o.names.map(n => n.to) : []), why = new Map(o ? o.names.map(n => [n.to, n.why]) : []);
@@ -64,11 +73,13 @@ function mark(o) { // the highlight in the text: the names set from the words, a
 }
 function draw() {
   if (busy) return; const c = api.cur;
+  if (c && c.tr && !c.tr.unglued && !api.job && c.tr.done && c.tr.mode === 'heard') applyGlue();
   if (c && c.tr && !c.tr.auto && !api.job && c.tr.done && c.tr.mode === 'heard') { applyAuto(); if (busy) return; }
   const o = c && !api.job ? state() : null; mark(o);
   const key = JSON.stringify(o) + open; if (key === lastKey) return; lastKey = key;
   if (!o) { bar.hidden = true; bar.textContent = ''; return; }
-  const n = o.names.length + o.put.length + o.mixed.length + o.points.length, done = o.names.length + o.put.length;
+  const n = o.names.length + o.put.length + o.mixed.length + o.points.length + (o.glue ? 1 : 0), done = o.names.length + o.put.length;
+  const glue = g => `<li><span class="who">${g.n} word${g.n === 1 ? '' : 's'} repaired</span><span class="why">The recogniser had written two forms of a word as one: ${esc(g.list.join(', '))}${g.n > g.list.length ? ', and more' : ''}. What it wrote is kept, so Undo puts them back.</span><button class="yes" data-rgkeep title="They are right">Keep</button><button data-rgundo title="Put back what the recogniser wrote">Undo</button></li>`;
   const tag = sure => (sure ? '' : ' <span class="unsure" title="The pattern is there but thin: look at this one first">likely</span>');
   const name = (x, k) => `<li><span class="who">${esc(x.from)} → ${esc(x.to)}</span>${tag(x.sure)}<span class="why">${esc(x.why)}.${x.role === 'examiner' ? ' Click the name in the text to put counsel’s own name.' : ''}</span><button class="yes" data-rkeep="${k}" title="It is right: take the highlight off">Keep</button><button data-rundo="${k}" title="Put ${esc(x.from)} back">Undo</button></li>`;
   const put = x => `<li><span class="who">${short(x.s)}</span> ${esc(x.text)} was put in<span class="why">Heard: “…${esc(x.quote)}…”.</span><button data-rgo="${x.i}" title="Go to this place and play it">Go there</button><button class="yes" data-rikeep="${x.i}" title="It is right: take the highlight off">Keep</button><button data-riundo="${x.i}" title="Take this notation out again">Undo</button></li>`;
@@ -76,7 +87,7 @@ function draw() {
   const point = x => `<li class="point"><span class="who">${short(x.s)}</span> ${esc(x.say)}<span class="why">Heard: “…${esc(x.quote)}…”. ${x.text ? 'This is not a legal transcript, so nothing was put in.' : 'The style in use has no notation for this, so nothing was put in.'}</span><button data-rgo="${x.i}" title="Go to this place and play it">Go there</button><button data-rino="${esc(x.kind + '@' + x.i)}" title="Put this away" aria-label="Put this away">✕</button></li>`;
   bar.hidden = false;
   bar.innerHTML = `<div class="rh"><b>Set from the words</b><small>${n} to check${done ? ' · highlighted in the text' : ''} · no AI, nothing leaves this computer</small><span class="sp"></span>${done > 1 ? '<button data-rkeepall title="They are all right: take every highlight off">Keep all</button>' : ''}<button data-rtoggle aria-expanded="${open}">${open ? 'Hide' : 'Show'}</button></div>`
-    + (open ? `<ul>${o.names.map(name).join('')}${o.put.map(put).join('')}${o.mixed.map(mixed).join('')}${o.points.map(point).join('')}</ul>` : '');
+    + (open ? `<ul>${o.glue ? glue(o.glue) : ''}${o.names.map(name).join('')}${o.put.map(put).join('')}${o.mixed.map(mixed).join('')}${o.points.map(point).join('')}</ul>` : '');
   for (const li of bar.querySelectorAll('li')) { const acts = document.createElement('div'), tx = document.createElement('div'); acts.className = 'acts'; tx.className = 'tx'; acts.append(...li.querySelectorAll(':scope > button')); tx.append(...li.childNodes); li.append(tx, acts); } // the words on the left, the buttons together on the right
 }
 async function click(e) {
@@ -85,6 +96,8 @@ async function click(e) {
   if ('rtoggle' in d) { open = !open; return draw(); }
   if (d.rgo != null) { const i = +d.rgo, w = r.words[i]; if (w && w.s != null && c.media) { c.media.currentTime = w.s; c.media.play().catch(() => {}); } const el = document.querySelector(`#text .para[data-i0="${i}"]`) || [...document.querySelectorAll('#text .para')].find(p => +p.dataset.i0 <= i && +p.dataset.i1 > i); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
   const live = () => { const have = new Set(T().speakerNames(r.words)); return r.auto.names.filter(n => have.has(n.to)); };
+  if ('rgkeep' in d) { r.glue = null; r.words = r.words.map(w => (w.o ? (({ o, ...x }) => x)(w) : w)); return done(); }
+  if ('rgundo' in d) { api.remember(); r.words = r.words.map(w => (w.o ? (({ o, ...x }) => ({ ...x, t: o }))(w) : w)); r.glue = null; return done(); }
   if ('rkeepall' in d) { r.auto.names = []; r.words = r.words.map(w => (w.lg && w.lg.auto ? { ...w, lg: (({ auto, ...g }) => g)(w.lg) } : w)); return done(); }
   if (d.rkeep != null || d.rundo != null) {
     const x = live()[+(d.rkeep ?? d.rundo)]; if (!x) return;
