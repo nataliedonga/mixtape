@@ -80,6 +80,7 @@ async function openFiles(list, { show = false, restored = null } = {}) {
       }
       await media.open(); if (gone()) continue;
       entry.state = 'ok'; if (!(restored && restored.has(f))) remember(entry); entry.parts = (LS.get('cutter:parts:' + media.id, []) || []).map(p => C.clampPart(p, media.duration, media.fps));
+      if (!entry.parts.length) { const made = (LS.get('cutter:joined', []) || []).find(j => j.name === f.name && j.size === f.size); if (made) { entry.parts = C.clipParts(made.clips, media.duration, media.fps); entry.joinedOf = made.clips.length; } } /* a file joined here shows where each of its clips begins */
       media.keyframes().then(k => { entry.keys = k; if (entry === cur) dirty(); }).catch(() => {});
       if (show || !cur || cur.state !== 'ok') select(entry); else renderFiles();
       loadPeaks(entry);
@@ -441,11 +442,12 @@ async function startExport(jobsIn, title) {
       const saved = await saveFile(res.file, res.name); if (saved.folder) res.cleanup();
       row.classList.add('done'); bar.style.width = '100%'; row.querySelector('.nm').textContent = saved.name;
       st.innerHTML = `${esc(res.note)} <span style="color:var(--faint)">${fmtBytes(res.file.size)} · ${C.fmtLength(res.length)} · took ${C.fmtLength((performance.now() - t0) / 1000)} · saved to ${esc(saved.where)}</span>`;
-      const lk = row.querySelector('.lk'); lk.hidden = false; lk.innerHTML = '<button class="sm" data-open>Open it here to check</button>' + (host ? `<button class="sm" data-lib>Add to my ${esc(host.name)} library</button>` : '');
+      const lk = row.querySelector('.lk'); lk.hidden = false; lk.innerHTML = `<button class="sm" data-open>${j.clips ? 'Open it here to see where the clips join' : 'Open it here to check'}</button>` + (host ? `<button class="sm" data-lib>Add to my ${esc(host.name)} library</button>` : '');
       if (host) lk.querySelector('[data-lib]').addEventListener('click', async ev => { const b = ev.currentTarget; b.disabled = true; b.textContent = 'Adding…'; try { await host.addToLibrary(res.file, saved.name, { duration: res.length, video: !!j.spec.ranges[0].media.v && (j.spec.tracks || 'both') !== 'audio' && !(TARGET_SOUND[j.spec.format]) }); b.textContent = `In your ${host.name} library ✓`; } catch (err) { b.disabled = false; b.textContent = `Add to my ${host.name} library`; toast(`Could not add it: ${err.message || err}`, 6000); } });
       lk.querySelector('[data-open]').addEventListener('click', () => { closeSheet(); openFiles([withSrc(new File([res.file], saved.name, { type: res.file.type, lastModified: Date.now() }), { temp: true })], { show: true }); }); /* temp: opened only to check it, so no copy of it is kept for next time */
-      if (j.clips) { // joined files: a list of where each one begins, saved beside the joined file
-        try { const listName = saved.name.replace(/\.[a-z0-9]+$/i, '') + ' (clip list).txt', ls = await saveFile(new File([clipList(saved.name, j.clips)], listName, { type: 'text/plain' }), listName); st.innerHTML += ` <span style="color:var(--faint)">· where each clip begins: “${esc(ls.name)}”</span>`; window.__lastClipList = clipList(saved.name, j.clips); }
+      if (j.clips) { // joined files: where each clip begins is remembered here (so the joined file shows it when opened), and a list is saved beside it
+        if (j.clips.length <= 2000) LS.set('cutter:joined', [{ name: saved.name, size: res.file.size, clips: j.clips.map(c => ({ name: c.name, length: Math.round(c.length * 1000) / 1000 })) }, ...(LS.get('cutter:joined', []) || []).filter(x => !(x.name === saved.name && x.size === res.file.size))].slice(0, 12));
+        if (j.listFile !== false) try { const listName = saved.name.replace(/\.[a-z0-9]+$/i, '') + ' (clip list).txt', ls = await saveFile(new File([clipList(saved.name, j.clips)], listName, { type: 'text/plain' }), listName); st.innerHTML += ` <span style="color:var(--faint)">· where each clip begins: “${esc(ls.name)}”</span>`; window.__lastClipList = clipList(saved.name, j.clips); }
         catch (err) { st.innerHTML += ' <span style="color:var(--warn)">· the clip list could not be saved</span>'; }
       }
       ok++; window.__lastExport = res;
@@ -496,7 +498,7 @@ $('#joinBtn').addEventListener('click', () => {
     const sel = order.filter(o => o.on).map(o => o.f.media), anyV = sel.some(m => m.v), allV = sel.every(m => m.v);
     let tracks = S.tracks; if (!allV) tracks = 'audio'; if (anyV && !allV && S.tracks !== 'audio') { toast('Some files have no picture: joining their sound only.', 5000); }
     const prec = S.prec === 'copy' && sameTracks(sel) ? 'copy' : 'exact', base = sel[0].name;
-    closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` }, clips: S.clipList !== false ? sel.map(m => ({ name: m.file.name, length: m.duration })) : null }], 'Joining files');
+    closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` }, clips: sel.map(m => ({ name: m.file.name, length: m.duration })), listFile: S.clipList !== false }], 'Joining files');
   });
 });
 

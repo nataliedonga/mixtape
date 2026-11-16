@@ -61,6 +61,13 @@ export function addPart(parts, t0, t1, duration, fps = null, name = '') {
 }
 const byTime = (a, b) => a.t0 - b.t0 || a.t1 - b.t1;
 export const sortParts = parts => parts.slice().sort(byTime);
+/* the clips a joined file was made of, as parts of it: each one from where it begins to where the next begins, named
+   after its clip. clips: [{ name, length }] in the order they were joined. */
+export function clipParts(clips, duration, fps = null) {
+  let t = 0; const out = [];
+  for (const c of clips || []) { const a = t; t += +c.length || 0; if (a >= duration - EPS) break; out.push(clampPart({ id: newId(), t0: a, t1: Math.min(t, duration), name: String(c.name || '').replace(/\.[a-z0-9]+$/i, '') }, duration, fps)); }
+  return out;
+}
 /* The list order is the join order. While it is still time order, edits keep it so; once it was changed by hand
    (↑ ↓), nothing puts it back. */
 export const inTimeOrder = parts => parts.every((p, i) => !i || byTime(parts[i - 1], p) <= 0);

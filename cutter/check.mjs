@@ -96,5 +96,8 @@ const csv = C.partsToCsv([{ t0: 1.5, t1: 3, name: 'a, "b"' }], 24);
 const back = C.partsFromCsv(csv, 10, 24);
 ok(back.length === 1 && back[0].t0 === 1.5 && back[0].t1 === 3 && back[0].name === 'a, "b"', 'a parts list goes to CSV and back');
 ok(C.partsFromCsv('start;end;name\n0:10;0:20;x\nbroken\n1m;90s;', 120).length === 2, 'CSV from a spreadsheet (semicolons, unit times) reads, broken rows skipped');
+{ const cp = C.clipParts([{ name: '001 audio.mp3', length: 10 }, { name: '002 audio.mp3', length: 5.5 }, { name: '003 audio.mp3', length: 4 }], 19.5);
+  ok(cp.length === 3 && cp.map(p => `${p.name}:${p.t0}-${p.t1}`).join(' ') === '001 audio:0-10 002 audio:10-15.5 003 audio:15.5-19.5', 'the clips of a joined file become its parts, each from where it was joined on, named after its clip: ' + cp.map(p => `${p.name}:${p.t0}-${p.t1}`).join(' '));
+  ok(C.clipParts([{ name: 'a.mp3', length: 10 }, { name: 'b.mp3', length: 10 }, { name: 'c.mp3', length: 10 }], 12).map(p => p.t1).join() === '10,12' && C.clipParts(null, 5).length === 0, 'clips past the end of a shorter file are left out, and the last is cut to the end'); }
 
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

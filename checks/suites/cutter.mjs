@@ -54,6 +54,7 @@ export async function run(t) {
   const joined = await page.eval(`(async () => { const s = __saved.find(x => /\\.wav$/i.test(x.name)); return { names: __saved.map(x => x.name), ...(s ? await (${WAV_INFO})(s.file) : { error: 'no WAV was written' }), list: window.__lastClipList || null }; })()`);
   t.check('join three formats', 'with the format still on WAV, the joined WAV is as long as the three clips together (within 5 ms of the lengths the Cutter shows) and not silent', fmtNow === 'wav' && r.done && !joined.error && Math.abs(joined.seconds - sum) <= 0.005 && joined.peak > 0.05, { format: fmtNow, joined_s: joined.seconds, clips_s: +sum.toFixed(4), off_ms: joined.seconds != null ? +((joined.seconds - sum) * 1000).toFixed(3) : null, peak: joined.peak, sheet: jsum, error: joined.error || (r.fail ? r.text : undefined) });
   t.check('clip list', 'a clip list is saved beside the joined file, naming the three clips', joined.names.some(n => /clip list/.test(n)) && joined.list && ['join-1.wav', 'join-2.mp3', 'join-3.m4a'].every(n => joined.list.includes(n)), joined.names);
+  await page.eval(`(() => { const s = __saved.find(x => /\\.wav$/i.test(x.name)); window.__joinedKeep = s ? new File([s.file], s.name, { type: 'audio/wav' }) : null; return true; })()`);
   await closeSheet();
 
   // ---- 4. AC-3 sound: refused on an exact cut, copied by an untouched one ----
@@ -75,6 +76,15 @@ export async function run(t) {
   const copy = await page.eval(`(() => { const s = __saved[__saved.length - 1], e = window.__lastExport; return s ? { name: s.name, bytes: s.file.size, seconds: e && e.length } : null; })()`);
   t.check('AC-3 untouched copy', 'the untouched copy is written: a file over 20 KB, within 0.1 s of the 4 s original', r.done && copy && copy.bytes > 20000 && Math.abs(copy.seconds - ac3.seconds) < 0.1, copy || r);
   await closeSheet();
+
+  // ---- the joined file, opened again, shows where each clip begins ----
+  const before = await page.eval(`__cutter.files.length`);
+  await page.eval(`(__joinedKeep && __cutter.openFiles([__joinedKeep], { show: true }), true)`);
+  await page.waitFor(`__cutter.files.length === ${before + 1} && __cutter.files[${before}].state !== 'opening'`, 30000, 'the joined file to open');
+  const marks = await page.eval(`(() => { const c = __cutter.cur; return { file: c.media.file.name, parts: c.parts.map(p => ({ name: p.name, t0: +p.t0.toFixed(3), t1: +p.t1.toFixed(3) })), length: +c.media.duration.toFixed(3), rows: document.querySelectorAll('#partList .pname').length, names: [...document.querySelectorAll('#partList .pname')].map(e => e.value) }; })()`);
+  const ends = clips.slice(0).reduce((a, c) => [...a, (a[a.length - 1] || 0) + c.seconds], []);
+  t.check('joined file shows its clips', 'opened again, the joined file has one part for each of the three clips, named after it, each beginning within 5 ms of where its clip was joined on, the last ending at the end of the file',
+    marks.parts.length === 3 && marks.parts.map(p => p.name).join() === 'join-1,join-2,join-3' && marks.parts.every((p, i) => Math.abs(p.t0 - (i ? ends[i - 1] : 0)) <= 0.005) && Math.abs(marks.parts[2].t1 - marks.length) <= 0.005 && marks.names.join() === 'join-1,join-2,join-3', marks);
 
   const errs = page.errors.filter(e => !/cannot decode the sound/i.test(e)); // the refusal above is also written to the console, on purpose
   t.check('no errors', 'no errors in the console during the whole flow (apart from the refusal itself)', errs.length === 0, errs.length ? errs.slice(0, 4) : 'clean');

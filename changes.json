@@ -1,5 +1,12 @@
 [
   {
+    "version": 112,
+    "date": "2026-11-16",
+    "items": [
+      "Cutter: a file made with Join files shows where its clips were joined. Open it (the button after joining, or later from the folder, on this computer) and each clip is a named part on the timeline, from where it begins to where the next begins. The clip list beside the file is still saved if its box is ticked."
+    ]
+  },
+  {
     "version": 111,
     "date": "2026-11-16",
     "items": [
