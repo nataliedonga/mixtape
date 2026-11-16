@@ -1,5 +1,13 @@
 [
   {
+    "version": 119,
+    "date": "2026-11-16",
+    "items": [
+      "Cutter: a “Transcribe…” button at the top, beside “Join files…”. Choose “Paid or client work” or “Personal”, and the open file goes to Transcripts in a new tab as you have it set: the parts you kept, one side only, clearer speech. If nothing was changed the file itself is sent; otherwise it is written and saved first.",
+      "Cutter: in a short window the playhead time and the Start here, End here, Split and Frame buttons were pushed under the timeline. The picture area now gives way instead."
+    ]
+  },
+  {
     "version": 118,
     "date": "2026-11-16",
     "items": [

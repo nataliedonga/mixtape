@@ -132,7 +132,19 @@ export async function run(t) {
     const only = (g, keep, drop) => g && g.done && g.ch === 2 && Math.abs(g.seconds - 4.08) < 0.08 && [g.c0, g.c1].every(c => c[keep] > 0.05 && c[drop] < c[keep] / 30);
     t.check('one side only', 'with “Right only” chosen (a real click) and Untouched still on, the saved file has the right side’s 1000 Hz tone on both sides and none of the left’s 300 Hz; “Left only” the other way round; each file is as long as the original (4.08 s), its name says which side, and the export line says so before saving',
       only(got.R, 1, 0) && only(got.L, 0, 1) && /right side only/.test(got.R.name) && /left side only/.test(got.L.name) && /right side only/.test(got.R.sum) && /left side only/.test(got.L.sum), got);
+    // Transcribe…, in the header: the open file goes to Transcripts as it is set here (the left side only)
+    const o0 = await page.eval(`window.__opened.length`); await page.eval(`(__saved.length = 0, true)`);
+    await page.click('#trBtn'); await page.clickText('.menu', 'Paid or client work');
+    await page.waitFor(`window.__opened.length === ${o0 + 1}`, 30000, 'the left side to be written and sent to Transcripts');
+    const sentL = await page.eval(`({ opened: window.__opened[${o0}], saved: __saved.map(x => x.name), engine: localStorage.getItem('mixtape-transcript-engine') })`); await closeSheet();
+    const trL = await t.open('/transcribe/' + sentL.opened.slice(sentL.opened.indexOf('?')), { site: { origin: page.origin }, preload: RETURNING });
+    const thereL = await trL.waitFor(`window.__tr && __tr.cur && __tr.cur.media.readyState >= 1 ? { name: __tr.cur.track.name, paid: !!document.querySelector('#engPaid') && document.querySelector('#engPaid').checked } : null`, 20000, 'Transcripts to open the left side').catch(e => ({ error: e.message })); await trL.close();
+    t.check('Transcribe… with one side', 'with “Left only” chosen, Transcribe… → “Paid or client work” (real clicks) writes the left side, saves it, and opens Transcripts on that file with Paid chosen', sentL.saved.length === 1 && /left side only/.test(sentL.saved[0]) && sentL.engine === 'paid' && thereL && thereL.name === sentL.saved[0] && thereL.paid, { sentL, thereL });
     await page.click('#segSide [data-v=""]');
+    await page.click('#trBtn'); await page.clickText('.menu', 'Personal');
+    await page.waitFor(`window.__opened.length === ${o0 + 2}`, 15000, 'the untouched file to be sent to Transcripts');
+    const plainT = await page.eval(`({ saved: __saved.length, sheet: !document.querySelector('#sheet').hidden, engine: localStorage.getItem('mixtape-transcript-engine') })`);
+    t.check('Transcribe… untouched', 'with nothing changed, the file itself is sent: nothing new is written or saved, and Personal is set', plainT.saved === 1 && !plainT.sheet && plainT.engine === 'personal', plainT);
     await page.eval(`(__saved.length = 0, true)`); await page.click('#exportBtn'); const rb = await finished('both sides, untouched');
     const both = await page.eval(`(async () => { const s = __saved[__saved.length - 1]; return s ? { name: s.name, ...(await (${TONES})(s.file)) } : null; })()`); await closeSheet();
     t.check('both sides again', 'back on “Both voices”, the file is saved as before: the left tone on the left, the right tone on the right, the name unchanged, still an MP3', rb.done && both && /\.mp3$/.test(both.name) && !/side only/.test(both.name) && both.c0[0] > 0.05 && both.c0[1] < both.c0[0] / 30 && both.c1[1] > 0.05 && both.c1[0] < both.c1[1] / 30, both);

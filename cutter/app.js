@@ -463,9 +463,13 @@ async function startExport(jobsIn, title) {
         if (!b.dataset.eng) return;
         const tab = window.open('', '_blank'); // opened now, while the click still counts; it is sent to Transcripts once the file is in the library
         const pick = b.parentNode; pick.querySelectorAll('button').forEach(x => { x.disabled = true; }); const was = b.textContent; b.textContent = 'Opening Transcripts…';
-        try { const id = await addOnce(); try { localStorage.setItem('mixtape-transcript-engine', b.dataset.eng); } catch (e) {} const url = `${host.transcribeHref}?song=${encodeURIComponent(id)}`; if (tab) tab.location = url; else location.href = url; b.textContent = `${was} ✓ opened in Transcripts`; const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } window.__lastTranscribe = { id, url, engine: b.dataset.eng }; }
+        try { const id = await addOnce(); if (!openTranscripts(tab, id, b.dataset.eng)) location.href = window.__lastTranscribe.url; b.textContent = `${was} ✓ opened in Transcripts`; const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } }
         catch (err) { if (tab) tab.close(); pick.querySelectorAll('button').forEach(x => { x.disabled = false; }); b.textContent = was; toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
       });
+      if (j.thenTranscribe && host) { // asked for from “Transcribe…”: sent on as soon as it is written
+        try { const id = await addOnce(), went = openTranscripts(j.thenTranscribe.tab, id, j.thenTranscribe.eng); const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } st.innerHTML += went ? ' <span style="color:var(--faint)">· opened in Transcripts, in a new tab</span>' : ' <span style="color:var(--warn)">· the browser blocked the new tab: press “Transcribe it…” below</span>'; }
+        catch (err) { if (j.thenTranscribe.tab) j.thenTranscribe.tab.close(); toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
+      }
       if (host) lk.querySelector('[data-lib]').addEventListener('click', async ev => { const b = ev.currentTarget; b.disabled = true; b.textContent = 'Adding…'; try { await addOnce(); b.textContent = `In your ${host.name} library ✓`; } catch (err) { b.disabled = false; b.textContent = `Add to my ${host.name} library`; toast(`Could not add it: ${err.message || err}`, 6000); } });
       lk.querySelector('[data-open]').addEventListener('click', () => { closeSheet(); openFiles([withSrc(new File([res.file], saved.name, { type: res.file.type, lastModified: Date.now() }), { temp: true })], { show: true }); }); /* temp: opened only to check it, so no copy of it is kept for next time */
       if (j.clips) { // joined files: where each clip begins is remembered here (so the joined file shows it when opened), and a list is saved beside it
@@ -475,6 +479,7 @@ async function startExport(jobsIn, title) {
       }
       ok++; window.__lastExport = res;
     } catch (e) {
+      if (j.thenTranscribe && j.thenTranscribe.tab) { try { j.thenTranscribe.tab.close(); } catch (e2) {} }
       row.classList.add('fail'); st.textContent = e.cancelled || ac.signal.aborted ? 'Cancelled' : `Could not write this one: ${e.message || e}`; if (!e.cancelled && !ac.signal.aborted) console.error(e);
     }
   }
@@ -495,6 +500,30 @@ $('#exportBtn').addEventListener('click', () => {
   if (S.out === 'join' && rs.length > 1) jobs = [{ label: C.fileNameFor(m.name, null, '', true, rs.length), spec: { ...specBase(), ranges: rs.map(R), fileName: ext => C.fileNameFor(m.name, null, ext, true, rs.length) } }];
   else jobs = rs.map(r => ({ label: C.fileNameFor(m.name, r, ''), spec: { ...specBase(), ranges: [R(r)], fileName: ext => (rs.length === 1 && r.t0 === 0 && Math.abs(r.t1 - dur()) < 1e-6 && S.fmt !== 'same') ? `${m.name}${ext}` : C.fileNameFor(m.name, r, ext) } }));
   startExport(jobs, jobs.length > 1 ? `Exporting ${jobs.length} files` : 'Exporting');
+});
+
+/* ---------- transcribe the open file ----------
+   The file goes to Transcripts as it is set here. Untouched and whole, it is sent as it is; with parts, one side only
+   or clearer speech, it is written first (and saved like any export), then sent. The new tab is opened at the click,
+   while the click still counts, and sent on when the file is ready. */
+const openTranscripts = (tab, id, eng) => { try { localStorage.setItem('mixtape-transcript-engine', eng); } catch (e) {} const url = `${host.transcribeHref}?song=${encodeURIComponent(id)}`; window.__lastTranscribe = { id, url, engine: eng }; if (tab && !tab.closed) { tab.location = url; return true; } return false; };
+function transcribeNow(eng) {
+  if (!cur || exporting) return; const m = cur.media, rs = exportRangesNow(); if (!rs.length) return toast('Nothing to transcribe: the parts cover the whole file.');
+  const tab = window.open('', '_blank'); try { tab.document.title = 'Transcripts'; tab.document.body.textContent = 'Getting the file ready in the Cutter… this tab opens Transcripts when it is done.'; } catch (e) {}
+  const whole = rs.length === 1 && rs[0].t0 === 0 && Math.abs(rs[0].t1 - dur()) < 1e-6;
+  if (whole && !sideNow() && !clearNow()) { // nothing to write: the file itself goes
+    (async () => { try { const src = m.file.__src || {}, id = src.lib || await host.addToLibrary(m.file, m.file.name, { duration: m.duration, video: !!m.v }); if (!openTranscripts(tab, id, eng)) toast('The browser blocked the new tab. Allow pop-ups for Mixtape, then press Transcribe… again.', 8000); else toast('Opened in Transcripts, in a new tab.', 4000); } catch (err) { if (tab) tab.close(); toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); } })();
+    return;
+  }
+  const R = r => ({ media: m, t0: r.t0, t1: r.t1 }), one = rs.length === 1;
+  startExport([{ label: whole ? m.name : one ? C.fileNameFor(m.name, rs[0], '') : C.fileNameFor(m.name, null, '', true, rs.length), thenTranscribe: { eng, tab },
+    spec: { ...specBase(), tracks: m.a ? 'audio' : specBase().tracks, ranges: rs.map(R), fileName: ext => (whole ? `${m.name}${ext}` : one ? C.fileNameFor(m.name, rs[0], ext) : C.fileNameFor(m.name, null, ext, true, rs.length)) } }], 'Getting it ready for Transcripts');
+}
+$('#trBtn').hidden = !(window.CUTTER_HOST && window.CUTTER_HOST.transcribeHref);
+$('#trBtn').addEventListener('click', e => {
+  if (!cur) return toast('Open a file first.'); if (!cur.media.a) return toast('This file has no sound to write down.');
+  const r = e.currentTarget.getBoundingClientRect();
+  menu(r.left, r.bottom + 6, [['Paid or client work', () => transcribeNow('paid')], ['Personal (Reverb: personal use only)', () => transcribeNow('personal')]]);
 });
 
 /* ---------- join files ---------- */
