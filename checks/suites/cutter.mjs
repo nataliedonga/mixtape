@@ -125,6 +125,22 @@ export async function run(t) {
     const both = await page.eval(`(async () => { const s = __saved[__saved.length - 1]; return s ? { name: s.name, ...(await (${TONES})(s.file)) } : null; })()`); await closeSheet();
     t.check('both sides again', 'back on “Both voices”, the file is saved as before: the left tone on the left, the right tone on the right, the name unchanged, still an MP3', rb.done && both && /\.mp3$/.test(both.name) && !/side only/.test(both.name) && both.c0[0] > 0.05 && both.c0[1] < both.c0[0] / 30 && both.c1[1] > 0.05 && both.c1[0] < both.c1[1] / 30, both);
     if (monoShown != null) { await page.eval(`(document.querySelectorAll('#fileList > *')[${monoShown}].click(), true)`); await page.waitFor(`__cutter.cur === __cutter.files[${monoShown}]`, 8000, 'the one-channel file'); t.check('no side choice for one channel', 'a file with one channel does not offer the choice', await page.eval(`document.querySelector('#segSide').hidden`), 'hidden'); }
+    // ---- clearer speech: saved the way it is heard ----
+    const n1 = await page.eval(`__cutter.files.length`);
+    await page.setFiles('#fileIn', [t.media.get('two-sides-long.mp3')]);
+    await page.waitFor(`__cutter.files.length === ${n1 + 1} && __cutter.files[${n1}].state !== 'opening'`, 30000, 'the quiet clip to open');
+    await page.eval(`(() => { const f = __cutter.files[${n1}]; if (f.state === 'ok' && __cutter.cur !== f) document.querySelectorAll('#fileList > *')[${n1}].click(); return true; })()`);
+    await page.waitFor(`__cutter.cur === __cutter.files[${n1}] && !document.querySelector('#clearBtn').hidden`, 8000, 'the Clearer speech button to show');
+    const save = async what => { await page.eval(`(__saved.length = 0, true)`); await page.click('#exportBtn'); const rr = await finished(what); const s = await page.eval(`(async () => { const s = __saved[__saved.length - 1]; return s ? { name: s.name, ...(await (${TONES})(s.file)) } : null; })()`); await closeSheet(); return { done: rr.done, fail: rr.fail ? rr.text.slice(0, 140) : undefined, ...(s || {}) }; };
+    const plain = await save('the quiet clip, untouched');
+    await page.click('#clearBtn'); await t.sleep(4300); // its message has gone
+    const sumC = await page.eval(`document.querySelector('#sum').textContent`), clear = await save('the quiet clip with clearer speech');
+    const liftL = 20 * Math.log10(clear.c0[0] / plain.c0[0]), liftR = 20 * Math.log10(clear.c1[1] / plain.c1[1]);
+    t.check('clearer speech is saved', 'with “Clearer speech” on (a real click) and Untouched still chosen, the quiet recording is saved at least 8 dB louder on both sides, each tone still only on its own side, the same length, with “clearer speech” in the export line and in the file name',
+      plain.done && clear.done && liftL >= 8 && liftR >= 8 && clear.c0[1] < clear.c0[0] / 30 && clear.c1[0] < clear.c1[1] / 30 && Math.abs(clear.seconds - plain.seconds) < 0.08 && /clearer speech/.test(sumC) && /\(clearer speech\)/.test(clear.name), { plain, clear, lift_dB: [+liftL.toFixed(1), +liftR.toFixed(1)], line: sumC });
+    await page.click('#clearBtn');
+    const again = await save('the quiet clip, untouched again');
+    t.check('clearer speech off again', 'switched off, the file is saved as before: an MP3, the plain name, the same level', again.done && /\.mp3$/.test(again.name) && !/clearer/.test(again.name) && Math.abs(again.c1[1] - plain.c1[1]) < 0.002, again);
     await page.click('#segPrec [data-v="exact"]'); }
 
   // ---- the joined file, opened again, shows where each clip begins ----

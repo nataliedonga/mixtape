@@ -876,4 +876,6 @@ if (window.MixtapeShell) MixtapeShell.init({ tool: 'player', toast, busy: () => 
   ['Find and open'],
   ['/', 'Search your songs'], ['Enter', 'Play the song that has the focus (Tab moves between songs)'], ['Esc', 'Close a menu, a question or Now Playing'], ['?', 'These keys'],
 ] } });
+// clearer speech, or one side of a two-sided recording only, while listening (sound.js; nothing is routed until it is first switched on)
+import('./sound.js').then(m => m.soundControl({ after: $('#sleepBtn'), media: () => audio, cls: 'pill', toast })).catch(e => console.warn('sound:', e));
 })();

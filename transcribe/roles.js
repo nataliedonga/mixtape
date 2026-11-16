@@ -9,6 +9,7 @@
 import { suggest, unglue } from '../roles-core.js';
 import { styleOf } from './matter.js';
 import { initClips } from './clips.js';
+import { soundControl } from '../sound.js';
 const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let api, bar, open = true, lastKey = '', busy = false;
 const STYLE = `
@@ -121,4 +122,6 @@ export function initRoles(a) {
   if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__roles = { draw, state, suggest };
   draw();
   initClips(a); // a recording joined from clips shows where each clip begins
+  const snd = soundControl({ after: $('#speed'), media: () => api.cur && api.cur.media, toast: api.toast }); // clearer speech, or one side only, while listening
+  let sndFor = null; setInterval(() => { const m = api.cur && api.cur.media; if (m && m !== sndFor) { sndFor = m; snd.refresh(); } }, 700); // each recording has its own player: the next one opened gets the same sound
 }

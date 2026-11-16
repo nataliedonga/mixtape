@@ -15,6 +15,8 @@ const RECIPES = {
   'low-rate.mp3': { seconds: 4, args: [...tone(440, 4), '-ar', '22050', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '64k'] },
   // a call with each person on their own side: 300 Hz on the left, 1000 Hz on the right
   'two-sides.mp3': { seconds: 4, args: ['-f', 'lavfi', '-i', 'sine=frequency=300:duration=4:sample_rate=22050', '-f', 'lavfi', '-i', 'sine=frequency=1000:duration=4:sample_rate=22050', '-filter_complex', '[0:a][1:a]join=inputs=2:channel_layout=stereo', '-c:a', 'libmp3lame', '-b:a', '96k', '-joint_stereo', '0'] },
+  // the same, longer and quiet (36 dB under full scale), for listening checks and for "clearer speech"
+  'two-sides-long.mp3': { seconds: 20, args: ['-f', 'lavfi', '-i', 'sine=frequency=300:duration=20:sample_rate=22050', '-f', 'lavfi', '-i', 'sine=frequency=1000:duration=20:sample_rate=22050', '-filter_complex', '[0:a][1:a]join=inputs=2:channel_layout=stereo,volume=0.125', '-c:a', 'libmp3lame', '-b:a', '96k', '-joint_stereo', '0'] },
   'join-2.mp3': { seconds: 3, args: [...tone(440, 3), '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '128k'] },
   'join-3.m4a': { seconds: 1.5, args: [...tone(550, 1.5), '-ac', '2', '-c:a', 'aac', '-b:a', '128k'] },
   // a picture with AC-3 sound: no browser decodes AC-3, so an exact cut must be refused and an untouched one must work

@@ -1,5 +1,14 @@
 [
   {
+    "version": 117,
+    "date": "2026-11-16",
+    "items": [
+      "New: Clearer speech. It cuts hum and rumble, lifts the part of a voice that carries the consonants, brings quiet speakers up and holds loud ones back, and never clips. It does not take noise out from under a voice. It runs on this device; nothing is sent anywhere.",
+      "Player and Transcripts: a Sound button (in the Player it is in Now Playing, beside the sleep timer; in Transcripts beside the speed). It has Clearer speech, and Both / Left only / Right only to silence one person in a recording with each person on their own side. This changes what you hear, not your files. Nothing about playback changes until you first switch one of them on.",
+      "Cutter: a Clearer speech button beside the volume. You hear it at once, and while it is on, the files you export or join are saved that way (the export line and the file name say so). Your original files are never changed."
+    ]
+  },
+  {
     "version": 116,
     "date": "2026-11-16",
     "items": [
