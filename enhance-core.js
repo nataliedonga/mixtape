@@ -17,6 +17,7 @@
 const dB = x => Math.pow(10, x / 20);
 const THRESH = -32, RATIO = 3, KNEE = 8, MAKEUP = 13;      // dB: where evening-out begins, how hard, how gently, and the lift after
 const FLOOR = -58, FLOOR_CUT = 9;                           // dB: below this is room noise; it is turned down by up to this much
+const TINY = 1e-15;                                         // smaller than this is silence: numbers that fade towards nothing are set to nothing (very small numbers are slow to work with)
 const CEIL = dB(-1);                                        // the limiter's ceiling
 
 function highpass(sr, hz) { const w = 2 * Math.PI * hz / sr, c = Math.cos(w), a = Math.sin(w) / (2 * Math.SQRT1_2), a0 = 1 + a; return [(1 + c) / 2 / a0, -(1 + c) / a0, (1 + c) / 2 / a0, -2 * c / a0, (1 - a) / a0]; }
@@ -49,12 +50,13 @@ export function makeEnhancer(sampleRate, { on = true, side = '' } = {}) {
         let peak = 0;
         for (let c = 0; c < ch; c++) {
           const s = st[c]; let x = data[o + c];
-          let y = hp[0] * x + hp[1] * s[0] + hp[2] * s[1] - hp[3] * s[2] - hp[4] * s[3]; s[1] = s[0]; s[0] = x; s[3] = s[2]; s[2] = y; x = y;
-          y = hp[0] * x + hp[1] * s[8] + hp[2] * s[9] - hp[3] * s[10] - hp[4] * s[11]; s[9] = s[8]; s[8] = x; s[11] = s[10]; s[10] = y; x = y; // twice over: a steeper cut
-          y = pk[0] * x + pk[1] * s[4] + pk[2] * s[5] - pk[3] * s[6] - pk[4] * s[7]; s[5] = s[4]; s[4] = x; s[7] = s[6]; s[6] = y;
+          let y = hp[0] * x + hp[1] * s[0] + hp[2] * s[1] - hp[3] * s[2] - hp[4] * s[3]; if (y < TINY && y > -TINY) y = 0; s[1] = s[0]; s[0] = x; s[3] = s[2]; s[2] = y; x = y;
+          y = hp[0] * x + hp[1] * s[8] + hp[2] * s[9] - hp[3] * s[10] - hp[4] * s[11]; if (y < TINY && y > -TINY) y = 0; s[9] = s[8]; s[8] = x; s[11] = s[10]; s[10] = y; x = y; // twice over: a steeper cut
+          y = pk[0] * x + pk[1] * s[4] + pk[2] * s[5] - pk[3] * s[6] - pk[4] * s[7]; if (y < TINY && y > -TINY) y = 0; s[5] = s[4]; s[4] = x; s[7] = s[6]; s[6] = y;
           data[o + c] = y; const a = y < 0 ? -y : y; if (a > peak) peak = a;
         }
         env = peak > env ? att * env + (1 - att) * peak : rel * env + (1 - rel) * peak;      // how loud it is just now, both sides together
+        if (env < TINY) env = 0;
         const want = dB(gainFor(20 * Math.log10(env + 1e-9))); gain = gs * gain + (1 - gs) * want; // the gain moves smoothly, so it is not heard working
         let top = 0; for (let c = 0; c < ch; c++) { const v = data[o + c] * gain; data[o + c] = v; const a = v < 0 ? -v : v; if (a > top) top = a; }
         const need = top * lim > CEIL ? CEIL / top : 1; lim = need < lim ? need : Math.min(1, lrel * lim + (1 - lrel) * 1); // the limiter drops at once and lets go slowly

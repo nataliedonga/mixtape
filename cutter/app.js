@@ -454,19 +454,18 @@ async function startExport(jobsIn, title) {
       row.classList.add('done'); bar.style.width = '100%'; row.querySelector('.nm').textContent = saved.name;
       st.innerHTML = `${esc(res.note)} <span style="color:var(--faint)">${fmtBytes(res.file.size)} · ${C.fmtLength(res.length)} · took ${C.fmtLength((performance.now() - t0) / 1000)} · saved to ${esc(saved.where)}</span>`;
       const hasSound = !!j.spec.ranges[0].media.a && (j.spec.tracks || 'both') !== 'video';
-      const lk = row.querySelector('.lk'); lk.hidden = false; lk.innerHTML = `<button class="sm" data-open>${j.clips ? 'Open it here to see where the clips join' : 'Open it here to check'}</button>` + (host ? `<button class="sm" data-lib>Add to my ${esc(host.name)} library</button>` : '') + (host && host.transcribeHref && hasSound ? '<button class="sm" data-tr title="Write down what is said in this file, in Transcripts">Transcribe it…</button>' : '');
+      const lk = row.querySelector('.lk'); lk.hidden = false; lk.innerHTML = `<button class="sm" data-open>${j.clips ? 'Open it here to see where the clips join' : 'Open it here to check'}</button>` + (host ? `<button class="sm" data-lib>Add to my ${esc(host.name)} library</button>` : '') + (host && host.transcribeHref && hasSound ? '<button class="sm" data-tr title="Go to Transcripts with this file, to write down what is said">Transcribe it</button>' : '');
       let added = null; const addOnce = () => (added ||= host.addToLibrary(res.file, saved.name, { duration: res.length, video: !!j.spec.ranges[0].media.v && (j.spec.tracks || 'both') !== 'audio' && !(TARGET_SOUND[j.spec.format]) }).catch(err => { added = null; throw err; })); /* once, whichever button asks first */
       // Transcribe it: the file goes into the library, and this window goes to Transcripts on it, with the choice made here, and the writing-down starts
       lk.addEventListener('click', async ev => {
         const b = ev.target.closest('button'); if (!b) return;
-        if (b.dataset.tr != null) { const sp = document.createElement('span'); sp.className = 'trpick'; sp.innerHTML = 'Transcribe for: <button class="sm" data-eng="paid" title="Mixtape’s own recogniser. Free for any use. Runs in the page.">Paid or client work</button><button class="sm" data-eng="personal" title="Rev’s Reverb, through its helper on this computer: better on speech like court audio. Personal use only, never paid or client work.">Personal</button>'; b.replaceWith(sp); sp.querySelector('button').focus(); return; }
-        if (!b.dataset.eng) return;
-        const pick = b.parentNode; pick.querySelectorAll('button').forEach(x => { x.disabled = true; }); const was = b.textContent; b.textContent = 'Opening Transcripts…';
-        try { const id = await addOnce(); b.textContent = `${was} ✓ opening Transcripts…`; openTranscripts(id, b.dataset.eng); const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } }
-        catch (err) { pick.querySelectorAll('button').forEach(x => { x.disabled = false; }); b.textContent = was; toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
+        if (b.dataset.tr == null) return;
+        const was = b.textContent; b.disabled = true; b.textContent = 'Opening Transcripts…';
+        try { const id = await addOnce(); openTranscripts(id); }
+        catch (err) { b.disabled = false; b.textContent = was; toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
       });
       if (j.thenTranscribe && host) { // asked for from “Transcribe…”: sent on as soon as it is written
-        try { const id = await addOnce(); const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } st.innerHTML += ' <span style="color:var(--faint)">· opening Transcripts…</span>'; exporting = null; openTranscripts(id, j.thenTranscribe.eng); }
+        try { const id = await addOnce(); const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } st.innerHTML += ' <span style="color:var(--faint)">· opening Transcripts…</span>'; exporting = null; openTranscripts(id); }
         catch (err) { toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
       }
       if (host) lk.querySelector('[data-lib]').addEventListener('click', async ev => { const b = ev.currentTarget; b.disabled = true; b.textContent = 'Adding…'; try { await addOnce(); b.textContent = `In your ${host.name} library ✓`; } catch (err) { b.disabled = false; b.textContent = `Add to my ${host.name} library`; toast(`Could not add it: ${err.message || err}`, 6000); } });
@@ -503,24 +502,23 @@ $('#exportBtn').addEventListener('click', () => {
 /* ---------- transcribe the open file ----------
    The file goes to Transcripts as it is set here. Untouched and whole, it is sent as it is; with parts, one side only
    or clearer speech, it is written first (and saved like any export), then sent. This window then goes to Transcripts,
-   on that file, with the choice made here, and the writing-down starts there (the Cutter keeps its files for the way back). */
-const openTranscripts = (id, eng) => { try { localStorage.setItem('mixtape-transcript-engine', eng); } catch (e) {} const url = `${host.transcribeHref}?song=${encodeURIComponent(id)}&go=1`; window.__lastTranscribe = { id, url, engine: eng }; saveState(); if (window.__cutterGo) window.__cutterGo(url); else location.assign(url); /* __cutterGo: the checks' stand-in for leaving the page */ };
-function transcribeNow(eng) {
+   on that file; what the transcript is for is chosen there, with Transcribe (the Cutter keeps its files for the way back). */
+const openTranscripts = id => { const url = `${host.transcribeHref}?song=${encodeURIComponent(id)}`; window.__lastTranscribe = { id, url }; /* what it is for (paid or personal) is chosen there, once, where Transcribe is pressed */ saveState(); if (window.__cutterGo) window.__cutterGo(url); else location.assign(url); /* __cutterGo: the checks' stand-in for leaving the page */ };
+function transcribeNow() {
   if (!cur || exporting) return; const m = cur.media, rs = exportRangesNow(); if (!rs.length) return toast('Nothing to transcribe: the parts cover the whole file.');
   const whole = rs.length === 1 && rs[0].t0 === 0 && Math.abs(rs[0].t1 - dur()) < 1e-6;
   if (whole && !sideNow() && !clearNow()) { // nothing to write: the file itself goes
-    (async () => { try { const src = m.file.__src || {}, id = src.lib || await host.addToLibrary(m.file, m.file.name, { duration: m.duration, video: !!m.v }); toast('Opening Transcripts…', 4000); openTranscripts(id, eng); } catch (err) { toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); } })();
+    (async () => { try { const src = m.file.__src || {}, id = src.lib || await host.addToLibrary(m.file, m.file.name, { duration: m.duration, video: !!m.v }); toast('Opening Transcripts…', 4000); openTranscripts(id); } catch (err) { toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); } })();
     return;
   }
   const R = r => ({ media: m, t0: r.t0, t1: r.t1 }), one = rs.length === 1;
-  startExport([{ label: whole ? m.name : one ? C.fileNameFor(m.name, rs[0], '') : C.fileNameFor(m.name, null, '', true, rs.length), thenTranscribe: { eng },
+  startExport([{ label: whole ? m.name : one ? C.fileNameFor(m.name, rs[0], '') : C.fileNameFor(m.name, null, '', true, rs.length), thenTranscribe: true,
     spec: { ...specBase(), tracks: m.a ? 'audio' : specBase().tracks, ranges: rs.map(R), fileName: ext => (whole ? `${m.name}${ext}` : one ? C.fileNameFor(m.name, rs[0], ext) : C.fileNameFor(m.name, null, ext, true, rs.length)) } }], 'Getting it ready for Transcripts');
 }
 $('#trBtn').hidden = !(window.CUTTER_HOST && window.CUTTER_HOST.transcribeHref);
 $('#trBtn').addEventListener('click', e => {
   if (!cur) return toast('Open a file first.'); if (!cur.media.a) return toast('This file has no sound to write down.');
-  const r = e.currentTarget.getBoundingClientRect();
-  menu(r.left, r.bottom + 6, [['Paid or client work', () => transcribeNow('paid')], ['Personal (Reverb: personal use only)', () => transcribeNow('personal')]]);
+  transcribeNow();
 });
 
 /* ---------- join files ---------- */

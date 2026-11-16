@@ -33,17 +33,22 @@ function draw() {
   punctRow();
   if (!can) { box.querySelector('#engNo').hidden = false; return; }
   if (!personal) return;
-  pick.textContent = dir ? `Folder: “${home ? home + ' › ' : ''}${dir.name}” (change)` : 'Choose the Reverb folder…';
+  pick.textContent = dir && noPerm ? 'Allow Mixtape to use the Reverb folder' : dir ? `Folder: “${home ? home + ' › ' : ''}${dir.name}” (change)` : 'Choose the Reverb folder…'; pick.classList.toggle('primary', !!(dir && noPerm));
   const st = lastStatus, alive = st && st.alive && Date.now() / 1000 - st.alive < 6;
   s.className = 'engstatus' + (alive && st.state !== 'loading' ? ' ok' : '');
   s.textContent = !dir ? 'Once only: choose your reverb-personal folder.'
+    : noPerm ? 'The browser needs your permission again before Mixtape can use the Reverb folder (it asks after the app has been closed). Press the button below and allow it.'
     : !st && lastStatus === null ? 'Looking for Reverb on this computer…'
     : !alive ? 'Reverb’s helper is not running. In your reverb-personal folder, double-click “Start Reverb with Windows” (once: after that it is always ready), or “Start Reverb for Mixtape” for just this time.'
     : st.state === 'loading' ? 'Reverb is starting on this computer (a minute or two)…'
     : st.state === 'working' ? `Reverb is busy with “${st.name || 'another recording'}”; yours will wait its turn.`
     : 'Reverb is ready on this computer. Press Transcribe.';
 }
-async function refresh() { if (!reverbChosen() || !dir || document.hidden || !(await allowed(false))) return draw(); lastStatus = (await readJSON('status.json')) || false; draw(); }
+/* noPerm: the folder is known, but the browser wants to be asked again before this page may read it (it forgets between
+   visits). Then the page cannot see the helper at all, and must say so and offer the one click that puts it right,
+   not go on "looking" for a helper that is running. */
+let noPerm = false;
+async function refresh() { if (!reverbChosen() || !dir || document.hidden) return draw(); if (!(await allowed(false))) { noPerm = true; return draw(); } noPerm = false; lastStatus = (await readJSON('status.json')) || false; draw(); }
 function build() {
   const go = $('#goHeard'); if (!go || $('#engineBox')) return;
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'reverb.css'; document.head.appendChild(link);
@@ -59,6 +64,7 @@ function build() {
   go.parentNode.insertBefore(f, go);
   f.addEventListener('change', e => { if (e.target.id === 'engSpk') { try { localStorage.setItem(SKEY, e.target.checked ? '1' : '0'); } catch (err) {} return; } if (e.target.id === 'engPunct') { try { localStorage.setItem(PKEY, e.target.checked ? '1' : '0'); } catch (err) {} return; } if (e.target.name !== 'engine') return; try { localStorage.setItem(KEY, e.target.value); } catch (err) {} lastStatus = null; draw(); refresh(); });
   f.querySelector('#engPick').addEventListener('click', async () => {
+    if (dir && noPerm) { if (await allowed(true)) { noPerm = false; lastStatus = null; await refresh(); } else api.toast('The folder was not allowed. Press the button again and choose “Allow”, or the folder cannot be used.', 7000); return; } // the same folder, allowed again: no need to pick it a second time
     try { const d = await showDirectoryPicker({ id: 'reverb-inbox', mode: 'readwrite' }); dir = d; home = ''; await kv('readwrite', s => s.put(d, 'inbox')).catch(() => {}); await inbox(); lastStatus = null; await refresh(); }
     catch (e) { if (e.name !== 'AbortError') api.toast('That folder could not be opened. Choose your reverb-personal folder.', 6000); }
   });

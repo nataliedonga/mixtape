@@ -1,5 +1,14 @@
 [
   {
+    "version": 123,
+    "date": "2026-11-16",
+    "items": [
+      "Transcripts, Personal: when the browser wanted to be asked again before using the Reverb folder, the page went on saying “Looking for Reverb on this computer…” although the helper was running. It now says permission is needed and shows one button, “Allow Mixtape to use the Reverb folder”.",
+      "Cutter: Transcribe is one button now. It takes you to Transcripts with the file; what the transcript is for (paid or personal) is chosen there, once, where you press Transcribe.",
+      "Clearer speech no longer slows down on silent stretches."
+    ]
+  },
+  {
     "version": 122,
     "date": "2026-11-16",
     "items": [

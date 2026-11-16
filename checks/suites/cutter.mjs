@@ -58,16 +58,12 @@ export async function run(t) {
   // ---- Transcribe it: from the finished file straight into Transcripts, with Personal or not chosen here ----
   await page.eval(`(window.__opened = [], window.__cutterGo = u => { window.__opened.push(String(u)); }, true)`); // leaving the Cutter is stood in for (the check goes on using it); the address it would go to is opened below for real
   await page.click('#sheet .jobrow:last-of-type [data-tr]');
-  const offered = await page.eval(`[...document.querySelectorAll('#sheet .trpick button')].map(b => b.textContent)`);
-  await page.click('#sheet .trpick [data-eng="personal"]');
   await page.waitFor(`window.__lastTranscribe && window.__opened.length === 1`, 15000, 'the file to be sent to Transcripts');
-  const sent = await page.eval(`({ ...window.__lastTranscribe, opened: window.__opened[0], engine_set: localStorage.getItem('mixtape-transcript-engine'), lib: document.querySelector('#sheet .jobrow:last-of-type [data-lib]').textContent })`);
+  const sent = await page.eval(`({ ...window.__lastTranscribe, opened: window.__opened[0], lib: (document.querySelector('#sheet .jobrow:last-of-type [data-lib]') || {}).textContent })`);
   const trPage = await t.open('/transcribe/' + sent.opened.slice(sent.opened.indexOf('?')), { site: { origin: page.origin }, preload: RETURNING });
-  const there = await trPage.waitFor(`window.__tr && __tr.cur && __tr.cur.media.readyState >= 1 ? { name: __tr.cur.track.name, seconds: +__tr.cur.media.duration.toFixed(2), personal: !!document.querySelector('#engPersonal') && document.querySelector('#engPersonal').checked, start: !!document.querySelector('#goHeard') } : null`, 20000, 'Transcripts to open the joined file').catch(e => ({ error: e.message }));
-  t.check('Transcribe it', 'after a join, “Transcribe it…” offers “Paid or client work” and “Personal”; a real click on Personal puts the file in the library once and goes to Transcripts with “start now” in the address; Transcripts opens that file (same name, same length) with Personal already chosen',
-    offered.join('|') === 'Paid or client work|Personal' && sent.engine_set === 'personal' && /transcribe\/\?song=[^&]+&go=1$/.test(sent.opened) && /library ✓/.test(sent.lib) && there && there.name === joined.names.find(n => /\.wav$/i.test(n)) && Math.abs(there.seconds - sum) < 0.05 && there.personal && there.start, { offered, sent, there });
-  const began = await trPage.waitFor(`/Reverb folder|helper is not running/.test(document.querySelector('#toast').textContent) ? document.querySelector('#toast').textContent : null`, 15000, 'the writing-down to start by itself').catch(e => null);
-  t.check('Transcribe it starts by itself', 'arriving from the Cutter, Transcripts starts the Personal transcript without another click (here it gets as far as asking for the Reverb folder, which this test browser does not have)', !!began, began || 'nothing started');
+  const there = await trPage.waitFor(`window.__tr && __tr.cur && __tr.cur.media.readyState >= 1 ? { name: __tr.cur.track.name, seconds: +__tr.cur.media.duration.toFixed(2), choice: !!document.querySelector('#engPaid') && !!document.querySelector('#engPersonal'), start: !!document.querySelector('#goHeard'), job: !!__tr.job } : null`, 20000, 'Transcripts to open the joined file').catch(e => ({ error: e.message }));
+  t.check('Transcribe it', 'after a join, one real click on “Transcribe it” puts the file in the library and goes to Transcripts on that file (same name, same length), where Paid or Personal is chosen and Transcribe pressed; nothing starts by itself',
+    /transcribe\/\?song=[^&]+$/.test(sent.opened) && there && there.name === joined.names.find(n => /\.wav$/i.test(n)) && Math.abs(there.seconds - sum) < 0.05 && there.choice && there.start && !there.job, { sent, there });
   await trPage.close();
   await closeSheet();
 
@@ -136,17 +132,17 @@ export async function run(t) {
       only(got.R, 1, 0) && only(got.L, 0, 1) && /right side only/.test(got.R.name) && /left side only/.test(got.L.name) && /right side only/.test(got.R.sum) && /left side only/.test(got.L.sum), got);
     // Transcribe…, in the header: the open file goes to Transcripts as it is set here (the left side only)
     const o0 = await page.eval(`window.__opened.length`); await page.eval(`(__saved.length = 0, true)`);
-    await page.click('#trBtn'); await page.clickText('.menu', 'Paid or client work');
+    await page.click('#trBtn');
     await page.waitFor(`window.__opened.length === ${o0 + 1}`, 30000, 'the left side to be written and sent to Transcripts');
-    const sentL = await page.eval(`({ opened: window.__opened[${o0}], saved: __saved.map(x => x.name), engine: localStorage.getItem('mixtape-transcript-engine') })`); await closeSheet();
+    const sentL = await page.eval(`({ opened: window.__opened[${o0}], saved: __saved.map(x => x.name) })`); await closeSheet();
     const trL = await t.open('/transcribe/' + sentL.opened.slice(sentL.opened.indexOf('?')), { site: { origin: page.origin }, preload: RETURNING });
-    const thereL = await trL.waitFor(`window.__tr && __tr.cur && __tr.cur.media.readyState >= 1 ? { name: __tr.cur.track.name, paid: !!document.querySelector('#engPaid') && document.querySelector('#engPaid').checked } : null`, 20000, 'Transcripts to open the left side').catch(e => ({ error: e.message })); await trL.close();
-    t.check('Transcribe… with one side', 'with “Left only” chosen, Transcribe… → “Paid or client work” (real clicks) writes the left side, saves it, and opens Transcripts on that file with Paid chosen', sentL.saved.length === 1 && /left side only/.test(sentL.saved[0]) && sentL.engine === 'paid' && thereL && thereL.name === sentL.saved[0] && thereL.paid, { sentL, thereL });
+    const thereL = await trL.waitFor(`window.__tr && __tr.cur && __tr.cur.media.readyState >= 1 ? { name: __tr.cur.track.name } : null`, 20000, 'Transcripts to open the left side').catch(e => ({ error: e.message })); await trL.close();
+    t.check('Transcribe with one side', 'with “Left only” chosen, one real click on Transcribe writes the left side, saves it, and goes to Transcripts on that file', sentL.saved.length === 1 && /left side only/.test(sentL.saved[0]) && thereL && thereL.name === sentL.saved[0], { sentL, thereL });
     await page.click('#segSide [data-v=""]');
-    await page.click('#trBtn'); await page.clickText('.menu', 'Personal');
+    await page.click('#trBtn');
     await page.waitFor(`window.__opened.length === ${o0 + 2}`, 15000, 'the untouched file to be sent to Transcripts');
-    const plainT = await page.eval(`({ saved: __saved.length, sheet: !document.querySelector('#sheet').hidden, engine: localStorage.getItem('mixtape-transcript-engine') })`);
-    t.check('Transcribe… untouched', 'with nothing changed, the file itself is sent: nothing new is written or saved, and Personal is set', plainT.saved === 1 && !plainT.sheet && plainT.engine === 'personal', plainT);
+    const plainT = await page.eval(`({ saved: __saved.length, sheet: !document.querySelector('#sheet').hidden })`);
+    t.check('Transcribe untouched', 'with nothing changed, the file itself is sent: nothing new is written or saved', plainT.saved === 1 && !plainT.sheet, plainT);
     await page.eval(`(__saved.length = 0, true)`); await page.click('#exportBtn'); const rb = await finished('both sides, untouched');
     const both = await page.eval(`(async () => { const s = __saved[__saved.length - 1]; return s ? { name: s.name, ...(await (${TONES})(s.file)) } : null; })()`); await closeSheet();
     t.check('both sides again', 'back on “Both voices”, the file is saved as before: the left tone on the left, the right tone on the right, the name unchanged, still an MP3', rb.done && both && /\.mp3$/.test(both.name) && !/side only/.test(both.name) && both.c0[0] > 0.05 && both.c0[1] < both.c0[0] / 30 && both.c1[1] > 0.05 && both.c1[0] < both.c1[1] / 30, both);
@@ -164,6 +160,24 @@ export async function run(t) {
     const liftL = 20 * Math.log10(clear.c0[0] / plain.c0[0]), liftR = 20 * Math.log10(clear.c1[1] / plain.c1[1]);
     t.check('clearer speech is saved', 'with “Clearer speech” on (a real click) and Untouched still chosen, the quiet recording is saved at least 8 dB louder on both sides, each tone still only on its own side, the same length, with “clearer speech” in the export line and in the file name',
       plain.done && clear.done && liftL >= 8 && liftR >= 8 && clear.c0[1] < clear.c0[0] / 30 && clear.c1[0] < clear.c1[1] / 30 && Math.abs(clear.seconds - plain.seconds) < 0.08 && /clearer speech/.test(sumC) && /\(clearer speech\)/.test(clear.name), { plain, clear, lift_dB: [+liftL.toFixed(1), +liftR.toFixed(1)], line: sumC });
+    // with clearer speech still on: Transcribe… sends the clearer file, and a join is clearer too
+    const o1 = await page.eval(`window.__opened.length`); await page.eval(`(__saved.length = 0, true)`);
+    await page.click('#trBtn');
+    await page.waitFor(`window.__opened.length === ${o1 + 1}`, 30000, 'the clearer file to be written and sent to Transcripts');
+    const sentC = await page.eval(`(async () => { const s = __saved[__saved.length - 1], id = new URL(window.__opened[${o1}], location.href).searchParams.get('song');
+      const lib = await new Promise((res, rej) => { const r = indexedDB.open('mixtape-player'); r.onsuccess = () => { const q = r.result.transaction('tracks').objectStore('tracks').get(id); q.onsuccess = () => { r.result.close(); res(q.result); }; q.onerror = () => rej(q.error); }; r.onerror = () => rej(r.error); });
+      return { saved: s && s.name, inLibrary: lib && lib.name, ...(lib ? await (${TONES})(lib.blob) : {}) }; })()`); await closeSheet();
+    const liftT = sentC.c1 ? 20 * Math.log10(sentC.c1[1] / plain.c1[1]) : null;
+    t.check('Transcribe carries clearer speech', 'with “Clearer speech” on, the file that Transcribe puts in the library for Transcripts is the clearer one: at least 8 dB louder than the original, with “clearer speech” in its name', liftT != null && liftT >= 8 && /clearer speech/.test(sentC.inLibrary || '') && sentC.inLibrary === sentC.saved, { ...sentC, lift_dB: liftT && +liftT.toFixed(1) });
+    await page.eval(`(__saved.length = 0, true)`);
+    await page.click('#joinBtn'); await page.waitFor(`document.querySelectorAll('#sheet #jl .joinrow').length > 1`, 5000, 'the join list');
+    await page.click('#jNone'); const rowsJ = await page.eval(`[...document.querySelectorAll('#sheet #jl .joinrow')].map(r => r.textContent)`), want = rowsJ.map((x, i) => /two-sides-long/.test(x) ? i : -1).filter(i => i >= 0)[0], other = rowsJ.map((x, i) => /two-sides\.mp3/.test(x) ? i : -1).filter(i => i >= 0)[0];
+    for (const k of [want, other]) { await page.eval(`(document.querySelector('#sheet #jl [data-c="${k}"]').scrollIntoView({ block: 'center' }), true)`); await page.click(`#sheet #jl [data-c="${k}"]`); } // the list scrolls: each row is brought into view, then clicked for real
+    const jsumC = await page.eval(`document.querySelector('#jSum').textContent`); await page.click('#jGo');
+    const rj = await finished('a join with clearer speech');
+    const joinedC = await page.eval(`(async () => { const s = __saved.find(x => !/clip list/.test(x.name)); return s ? { name: s.name, ...(await (${TONES})(s.file)) } : null; })()`); await closeSheet();
+    const quietFirst = want < other, liftJ = joinedC && quietFirst ? 20 * Math.log10(joinedC.c1[1] / plain.c1[1]) : null;
+    t.check('a join with clearer speech', 'two files joined with “Clearer speech” on: the join window says so, the name says so, and the sound is clearer (where the quiet file comes first, at least 8 dB louder than it was)', rj.done && joinedC && /clearer speech/.test(jsumC) && /clearer speech/.test(joinedC.name) && (liftJ == null || liftJ >= 8), { sheet: jsumC, ...joinedC, quietFirst, lift_dB: liftJ && +liftJ.toFixed(1) });
     await page.click('#clearBtn');
     const again = await save('the quiet clip, untouched again');
     t.check('clearer speech off again', 'switched off, the file is saved as before: an MP3, the plain name, the same level', again.done && /\.mp3$/.test(again.name) && !/clearer/.test(again.name) && Math.abs(again.c1[1] - plain.c1[1]) < 0.002, again);
