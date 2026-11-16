@@ -1,5 +1,12 @@
 [
   {
+    "version": 113,
+    "date": "2026-11-16",
+    "items": [
+      "Cutter: Join files failed on clips with a low sample rate (22 kHz MP3s), with an encoder message. Whole files of one kind, kept in their own format, are now joined untouched: nothing is re-encoded, nothing is lost, and 100 clips (almost four hours) join in a few seconds."
+    ]
+  },
+  {
     "version": 112,
     "date": "2026-11-16",
     "items": [

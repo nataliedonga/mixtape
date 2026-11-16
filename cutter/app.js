@@ -497,7 +497,7 @@ $('#joinBtn').addEventListener('click', () => {
   sh.querySelector('#jGo').addEventListener('click', () => {
     const sel = order.filter(o => o.on).map(o => o.f.media), anyV = sel.some(m => m.v), allV = sel.every(m => m.v);
     let tracks = S.tracks; if (!allV) tracks = 'audio'; if (anyV && !allV && S.tracks !== 'audio') { toast('Some files have no picture: joining their sound only.', 5000); }
-    const prec = S.prec === 'copy' && sameTracks(sel) ? 'copy' : 'exact', base = sel[0].name;
+    const prec = (S.prec === 'copy' || S.fmt === 'same') && sameTracks(sel) ? 'copy' : 'exact', base = sel[0].name; /* whole files of one kind, kept in their own format, are joined untouched whatever the precision says: nothing is cut inside them, so untouched is exact, and nothing is lost to a second encoding */
     closeSheet(); startExport([{ label: `${base} + ${sel.length - 1} more`, spec: { precision: prec, tracks, format: S.fmt, ranges: sel.map(m => ({ media: m, t0: 0, t1: m.duration })), fileName: ext => `${base} + ${sel.length - 1} more (joined)${ext}` }, clips: sel.map(m => ({ name: m.file.name, length: m.duration })), listFile: S.clipList !== false }], 'Joining files');
   });
 });
