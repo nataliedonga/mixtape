@@ -11,6 +11,8 @@ const RECIPES = {
   'Checks - Song B.wav': { seconds: 5, args: [...tone(660, 5), '-ac', '2', '-c:a', 'pcm_s16le'] },
   'clip.wav': { seconds: 5, args: [...tone(523, 5), '-ac', '2', '-c:a', 'pcm_s16le'] },
   'join-1.wav': { seconds: 2, args: [...tone(330, 2), '-ac', '2', '-c:a', 'pcm_s16le'] },
+  // a low sample rate, as voice recordings from the web often have: AAC and Opus encoders do not work at it
+  'low-rate.mp3': { seconds: 4, args: [...tone(440, 4), '-ar', '22050', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '64k'] },
   'join-2.mp3': { seconds: 3, args: [...tone(440, 3), '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '128k'] },
   'join-3.m4a': { seconds: 1.5, args: [...tone(550, 1.5), '-ac', '2', '-c:a', 'aac', '-b:a', '128k'] },
   // a picture with AC-3 sound: no browser decodes AC-3, so an exact cut must be refused and an untouched one must work

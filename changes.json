@@ -1,5 +1,12 @@
 [
   {
+    "version": 114,
+    "date": "2026-11-16",
+    "items": [
+      "Cutter: an exact cut of sound with a low sample rate (a 22 kHz MP3, as voice recordings from the web often are) failed with an encoder message. It is now written at twice the rate, which the encoder accepts and which loses nothing."
+    ]
+  },
+  {
     "version": 113,
     "date": "2026-11-16",
     "items": [

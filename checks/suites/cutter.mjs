@@ -1,6 +1,6 @@
 // Cutter: an exact cut is exact, a join is as long as its clips, sound the browser cannot decode is refused on an
 // exact cut with a plain message, and the untouched copy of it works.
-import { RETURNING, WAV_INFO } from '../lib/inpage.mjs';
+import { RETURNING, WAV_INFO, DECODED_SECONDS } from '../lib/inpage.mjs';
 
 export const needsBrowser = true;
 
@@ -76,6 +76,27 @@ export async function run(t) {
   const copy = await page.eval(`(() => { const s = __saved[__saved.length - 1], e = window.__lastExport; return s ? { name: s.name, bytes: s.file.size, seconds: e && e.length } : null; })()`);
   t.check('AC-3 untouched copy', 'the untouched copy is written: a file over 20 KB, within 0.1 s of the 4 s original', r.done && copy && copy.bytes > 20000 && Math.abs(copy.seconds - ac3.seconds) < 0.1, copy || r);
   await closeSheet();
+
+  // ---- an exact cut of sound at a low sample rate (22 kHz MP3): the encoders do not work at that rate ----
+  { const n0 = await page.eval(`__cutter.files.length`);
+    await page.setFiles('#fileIn', [t.media.get('low-rate.mp3')]);
+    await page.waitFor(`__cutter.files.length === ${n0 + 1} && __cutter.files[${n0}].state !== 'opening'`, 30000, 'the low-rate clip to open');
+    await page.eval(`(() => { const f = __cutter.files[${n0}]; if (f.state === 'ok' && __cutter.cur !== f) document.querySelectorAll('#fileList > *')[${n0}].click(); return true; })()`);
+    await page.waitFor(`__cutter.cur === __cutter.files[${n0}]`, 8000, 'the low-rate clip to be the one shown');
+    const rate = await page.eval(`__cutter.cur.media.audio.sr + ' Hz ' + __cutter.cur.media.audio.codec`);
+    await page.eval(`(__cutter.commit(__cutter.C.addPart([], 1, 3, __cutter.cur.media.duration)), true)`);
+    await page.click('#segPrec [data-v="exact"]');
+    const got = [];
+    for (const fmt of ['same', 'ogg']) {
+      if (!(await page.eval(setSelect('#fmtSel', fmt)))) { got.push({ fmt, skipped: 'this browser does not offer it' }); continue; }
+      await page.eval(`(__saved.length = 0, true)`); await page.click('#exportBtn');
+      const rr = await finished(`the exact cut of the low-rate clip (${fmt})`);
+      const s = await page.eval(`(async () => { const s = __saved[__saved.length - 1]; if (!s) return null; const b = await s.file.arrayBuffer(), ctx = new OfflineAudioContext(1, 1, 44100); let seconds = null, peak = 0; try { const buf = await ctx.decodeAudioData(b); seconds = buf.length / buf.sampleRate; const d = buf.getChannelData(0); for (let i = 0; i < d.length; i += 7) peak = Math.max(peak, Math.abs(d[i])); } catch (e) {} return { name: s.name, seconds, peak: +peak.toFixed(3) }; })()`);
+      got.push({ fmt, done: rr.done, fail: rr.fail ? rr.text.slice(0, 160) : undefined, ...(s || {}) }); await closeSheet();
+    }
+    t.check('exact cut at a low sample rate', 'a 22,050 Hz stereo MP3 cut exactly from 1 s to 3 s is written with no error, in its own format and as Ogg, each 2.00 s long (within 60 ms) and not silent',
+      /22050 Hz mp3/.test(rate) && got.length === 2 && got.every(g => g.skipped || (g.done && g.seconds != null && Math.abs(g.seconds - 2) <= 0.06 && g.peak > 0.05)) && got[0].done === true, { source: rate, got });
+    await page.eval(setSelect('#fmtSel', 'same')); }
 
   // ---- the joined file, opened again, shows where each clip begins ----
   const before = await page.eval(`__cutter.files.length`);

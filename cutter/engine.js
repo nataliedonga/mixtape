@@ -380,6 +380,17 @@ async function exactSoundCodec(media, family) {
   if (supports(family, null, c) && await M.canEncodeAudio(c)) return { codec: c, lossless: false };
   return { codec: 'aac', lossless: false };
 }
+/* The rate the sound is written at: the source's own, unless the encoder cannot work at it. For AAC at 24 kHz or lower
+   the muxing library asks the browser for HE-AAC, which browsers' encoders refuse (a 22 kHz MP3 could not be cut
+   exactly); Opus only exists at 8, 12, 16, 24 and 48 kHz. Then the sound is written at 44.1 or 48 kHz instead (the
+   feeder converts it), which loses nothing: every sample of the lower rate is still there. */
+export async function soundRate(codec, ch, sr) {
+  const up = [11025, 22050].includes(sr) ? 44100 : 48000;
+  if (codec === 'opus') return [8000, 12000, 16000, 24000, 48000].includes(sr) ? sr : 48000;
+  if (codec !== 'aac' || sr > 24000) return sr;
+  try { if ((await AudioEncoder.isConfigSupported({ codec: ch >= 2 ? 'mp4a.40.29' : 'mp4a.40.5', numberOfChannels: ch, sampleRate: sr, bitrate: await aacBitrate(ch, sr) })).supported) return sr; } catch (e) {}
+  return up;
+}
 async function soundSource(codec, ch, sr) {
   if (PCM.has(codec)) return new M.AudioSampleSource({ codec });
   const bitrate = codec === 'aac' ? await aacBitrate(ch, sr) : codec === 'opus' ? Math.min(256e3, 128e3 * ch) : Math.min(320e3, 160e3 * ch);
@@ -401,7 +412,7 @@ async function exactSoundJob(ranges, opts) {
   let family = opts.family, codec = opts.codec, lossless = false;
   if (!codec) { family ||= audioFamily(m0.audio.codec); const x = await exactSoundCodec(m0, family === 'm4a' ? 'mp4' : family); codec = x.codec; lossless = x.lossless; if (PCM.has(codec)) family = 'wav'; else if (!supports(family === 'm4a' ? 'mp4' : family === 'mka' ? 'mkv' : family, null, codec)) family = 'm4a'; }
   else lossless = PCM.has(codec);
-  const sr = Math.max(...ranges.map(r => r.media.audio?.sr || 0)) || 48000, ch = Math.max(...ranges.map(r => r.media.audio?.ch || 0)) || 2;
+  const ch = Math.max(...ranges.map(r => r.media.audio?.ch || 0)) || 2, sr = await soundRate(codec, ch, Math.max(...ranges.map(r => r.media.audio?.sr || 0)) || 48000);
   const ext = family === 'm4a' ? '.m4a' : family === 'mka' ? '.mka' : EXT[family] || '.mka', name = opts.fileName(ext);
   const tgt = await opfsTarget(name), output = new M.Output({ format: outputFormat(family === 'm4a' ? 'mp4' : family === 'mka' ? 'mkv' : family, false), target: tgt.target });
   const src = await soundSource(codec, ch, sr); output.addAudioTrack(src);
@@ -484,7 +495,7 @@ async function smartJob(ranges, opts) {
   const tgt = await opfsTarget(name), output = new M.Output({ format: outputFormat(family, big), target: tgt.target });
   const vsrc = new M.EncodedVideoPacketSource('avc'); output.addVideoTrack(vsrc, { rotation: rot, frameRate: ranges.every(r => Math.abs(r.media.fps - fpsOut) < 0.01) ? fpsOut : undefined });
   let feeder = null, sound = null;
-  if (withSound) { const ms = ranges.find(r => r.media.a)?.media; sound = await exactSoundCodec(ms, family); const sr = Math.max(...ranges.map(r => r.media.audio?.sr || 0)) || 48000, ch = Math.max(...ranges.map(r => r.media.audio?.ch || 0)) || 2; const asrc = await soundSource(sound.codec, ch, sr); output.addAudioTrack(asrc); feeder = new SoundFeeder(asrc, ranges, sr, ch, ranges.length > 1); feeder.srcRef = asrc; }
+  if (withSound) { const ms = ranges.find(r => r.media.a)?.media; sound = await exactSoundCodec(ms, family); const ch = Math.max(...ranges.map(r => r.media.audio?.ch || 0)) || 2, sr = await soundRate(sound.codec, ch, Math.max(...ranges.map(r => r.media.audio?.sr || 0)) || 48000); const asrc = await soundSource(sound.codec, ch, sr); output.addAudioTrack(asrc); feeder = new SoundFeeder(asrc, ranges, sr, ch, ranges.length > 1); feeder.srcRef = asrc; }
   const report = { copied: 0, redone: 0, parts: [] };
   await run(output, tgt, async () => {
     await output.start(); let first = true, off = 0, lastFed = 0;
