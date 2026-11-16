@@ -1,5 +1,13 @@
 [
   {
+    "version": 120,
+    "date": "2026-11-16",
+    "items": [
+      "Updates arrive by themselves. Mixtape now asks the site for a newer version when it is opened, when you come back to it, and every half hour. If one is waiting when you have only just opened the app and done nothing yet, it is taken at once; otherwise the “Mixtape was updated” bar offers the reload, as before.",
+      "New: “Check for updates”, in the keys and tips sheet (the ? button) beside “What changed lately”. It asks the site now, says whether there is a newer version, and offers “Reload now”."
+    ]
+  },
+  {
     "version": 119,
     "date": "2026-11-16",
     "items": [

@@ -85,7 +85,8 @@
   function extras() {
     const row = mk('div', 'mxs mxs-extras');
     row.append(button('Show the welcome again', 'mxs-link', () => { const back = modal && modal.back; closeKeys(); setTimeout(() => welcome(true, back), 60); }),
-      button('What changed lately', 'mxs-link', () => showChanges(false)));
+      button('What changed lately', 'mxs-link', () => showChanges(false)),
+      button('Check for updates', 'mxs-link', () => checkForUpdates()));
     return row;
   }
   function openKeys() {
@@ -226,18 +227,44 @@
     reloading = true; try { w.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {}
     setTimeout(() => location.reload(), 4000);
   }
+  /* "Check for updates": asks the site now, says what it found, and offers the reload. The browser otherwise looks
+     only when a page is opened, and may go on using its copy of the answer for some minutes. */
+  function checkForUpdates() {
+    openModal('Check for updates', body => {
+      const say = mk('p', '', 'Asking the site for a newer version…'); say.setAttribute('role', 'status'); const acts = mk('p', ''); body.append(say, acts);
+      const ready = () => { say.textContent = 'A newer version is ready. Reload to use it' + (isBusy() ? ' (finish what is running first: a reload stops it).' : '.'); acts.replaceChildren(button('Reload now', 'mxs-btn mxs-primary', reload), ' ', button('What changed', 'mxs-link', () => showChanges(true))); };
+      const none = () => { say.textContent = `You have the newest version${loadedV ? ` (${loadedV})` : ''}.`; };
+      (async () => {
+        const sw = navigator.serviceWorker, r = reg || (sw && await sw.getRegistration().catch(() => null));
+        if (!r) { say.textContent = 'This page keeps no offline copy here, so it is always the newest: reload the page to be sure.'; return; }
+        if (r.waiting) return ready();
+        try { await r.update(); } catch (e) { say.textContent = 'The site could not be reached just now. Check the connection and try again.'; return; }
+        const w = r.installing; if (r.waiting) return ready(); if (!w) return none();
+        say.textContent = 'A newer version was found. Downloading it… (this can take a minute or two on a slow line)';
+        w.addEventListener('statechange', () => { if (w.state === 'installed' || r.waiting) ready(); else if (w.state === 'activated') { say.textContent = 'The newer version is in place. Reload to use it.'; acts.replaceChildren(button('Reload now', 'mxs-btn mxs-primary', () => location.reload())); } else if (w.state === 'redundant') say.textContent = 'The newer version could not be downloaded completely (the connection dropped). Nothing was changed. Try again in a moment.'; });
+      })();
+    });
+  }
   function watchUpdates() {
     const sw = navigator.serviceWorker; if (!sw || !/^https?:$/.test(location.protocol)) return;
     let had = !!sw.controller; // no controller yet: this is the first visit, and the first take-over is not an update
     sw.addEventListener('controllerchange', () => { if (reloading) return location.reload(); if (!had) { had = true; return; } updateBar(); });
     // A new version that is installed but waiting for this page (a service worker that does not take over by itself).
     // Checked from the state of things, not from one event, so no ordering of events can hide it.
-    const waiting = () => { if (reg && reg.waiting && reg.waiting !== putOff && sw.controller) updateBar(); };
+    // A page that has only just been opened, with nothing done in it yet, takes a waiting version by itself (once): there
+    // is nothing to lose, and nobody has to find the Reload button. Later than that it only shows the bar.
+    let touched = false; const touch = () => { touched = true; }; addEventListener('pointerdown', touch, true); addEventListener('keydown', touch, true);
+    const justOpened = () => { if (touched || isBusy() || performance.now() > 20000) return false; try { const last = +sessionStorage.getItem('mixtape-auto-reload') || 0; if (Date.now() - last < 120000) return false; sessionStorage.setItem('mixtape-auto-reload', String(Date.now())); } catch (e) { return false; } return true; };
+    const waiting = () => { if (reg && reg.waiting && reg.waiting !== putOff && sw.controller) { if (!bar && !reloading && justOpened()) reload(); else updateBar(); } };
     const track = w => { if (w) w.addEventListener('statechange', () => setTimeout(waiting, 1200)); };
     const hook = r => {
       if (!r || reg) return; reg = r; track(r.installing); r.addEventListener('updatefound', () => track(r.installing));
       let later = false; try { later = sessionStorage.getItem('mixtape-update-later') === '1'; } catch (e) {}
       if (later) putOff = r.waiting; waiting();
+      // the site is asked for a newer version when the page opens, when it is come back to, and every half hour: the
+      // browser's own check can lag by minutes, and a page left open all day would never hear of one
+      let asked = 0; const ask = () => { if (Date.now() - asked < 300000 || !navigator.onLine) return; asked = Date.now(); r.update().catch(() => {}); };
+      ask(); setInterval(ask, 1800000); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ask(); });
     };
     sw.getRegistration().then(hook).catch(() => {}); sw.ready.then(hook).catch(() => {});
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') waiting(); });
@@ -348,7 +375,7 @@
       if (o.welcomeSeen && ls.get(FLAG()) == null) ls.set(FLAG(), 'done');
       setTimeout(() => firstRun(4), 900);
     },
-    openKeys, closeKeys, welcome: force => welcome(force !== false), details: showDetails, changes: () => showChanges(false),
+    openKeys, closeKeys, welcome: force => welcome(force !== false), details: showDetails, changes: () => showChanges(false), checkForUpdates,
     trap, // (box, { onEsc }) → release(): for a tool's other dialogs
   };
   window.MixtapeShell = api;
