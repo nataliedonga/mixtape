@@ -1,5 +1,13 @@
 [
   {
+    "version": 111,
+    "date": "2026-11-16",
+    "items": [
+      "Transcripts, Personal: a new choice, “Find the speakers with Rev’s speaker model”. It runs in the Reverb helper on this computer and is better at telling a short answer from the question around it, but it is slow: about twice the recording’s length again. It is off until you tick it, it needs the newer helper with the speaker models in its folder, and like Reverb it is for personal use only. Without it the speakers are found in the page as before.",
+      "Transcripts: named voices remembered for a matter are only matched against voices found the same way, since the two speaker finders describe a voice differently."
+    ]
+  },
+  {
     "version": 110,
     "date": "2026-11-16",
     "items": [

@@ -59,6 +59,21 @@
       const spk = best ? best.name : prev; prev = spk; return spk ? { ...h, spk } : h;
     });
   }
+  /* words given their speakers from the turns of a speaker model that hears a short answer as its own short turn inside
+     the longer one around it (turns: [{ s, e, sp }], overlapping). Of the turns that cover the middle of a word, the
+     shortest wins; a word in no turn takes the turn that is nearest, within 0.6 s, or else stays with the speaker
+     before it. A new speaker starts a new paragraph; every paragraph carries its speaker. */
+  function labelTurns(words, turns) {
+    const ts = (turns || []).filter(t => t && t.sp && t.e > t.s); if (!ts.length) return words;
+    const near = (m, lim) => { let best = null, d = lim; for (const t of ts) { const dd = m < t.s ? t.s - m : m > t.e ? m - t.e : 0; if (dd < d) { d = dd; best = t; } } return best; };
+    let prev = null;
+    return words.map((w, i) => {
+      let best = null;
+      if (w.s != null) { const m = (w.s + (w.e ?? w.s)) / 2; for (const t of ts) if (t.s <= m && m <= t.e && (!best || t.e - t.s < best.e - best.s)) best = t; if (!best) best = near(m, prev ? 0.6 : Infinity); }
+      const who = best ? best.sp : prev || ts[0].sp, first = i === 0 || !!w.p || who !== prev; prev = who;
+      const { sp, p, ...rest } = w; return first ? { ...rest, p: true, sp: who } : rest;
+    });
+  }
   const dot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
   const unit = v => { const n = Math.hypot(...v) || 1; return v.map(x => x / n); };
   /* a voice (a speaker embedding) matched to the voices met so far: the closest one when it is close enough, otherwise
@@ -270,6 +285,6 @@
   /* the rest of the suggestions after one was taken: those after it move by the change in length */
   const shiftFixes = (fixes, at, delta) => fixes.map(f => (f.at > at ? { ...f, at: f.at + delta } : f));
 
-  const api = { setCleanStyle, cleanStyle, reviewStretches, locateFix, applyFix, shiftFixes, speakerAt, labelHeard, clusterVoice, renameSpeaker, speakerNames, cleanHidden, joinShown, FILLERS, tidyHeard, fromText, matchBatch, timedUpTo, fromHeard, append, paragraphs, wordAt, editParagraph, setSpeaker, search, toTxt, toSrt, toVtt, cues, hms, short, wordCount };
+  const api = { setCleanStyle, cleanStyle, reviewStretches, locateFix, applyFix, shiftFixes, speakerAt, labelHeard, labelTurns, clusterVoice, renameSpeaker, speakerNames, cleanHidden, joinShown, FILLERS, tidyHeard, fromText, matchBatch, timedUpTo, fromHeard, append, paragraphs, wordAt, editParagraph, setSpeaker, search, toTxt, toSrt, toVtt, cues, hms, short, wordCount };
   root.TranscriptCore = api; if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);

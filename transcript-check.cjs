@@ -137,4 +137,14 @@ ok(r.ptr === 18 && Date.now() - t0 < 500, 'a long text costs no more per window 
   ok(w.length === n0 && w.map(x => x.t).join(' ').includes('um,'), 'styles: nothing is ever taken out of the transcript itself');
   const d = w.map(x => (x.t === 'th-' ? { ...x, t: 'th --' } : x)); ok(T.cleanHidden(d, 'rev').size === 5, 'styles: a cut-off part-word is still left out by Rev when a file writes its dash Rev’s way: ' + T.cleanHidden(d, 'rev').size); }
 
+// speakers from a speaker model whose turns overlap: a short answer is its own short turn inside the long question
+{ const say = 'did you sign the lease yes and was that in march it was thank you'.split(' ');
+  const w = say.map((t, i) => ({ t, s: i, e: i + 0.8, ...(i === 0 || i === 9 ? { p: true } : {}) }));
+  const turns = [{ s: 0, e: 12.9, sp: 'Speaker 1' }, { s: 5, e: 5.9, sp: 'Speaker 2' }, { s: 11, e: 12.9, sp: 'Speaker 2' }, { s: 13.3, e: 14, sp: 'Speaker 3' }];
+  const out = T.labelTurns(w, turns), flat = out.filter(x => x.p).map(x => `${x.sp}@${out.indexOf(x)}`).join(' ');
+  ok(flat === 'Speaker 1@0 Speaker 2@5 Speaker 1@6 Speaker 1@9 Speaker 2@11 Speaker 3@13', 'speaker turns: of the turns that cover a word the shortest wins, a pause inside one speaker keeps its paragraph: ' + flat);
+  ok(out[14].sp === undefined && !out[14].p && T.speakerAt(out, 14) === 'Speaker 3', 'speaker turns: a word just outside a turn takes the nearest one');
+  ok(out.every((x, i) => x.t === say[i] && x.s === i) && w[5].sp === undefined, 'speaker turns: no word or time is changed, and the words handed in are left alone');
+  ok(T.labelTurns(w, []) === w && T.labelTurns(w, [{ s: 3, e: 2, sp: 'x' }]) === w, 'speaker turns: with no usable turns the words come back as they were'); }
+
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

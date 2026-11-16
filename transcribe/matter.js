@@ -29,7 +29,7 @@ function learn(tr, m) {
   for (const v of tr.voices) {
     if (!v || !v.c || generic(v.name) || !used.has(v.name)) continue;
     const had = m.voices.find(x => x.name === v.name), c = v.c.map(x => +x.toFixed(4));
-    if (!had) { m.voices.push({ name: v.name, c, from: tr.id }); changed = true; }
+    if (!had) { m.voices.push({ name: v.name, c, from: tr.id, ...(tr.voiceKind ? { kind: tr.voiceKind } : {}) }); changed = true; }
     else if (had.from === tr.id && JSON.stringify(had.c) !== JSON.stringify(c)) { had.c = c; changed = true; }
   }
   return changed;
@@ -40,7 +40,7 @@ function known(tr, m) {
   const used = new Set(T().speakerNames(tr.words)), taken = new Set([...used].filter(n => !generic(n)));
   for (const v of tr.voices) {
     if (!v || !v.c || !generic(v.name) || !used.has(v.name) || (tr.voiceNo || []).includes(v.name)) continue; // voiceNo: you undid this one
-    const sims = m.voices.map(x => ({ name: x.name, sim: dot(unit(v.c), unit(x.c)) })).sort((a, b) => b.sim - a.sim);
+    const sims = m.voices.filter(x => (x.kind || '') === (tr.voiceKind || '') && x.c.length === v.c.length) /* voiceprints from two different speaker finders cannot be compared */.map(x => ({ name: x.name, sim: dot(unit(v.c), unit(x.c)) })).sort((a, b) => b.sim - a.sim);
     if (sims[0] && sims[0].sim >= SAME && (!sims[1] || sims[0].sim - sims[1].sim >= CLEAR) && !taken.has(sims[0].name)) { out.push({ from: v.name, to: sims[0].name, sim: sims[0].sim }); taken.add(sims[0].name); }
   }
   return out;

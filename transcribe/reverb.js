@@ -28,6 +28,7 @@ function draw() {
   const box = $('#engineBox'); if (!box) return; const can = 'showDirectoryPicker' in window, personal = reverbChosen();
   box.querySelector('#engPaid').checked = !personal; box.querySelector('#engPersonal').checked = personal; box.querySelector('#engPersonal').disabled = !can;
   const s = box.querySelector('#engStatus'), pick = box.querySelector('#engPick'); s.hidden = pick.hidden = !personal;
+  const sr = box.querySelector('#engSpkRow'); if (sr) { sr.hidden = !(personal && canSpk()); box.querySelector('#engSpk').checked = wantSpk(); }
   const pr = box.querySelector('#engPunctRow'); if (pr) { pr.hidden = !(personal && canPunct()); box.querySelector('#engPunct').checked = wantPunct(); }
   punctRow();
   if (!can) { box.querySelector('#engNo').hidden = false; return; }
@@ -53,9 +54,10 @@ function build() {
     <p class="engstatus" id="engNo" hidden>Personal needs Chrome or Edge on a computer; this browser cannot share a folder with the helper.</p>
     <p class="engstatus" id="engStatus" role="status" hidden></p>
     <button type="button" class="btn sm" id="engPick" hidden></button>
+    <label class="eng engsub" id="engSpkRow" hidden><input type="checkbox" id="engSpk"><span><b>Find the speakers with Rev’s speaker model</b><small>Better at telling a short answer from the question around it. Slow: about twice the recording’s length again, in the helper, on this computer. Personal use only. Without this, the speakers are found in this page in a minute or two.</small></span></label>
     <label class="eng engsub" id="engPunctRow" hidden><input type="checkbox" id="engPunct"><span><b>Add punctuation and capitals afterwards</b><small>By a small language model in the helper, on this computer. Takes about as long as the recording again. No word is changed.</small></span></label>`;
   go.parentNode.insertBefore(f, go);
-  f.addEventListener('change', e => { if (e.target.id === 'engPunct') { try { localStorage.setItem(PKEY, e.target.checked ? '1' : '0'); } catch (err) {} return; } if (e.target.name !== 'engine') return; try { localStorage.setItem(KEY, e.target.value); } catch (err) {} lastStatus = null; draw(); refresh(); });
+  f.addEventListener('change', e => { if (e.target.id === 'engSpk') { try { localStorage.setItem(SKEY, e.target.checked ? '1' : '0'); } catch (err) {} return; } if (e.target.id === 'engPunct') { try { localStorage.setItem(PKEY, e.target.checked ? '1' : '0'); } catch (err) {} return; } if (e.target.name !== 'engine') return; try { localStorage.setItem(KEY, e.target.value); } catch (err) {} lastStatus = null; draw(); refresh(); });
   f.querySelector('#engPick').addEventListener('click', async () => {
     try { const d = await showDirectoryPicker({ id: 'reverb-inbox', mode: 'readwrite' }); dir = d; home = ''; await kv('readwrite', s => s.put(d, 'inbox')).catch(() => {}); await inbox(); lastStatus = null; await refresh(); }
     catch (e) { if (e.name !== 'AbortError') api.toast('That folder could not be opened. Choose your reverb-personal folder.', 6000); }
@@ -96,6 +98,9 @@ async function addSpeakers(track, words, from, dur, tick, job) {
    can add a full stop or a capital and nothing else. Legal notations are not sent. Ctrl + Z undoes the whole step. */
 const PKEY = 'mixtape-reverb-punct', pkey = x => String(x).toLowerCase().replace(/[^a-z0-9']/g, '');
 const wantPunct = () => { try { return localStorage.getItem(PKEY) !== '0'; } catch (e) { return true; } };
+const SKEY = 'mixtape-reverb-speakers';
+const wantSpk = () => { try { return localStorage.getItem(SKEY) === '1'; } catch (e) { return false; } }; /* off until asked for: it is slow */
+const canSpk = () => !!(dir && lastStatus && lastStatus.speakers && lastStatus.alive && Date.now() / 1000 - lastStatus.alive < 8);
 const canPunct = () => !!(dir && lastStatus && lastStatus.punct && lastStatus.alive && Date.now() / 1000 - lastStatus.alive < 8);
 const bare = words => { let n = 0, m = 0; for (const w of words) { if (w.lg) continue; n++; if (/[.?!,]$/.test(w.t) || /^[A-Z]/.test(w.t)) m++; } return n > 20 && m / n < 0.03; }; // hardly a mark or a capital in it
 function speechTurns(words) { // [[word numbers]]: one list per speaker turn, without notations
@@ -188,7 +193,7 @@ export async function startReverb() {
     const whole = await a.computeDuration(), t0 = cut ? cut.a : 0, dur = cut ? Math.min(whole, cut.b) : whole;
     st.textContent = 'Handing the recording to Reverb on this computer…';
     await writeWav(wav, a, t0, dur, p => { bar.style.width = Math.round(p * 10) + '%'; });
-    const jw = await (await dir.getFileHandle(jobF, { create: true })).createWritable(); await jw.write(JSON.stringify({ audio: wav, name: cur.track.title || '', verbatim: 1 })); await jw.close();
+    const jw = await (await dir.getFileHandle(jobF, { create: true })).createWritable(); await jw.write(JSON.stringify({ audio: wav, name: cur.track.title || '', verbatim: 1, ...(st0.speakers && wantSpk() ? { speakers: true } : {}) })); await jw.close();
     let quiet = 0;
     for (;;) {
       await new Promise(r => setTimeout(r, 1500));
@@ -203,19 +208,24 @@ export async function startReverb() {
         // the words are kept at once (so they are safe), then the voices are found and the speakers put on them
         cur.tr = { id: cur.track.id, mode: 'heard', words, upTo: dur, done: true, duration: whole, updated: Date.now(), speakers: false, engine: 'Reverb ASR v1 (Rev)', use: 'personal', ...(pt ? { part: pt } : {}) };
         await api.save(); let who = null;
-        try { st.textContent = 'Finding who speaks when, on this computer…'; bar.style.width = '0%'; who = await addSpeakers(a, words, t0, dur, p => { bar.style.width = Math.round(p * 100) + '%'; st.textContent = `Finding who speaks when, on this computer: ${Math.round(p * 100)}%`; }, job); }
+        const rs = got.speakers, T = window.TranscriptCore; /* Rev's speaker model was asked for, and the helper sent its turns with the words */
+        if (rs && Array.isArray(rs.turns) && rs.turns.length && T && T.labelTurns) {
+          const lw = T.labelTurns(words, rs.turns.map(t => ({ s: +t.s + t0, e: +t.e + t0, sp: String(t.sp) }))), used = new Set(T.speakerNames(lw));
+          who = { words: lw, voices: (rs.voices || []).filter(v => v && used.has(v.name) && Array.isArray(v.c)).map(v => ({ name: String(v.name), c: v.c.map(Number), n: 1 })), count: used.size, kind: 'rev' };
+        } else if (rs && rs.error) console.warn('Rev speaker model:', rs.error);
+        if (!who) try { st.textContent = 'Finding who speaks when, on this computer…'; bar.style.width = '0%'; who = await addSpeakers(a, words, t0, dur, p => { bar.style.width = Math.round(p * 100) + '%'; st.textContent = `Finding who speaks when, on this computer: ${Math.round(p * 100)}%`; }, job); }
         catch (e) { if (e && e.stopped) who = null; else console.warn('speakers:', e); }
-        if (who && who.words.length === words.length) { cur.tr.words = who.words; cur.tr.voices = who.voices; cur.tr.speakers = true; }
+        if (who && who.words.length === words.length) { cur.tr.words = who.words; cur.tr.voices = who.voices; cur.tr.speakers = true; if (who.kind) { cur.tr.voiceKind = who.kind; cur.tr.speakersBy = 'reverb-diarization-v2 (Rev)'; } }
         if (api.partTrim) api.partTrim(cur.tr); // what the website leaves out is not kept
         await api.save(); await clean();
         let marks = -1; lastStatus = (await readJSON('status.json')) || lastStatus;
         if (wantPunct() && canPunct()) { try { marks = await punctCore(cur, job, st, bar); } catch (e) { if (!e.stopped) { console.warn('punctuation:', e); api.toast(`The words are ready, but punctuation could not be added (${e.message || e}). You can add it later from the transcript.`, 9000); } } }
-        api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb${who && cur.tr.speakers ? `, ${who.voices.length} speaker${who.voices.length === 1 ? '' : 's'} found (click a name to rename it everywhere)` : ', without speakers (they could not be found this time)'}${marks > 0 ? ', punctuation and capitals added' : ''}. Personal use only.`, 9000); return;
+        api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb${who && cur.tr.speakers ? `, ${who.count || who.voices.length} speaker${(who.count || who.voices.length) === 1 ? '' : 's'} found${who.kind ? ' by Rev’s speaker model' : rs && rs.error ? ' in this page (Rev’s speaker model could not run)' : ''} (click a name to rename it everywhere)` : ', without speakers (they could not be found this time)'}${marks > 0 ? ', punctuation and capitals added' : ''}. Personal use only.`, 9000); return;
       }
       const s = await readJSON('status.json'), alive = s && s.alive && Date.now() / 1000 - s.alive < 8; quiet = alive ? 0 : quiet + 1;
       if (quiet > 8) throw new Error('Reverb’s helper stopped answering. Start it again from your reverb-personal folder, then press Transcribe');
       const mine = alive && s.file === id;
-      st.textContent = !alive ? 'Waiting for Reverb to answer…' : s.state === 'loading' ? 'Reverb is waking up on this computer (a minute or two the first time)…' : mine ? `Reverb is writing it down on this computer: ${Math.round((s.progress || 0) * 100)}%` : `Waiting for Reverb to finish “${s.name || 'another recording'}”…`;
+      st.textContent = !alive ? 'Waiting for Reverb to answer…' : s.state === 'loading' ? 'Reverb is waking up on this computer (a minute or two the first time)…' : mine && s.step === 'speakers' ? `The words are written down. Rev’s speaker model is finding who speaks when: ${Math.round((s.progress || 0) * 100)}% (this is the slow part)` : mine ? `Reverb is writing it down on this computer: ${Math.round((s.progress || 0) * 100)}%` : `Waiting for Reverb to finish “${s.name || 'another recording'}”…`;
       bar.style.width = Math.round(10 + (mine ? (s.progress || 0) : 0) * 90) + '%';
     }
   } catch (e) {
