@@ -19,4 +19,9 @@ check('TranscribeMe full: them in full, a double dash after a cut-off; clean and
 { const w = ws('page twenty two'); const before = JSON.stringify(w); const out = styled(w, 'rev');
   check('times are kept and the transcript is not touched', out.length === 2 && out[1].s === 1 && out[1].e === 2.5 && JSON.stringify(w) === before, out); }
 check('on screen nothing of this is applied (only in a file)', render(ws('exhibit five'), 'rev').map(w => w.t).join(' ') === 'exhibit five', render(ws('exhibit five'), 'rev').map(w => w.t).join(' '));
+// what Rev's own number tool (words2num, MIT) reads that this did not, and what a hearing needs that neither read
+{ const got = [val('sixty eight billion two hundred two million and two'), val('nine trillion eight hundred seven'), val('ninety nine point nine'), val('one point oh five'), val('thirty four hundred fifty six')].join(' ');
+  check('billions, trillions, decimals and "thirty four hundred"', got === '68202000002/9 9000000000807/5 99.9/4 1.05/4 3456/5', got); }
+check('in a file: a decimal in digits, "a hundred twenty three" in digits, "a hundred" left in words', rev('it was ninety nine point nine percent, a hundred twenty three people, a hundred times.') === 'it was 99.9 percent, 123 people, a hundred times.', rev('it was ninety nine point nine percent, a hundred twenty three people, a hundred times.'));
+check('request and docket numbers said the short way, only after the word that names them', rev('request one thirteen and docket number one eight nine, interrogatory number eighteen, then one seventeen.') === 'request 113 and docket Number 189, interrogatory Number 18, then one 17.', rev('request one thirteen and docket number one eight nine, interrogatory number eighteen, then one seventeen.'));
 console.log(`${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

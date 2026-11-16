@@ -14,8 +14,9 @@
 const ONES = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 };
 const TEENS = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
 const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
-const BIG = { hundred: 100, thousand: 1000, million: 1000000 };
-const WHICH = { exhibit: 'Exhibit', exhibits: 'Exhibits', page: 'Page', pages: 'Pages', paragraph: 'Paragraph', paragraphs: 'Paragraphs', line: 'Line', lines: 'Lines', tab: 'Tab', tabs: 'Tabs', grade: 'grade', unit: 'unit', number: 'Number' };
+const BIG = { hundred: 100, thousand: 1000, million: 1e6, billion: 1e9, trillion: 1e12 };
+const WHICH = { exhibit: 'Exhibit', exhibits: 'Exhibits', page: 'Page', pages: 'Pages', paragraph: 'Paragraph', paragraphs: 'Paragraphs', line: 'Line', lines: 'Lines', tab: 'Tab', tabs: 'Tabs', grade: 'grade', unit: 'unit', number: 'Number', numbers: 'Numbers',
+  request: 'request', requests: 'requests', interrogatory: 'interrogatory', interrogatories: 'interrogatories', docket: 'docket', item: 'item', items: 'items', section: 'Section', rule: 'Rule', topic: 'topic', count: 'Count' };
 const FORMS = { gonna: 'going to', gotta: 'got to', kinda: 'kind of', gotcha: 'got you', coulda: 'could have', woulda: 'would have', shoulda: 'should have', "'cause": 'because', "'em": 'them', "'til": 'until' };
 const bare = t => String(t).toLowerCase().replace(/^[("'\[]+(?=[a-z0-9])|[)"\].,?!;:]+$/g, '');
 const tail = t => (/([)"\]]*[.,?!;:]+)$/.exec(String(t)) || ['', ''])[1];
@@ -38,13 +39,22 @@ export function number(toks, i) {
     const m = toks[k];
     if (m === 'hundred' && cur > 0 && cur < 100) { cur *= 100; k++; if (toks[k] === 'and' && sub100(toks[k + 1], toks[k + 2])) k++; const t = sub100(toks[k], toks[k + 1]); if (t) { cur += t[0]; k += t[1]; } }
     const g = toks[k];
-    if ((g === 'thousand' || g === 'million') && cur > 0) { total += cur * BIG[g]; cur = 0; k++; if (toks[k] === 'and' && sub100(toks[k + 1], toks[k + 2])) k++; if (sub100(toks[k], toks[k + 1])) { any = false; continue; } }
+    if ((g === 'thousand' || g === 'million' || g === 'billion' || g === 'trillion') && cur > 0) { total += cur * BIG[g]; cur = 0; k++; if (toks[k] === 'and' && sub100(toks[k + 1], toks[k + 2])) k++; if (sub100(toks[k], toks[k + 1])) { any = false; continue; } }
     break;
   }
   const value = total + cur, year = value >= 1900 && value <= 2099 && toks.slice(i, k).includes('thousand') && !toks.slice(i, k).includes('hundred'); // "two thousand and six"
+  if (toks[k] === 'point' && (toks[k + 1] in ONES || toks[k + 1] === 'oh')) { let d = '', j = k + 1; while (toks[j] in ONES || toks[j] === 'oh') { d += toks[j] === 'oh' ? '0' : ONES[toks[j]]; j++; } return { value: `${value}.${d}`, n: j - i, decimal: true }; } // "ninety nine point nine"
   return { value, n: k - i, year };
 }
-const commas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+/* a number that names something, said the short way: "one thirteen" (113), "one twenty five" (125), "one eight nine" (189).
+   Only ever read this way straight after a word that says which one (request, number, docket, page…): on its own,
+   "one twenty" could be one of something, twenty of something else. { value, n } or null */
+export function compact(toks, i) {
+  const a = toks[i]; if (!(a in ONES) || ONES[a] === 0) return null;
+  const two = sub100(toks[i + 1], toks[i + 2]); if (two && two[0] >= 10) return { value: String(ONES[a] * 100 + two[0]), n: 1 + two[1] };
+  let d = '', j = i; while (toks[j] in ONES || (j > i && toks[j] === 'oh')) { d += toks[j] === 'oh' ? '0' : ONES[toks[j]]; j++; } return d.length >= 2 ? { value: d, n: d.length } : null;
+}
+const commas = n => (/\./.test(String(n)) ? String(n) : String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
 
 /* the words of a file in the style's own way. A copy: the transcript is not touched. */
 export function styled(words, style = '') {
@@ -57,14 +67,16 @@ export function styled(words, style = '') {
     if (style === 'rev') {
       // a run of number words inside one paragraph, not broken by a mark
       let j = i; const toks = []; while (j < words.length && (j === i || !words[j].p) && !words[j].lg && !words[j].tagged) { toks.push(bare(words[j].t)); if (tail(words[j].t)) break; j++; }
-      const num = number(toks, 0);
-      if (num && !(out.length && bare(out[out.length - 1].t) === 'a' && toks[0] in BIG)) {
+      const prevB = out.length ? bare(out[out.length - 1].t) : '', named = prevB in WHICH && !tail(out[out.length - 1].t);
+      let num = (named && compact(toks, 0)) || number(toks, 0), lead = 0;
+      if (!num && b === 'a' && toks[1] in BIG) { const n1 = number(['one', ...toks.slice(1)], 0); if (n1 && n1.n > 2) { num = n1; lead = 1; } } // "a hundred twenty three" is a number; "a hundred" alone is not
+      if (num) {
         const last = words[i + num.n - 1], after = words[i + num.n], prev = out[out.length - 1], pb = prev ? bare(prev.t) : '', nb = after && !after.p && !tail(last.t) ? bare(after.t) : '';
         const which = pb in WHICH && !tail(prev.t), money = nb === 'dollars' || nb === 'dollar', pct = nb === 'percent';
-        const digits = which || money || pct || num.year || (num.value >= 11 && !startsSentence(i));
+        const digits = which || money || pct || num.year || num.decimal || lead || (num.value >= 11 && !startsSentence(i));
         if (digits) {
           if (which) out[out.length - 1] = { ...prev, t: prev.t.replace(/[a-z]+/i, m => (WHICH[pb][0] === WHICH[pb][0].toUpperCase() ? m[0].toUpperCase() + m.slice(1) : m)) };
-          const text = money ? '$' + commas(num.value) : which || num.year ? String(num.value) : commas(num.value);
+          const text = money ? '$' + commas(num.value) : which || num.year || num.decimal ? String(num.value) : commas(num.value);
           out.push({ ...w, t: text + (money ? tail(after.t) : tail(last.t)), e: (money ? after : last).e ?? w.e }); i += num.n + (money ? 1 : 0); continue;
         }
       }
