@@ -212,6 +212,7 @@ select { background: var(--panel-2); border: 1px solid var(--line-3); border-rad
 .transport .stepsel select { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line-3); border-radius: 7px; padding: 4px 6px; font: inherit; }
 .transport .volsel { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 13px; }
 .transport .volsel input { width: 90px; accent-color: var(--accent); }
+.trpick { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .transport .clearbtn { padding: 5px 10px; font-size: 13px; }
 .transport .clearbtn[aria-pressed="true"] { background: var(--ink); color: var(--mat); font-weight: 650; }
 .transport .sideseg button { padding: 5px 9px; font-size: 13px; }

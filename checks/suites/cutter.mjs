@@ -55,6 +55,18 @@ export async function run(t) {
   t.check('join three formats', 'with the format still on WAV, the joined WAV is as long as the three clips together (within 5 ms of the lengths the Cutter shows) and not silent', fmtNow === 'wav' && r.done && !joined.error && Math.abs(joined.seconds - sum) <= 0.005 && joined.peak > 0.05, { format: fmtNow, joined_s: joined.seconds, clips_s: +sum.toFixed(4), off_ms: joined.seconds != null ? +((joined.seconds - sum) * 1000).toFixed(3) : null, peak: joined.peak, sheet: jsum, error: joined.error || (r.fail ? r.text : undefined) });
   t.check('clip list', 'a clip list is saved beside the joined file, naming the three clips', joined.names.some(n => /clip list/.test(n)) && joined.list && ['join-1.wav', 'join-2.mp3', 'join-3.m4a'].every(n => joined.list.includes(n)), joined.names);
   await page.eval(`(() => { const s = __saved.find(x => /\\.wav$/i.test(x.name)); window.__joinedKeep = s ? new File([s.file], s.name, { type: 'audio/wav' }) : null; return true; })()`);
+  // ---- Transcribe it: from the finished file straight into Transcripts, with Personal or not chosen here ----
+  await page.eval(`(window.__opened = [], window.open = (u, n) => { const w = { closed: false, close() { this.closed = true; }, set location(v) { window.__opened.push(String(v)); } }; return w; }, true)`); // the new tab is stood in for; the address it is sent to is opened below for real
+  await page.click('#sheet .jobrow:last-of-type [data-tr]');
+  const offered = await page.eval(`[...document.querySelectorAll('#sheet .trpick button')].map(b => b.textContent)`);
+  await page.click('#sheet .trpick [data-eng="personal"]');
+  await page.waitFor(`window.__lastTranscribe && window.__opened.length === 1`, 15000, 'the file to be sent to Transcripts');
+  const sent = await page.eval(`({ ...window.__lastTranscribe, opened: window.__opened[0], engine_set: localStorage.getItem('mixtape-transcript-engine'), lib: document.querySelector('#sheet .jobrow:last-of-type [data-lib]').textContent })`);
+  const trPage = await t.open('/transcribe/' + sent.opened.slice(sent.opened.indexOf('?')), { site: { origin: page.origin }, preload: RETURNING });
+  const there = await trPage.waitFor(`window.__tr && __tr.cur && __tr.cur.media.readyState >= 1 ? { name: __tr.cur.track.name, seconds: +__tr.cur.media.duration.toFixed(2), personal: !!document.querySelector('#engPersonal') && document.querySelector('#engPersonal').checked, start: !!document.querySelector('#goHeard') } : null`, 20000, 'Transcripts to open the joined file').catch(e => ({ error: e.message }));
+  t.check('Transcribe it', 'after a join, “Transcribe it…” offers “Paid or client work” and “Personal”; a real click on Personal puts the file in the library once and sends a new tab to Transcripts, which opens that file (same name, same length) with Personal already chosen and Transcribe ready',
+    offered.join('|') === 'Paid or client work|Personal' && sent.engine_set === 'personal' && /transcribe\/\?song=/.test(sent.opened) && /library ✓/.test(sent.lib) && there && there.name === joined.names.find(n => /\.wav$/i.test(n)) && Math.abs(there.seconds - sum) < 0.05 && there.personal && there.start, { offered, sent, there });
+  await trPage.close();
   await closeSheet();
 
   // ---- 4. AC-3 sound: refused on an exact cut, copied by an untouched one ----
