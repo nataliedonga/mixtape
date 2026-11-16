@@ -147,4 +147,14 @@ ok(r.ptr === 18 && Date.now() - t0 < 500, 'a long text costs no more per window 
   ok(out.every((x, i) => x.t === say[i] && x.s === i) && w[5].sp === undefined, 'speaker turns: no word or time is changed, and the words handed in are left alone');
   ok(T.labelTurns(w, []) === w && T.labelTurns(w, [{ s: 3, e: 2, sp: 'x' }]) === w, 'speaker turns: with no usable turns the words come back as they were'); }
 
+// a recording joined from clips: a line where each clip begins
+{ const w = 'hello there yes please go on i will thank you goodbye'.split(' ').map((t, i) => ({ t, s: [0.5, 1, 4, 4.5, 11, 11.5, 12, 12.5, 13, 13.5, 14][i], e: 0, ...(i === 0 ? { p: true, sp: 'Speaker 1' } : i === 2 ? { p: true, sp: 'Speaker 2' } : {}) }));
+  const clips = [{ name: '001 audio.mp3', length: 3 }, { name: '002 audio.mp3', length: 7 }, { name: '003 audio.mp3', length: 2 }, { name: '004 audio.mp3', length: 5 }];
+  const out = T.withClips(w, clips), txt = out.map(x => (x.p ? ' / ' + (x.sp ? x.sp + ': ' : '') : ' ') + x.t).join('').trim();
+  ok(txt === '/ (Clip 1 of 4: 001 audio) / Speaker 1: hello there / (Clip 2 of 4: 002 audio) / Speaker 2: yes please / (Clip 3 of 4: 003 audio) / Speaker 2: go on / (Clip 4 of 4: 004 audio) / Speaker 2: i will thank you goodbye', 'clips: a line where each clip begins, the speaker carried over it, a boundary inside a paragraph splits it: ' + txt);
+  ok(out.filter(x => !x.lg && !/^\(|^\d|^of$|^\d+:$|audio\)$/.test(x.t)).map(x => x.t).join(' ') === w.map(x => x.t).join(' ') && w[4].p === undefined, 'clips: no heard word is changed, and the words handed in are left alone');
+  const lines = out.filter(x => x.lg && x.lg.clip); ok(lines.map(x => x.lg.at).join() === '0,3,10,12' && lines.every(x => x.lg.k === 'n'), 'clips: each line is a notation at the time its clip begins: ' + lines.map(x => x.lg.at).join());
+  ok(T.withClips(out, clips) === out && T.withClips(w, []) === w, 'clips: never put in twice, and nothing happens without clips');
+  const quiet = T.withClips(w.slice(0, 2), clips).filter(x => x.lg && x.lg.clip).length; ok(quiet === 4, 'clips: a clip in which nothing was said still gets its line: ' + quiet); }
+
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

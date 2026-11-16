@@ -1,5 +1,12 @@
 [
   {
+    "version": 116,
+    "date": "2026-11-16",
+    "items": [
+      "Transcripts: a recording that was joined from clips in the Cutter shows where each clip begins. When its transcript is finished or opened, a line of its own goes in at the start of every clip, “(Clip 3 of 100: its name)”. The lines are in saved files too, and Ctrl + Z takes them out. This works in the browser the clips were joined in."
+    ]
+  },
+  {
     "version": 115,
     "date": "2026-11-16",
     "items": [

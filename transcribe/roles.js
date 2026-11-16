@@ -8,6 +8,7 @@
    the lot. A voice that sounds like two people cannot be put right by rule, so it is only pointed at. */
 import { suggest, unglue } from '../roles-core.js';
 import { styleOf } from './matter.js';
+import { initClips } from './clips.js';
 const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let api, bar, open = true, lastKey = '', busy = false;
 const STYLE = `
@@ -119,4 +120,5 @@ export function initRoles(a) {
   new MutationObserver(draw).observe($('#text'), { childList: true }); // at once, before the page is painted, so the text does not jump down a moment later
   if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__roles = { draw, state, suggest };
   draw();
+  initClips(a); // a recording joined from clips shows where each clip begins
 }

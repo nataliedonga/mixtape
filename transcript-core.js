@@ -74,6 +74,23 @@
       const { sp, p, ...rest } = w; return first ? { ...rest, p: true, sp: who } : rest;
     });
   }
+  /* A recording joined from clips: a line of its own where each clip begins, "(Clip 3 of 100: its name)", so the
+     transcript shows which clip every word came from. clips: [{ name, length }] in the order they were joined. The
+     line is a notation (lg.k 'n', with lg.clip: its number); the word after it starts a paragraph and keeps its
+     speaker. A clip in which nothing was said still gets its line. No heard word is changed or moved. */
+  function withClips(words, clips) {
+    if (!Array.isArray(clips) || !clips.length || words.some(w => w.lg && w.lg.clip)) return words;
+    const out = []; let k = 0, t = 0, who = '';
+    const line = () => { const c = clips[k], at = +t.toFixed(3), name = String(c.name || '').replace(/\.[a-z0-9]+$/i, ''), tk = `(Clip ${k + 1} of ${clips.length}: ${name})`.split(' '); tk.forEach((x, i) => out.push(i === 0 ? { t: x, s: at, e: at, p: true, lg: { k: 'n', clip: k + 1, at } } : { t: x, s: at, e: at })); t += +c.length || 0; k++; return true; };
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i]; let put = false;
+      if (w.p || i === 0) who = w.lg && w.lg.k === 'n' ? who : (w.sp || '');
+      if (w.s != null && !(w.lg && w.lg.k === 'n')) while (k < clips.length && w.s >= t - 0.05) put = line();
+      out.push(put && (!w.p || !w.sp) ? { ...w, p: true, ...(who && !w.sp ? { sp: who } : {}) } : w);
+    }
+    while (k < clips.length) line();
+    return out;
+  }
   const dot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
   const unit = v => { const n = Math.hypot(...v) || 1; return v.map(x => x / n); };
   /* a voice (a speaker embedding) matched to the voices met so far: the closest one when it is close enough, otherwise
@@ -285,6 +302,6 @@
   /* the rest of the suggestions after one was taken: those after it move by the change in length */
   const shiftFixes = (fixes, at, delta) => fixes.map(f => (f.at > at ? { ...f, at: f.at + delta } : f));
 
-  const api = { setCleanStyle, cleanStyle, reviewStretches, locateFix, applyFix, shiftFixes, speakerAt, labelHeard, labelTurns, clusterVoice, renameSpeaker, speakerNames, cleanHidden, joinShown, FILLERS, tidyHeard, fromText, matchBatch, timedUpTo, fromHeard, append, paragraphs, wordAt, editParagraph, setSpeaker, search, toTxt, toSrt, toVtt, cues, hms, short, wordCount };
+  const api = { setCleanStyle, cleanStyle, reviewStretches, locateFix, applyFix, shiftFixes, speakerAt, labelHeard, labelTurns, withClips, clusterVoice, renameSpeaker, speakerNames, cleanHidden, joinShown, FILLERS, tidyHeard, fromText, matchBatch, timedUpTo, fromHeard, append, paragraphs, wordAt, editParagraph, setSpeaker, search, toTxt, toSrt, toVtt, cues, hms, short, wordCount };
   root.TranscriptCore = api; if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);
