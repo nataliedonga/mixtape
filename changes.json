@@ -1,5 +1,12 @@
 [
   {
+    "version": 121,
+    "date": "2026-11-16",
+    "items": [
+      "Cutter: “Transcribe…” and “Transcribe it…” now take you to Transcripts in the same window, on that file, and the writing-down starts by itself with the choice you made (Paid or Personal). Before, it opened in a new tab that could be blocked or missed. The Cutter keeps your open files for when you come back."
+    ]
+  },
+  {
     "version": 120,
     "date": "2026-11-16",
     "items": [

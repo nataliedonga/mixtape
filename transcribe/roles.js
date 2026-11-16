@@ -122,6 +122,9 @@ export function initRoles(a) {
   if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__roles = { draw, state, suggest };
   draw();
   initClips(a); // a recording joined from clips shows where each clip begins
+  // sent here from the Cutter's Transcribe… (…&go=1): the writing-down starts by itself, once, as if Transcribe had been
+  // pressed. Only for a recording that has no transcript yet; anything that needs an answer first still asks for it.
+  if (new URLSearchParams(location.search).get('go') === '1') { let tries = 0; const t = setInterval(() => { const c = api.cur, go = $('#goHeard'); if (++tries > 60 || api.job || (c && c.tr)) return clearInterval(t); if (!c || !go || go.offsetParent === null || !c.media || c.media.readyState < 1) return; clearInterval(t); setTimeout(() => { if (!api.job && api.cur === c && !c.tr) go.click(); }, 1500); }, 500); }
   const snd = soundControl({ after: $('#speed'), media: () => api.cur && api.cur.media, toast: api.toast }); // clearer speech, or one side only, while listening
   let sndFor = null; setInterval(() => { const m = api.cur && api.cur.media; if (m && m !== sndFor) { sndFor = m; snd.refresh(); } }, 700); // each recording has its own player: the next one opened gets the same sound
 }

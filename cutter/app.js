@@ -456,19 +456,18 @@ async function startExport(jobsIn, title) {
       const hasSound = !!j.spec.ranges[0].media.a && (j.spec.tracks || 'both') !== 'video';
       const lk = row.querySelector('.lk'); lk.hidden = false; lk.innerHTML = `<button class="sm" data-open>${j.clips ? 'Open it here to see where the clips join' : 'Open it here to check'}</button>` + (host ? `<button class="sm" data-lib>Add to my ${esc(host.name)} library</button>` : '') + (host && host.transcribeHref && hasSound ? '<button class="sm" data-tr title="Write down what is said in this file, in Transcripts">Transcribe it…</button>' : '');
       let added = null; const addOnce = () => (added ||= host.addToLibrary(res.file, saved.name, { duration: res.length, video: !!j.spec.ranges[0].media.v && (j.spec.tracks || 'both') !== 'audio' && !(TARGET_SOUND[j.spec.format]) }).catch(err => { added = null; throw err; })); /* once, whichever button asks first */
-      // Transcribe it: the file goes into the library, and Transcripts opens on it in a new tab with the choice made here already set
+      // Transcribe it: the file goes into the library, and this window goes to Transcripts on it, with the choice made here, and the writing-down starts
       lk.addEventListener('click', async ev => {
         const b = ev.target.closest('button'); if (!b) return;
         if (b.dataset.tr != null) { const sp = document.createElement('span'); sp.className = 'trpick'; sp.innerHTML = 'Transcribe for: <button class="sm" data-eng="paid" title="Mixtape’s own recogniser. Free for any use. Runs in the page.">Paid or client work</button><button class="sm" data-eng="personal" title="Rev’s Reverb, through its helper on this computer: better on speech like court audio. Personal use only, never paid or client work.">Personal</button>'; b.replaceWith(sp); sp.querySelector('button').focus(); return; }
         if (!b.dataset.eng) return;
-        const tab = window.open('', '_blank'); // opened now, while the click still counts; it is sent to Transcripts once the file is in the library
         const pick = b.parentNode; pick.querySelectorAll('button').forEach(x => { x.disabled = true; }); const was = b.textContent; b.textContent = 'Opening Transcripts…';
-        try { const id = await addOnce(); if (!openTranscripts(tab, id, b.dataset.eng)) location.href = window.__lastTranscribe.url; b.textContent = `${was} ✓ opened in Transcripts`; const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } }
-        catch (err) { if (tab) tab.close(); pick.querySelectorAll('button').forEach(x => { x.disabled = false; }); b.textContent = was; toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
+        try { const id = await addOnce(); b.textContent = `${was} ✓ opening Transcripts…`; openTranscripts(id, b.dataset.eng); const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } }
+        catch (err) { pick.querySelectorAll('button').forEach(x => { x.disabled = false; }); b.textContent = was; toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
       });
       if (j.thenTranscribe && host) { // asked for from “Transcribe…”: sent on as soon as it is written
-        try { const id = await addOnce(), went = openTranscripts(j.thenTranscribe.tab, id, j.thenTranscribe.eng); const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } st.innerHTML += went ? ' <span style="color:var(--faint)">· opened in Transcripts, in a new tab</span>' : ' <span style="color:var(--warn)">· the browser blocked the new tab: press “Transcribe it…” below</span>'; }
-        catch (err) { if (j.thenTranscribe.tab) j.thenTranscribe.tab.close(); toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
+        try { const id = await addOnce(); const lb = lk.querySelector('[data-lib]'); if (lb) { lb.disabled = true; lb.textContent = `In your ${host.name} library ✓`; } st.innerHTML += ' <span style="color:var(--faint)">· opening Transcripts…</span>'; exporting = null; openTranscripts(id, j.thenTranscribe.eng); }
+        catch (err) { toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); }
       }
       if (host) lk.querySelector('[data-lib]').addEventListener('click', async ev => { const b = ev.currentTarget; b.disabled = true; b.textContent = 'Adding…'; try { await addOnce(); b.textContent = `In your ${host.name} library ✓`; } catch (err) { b.disabled = false; b.textContent = `Add to my ${host.name} library`; toast(`Could not add it: ${err.message || err}`, 6000); } });
       lk.querySelector('[data-open]').addEventListener('click', () => { closeSheet(); openFiles([withSrc(new File([res.file], saved.name, { type: res.file.type, lastModified: Date.now() }), { temp: true })], { show: true }); }); /* temp: opened only to check it, so no copy of it is kept for next time */
@@ -479,7 +478,6 @@ async function startExport(jobsIn, title) {
       }
       ok++; window.__lastExport = res;
     } catch (e) {
-      if (j.thenTranscribe && j.thenTranscribe.tab) { try { j.thenTranscribe.tab.close(); } catch (e2) {} }
       row.classList.add('fail'); st.textContent = e.cancelled || ac.signal.aborted ? 'Cancelled' : `Could not write this one: ${e.message || e}`; if (!e.cancelled && !ac.signal.aborted) console.error(e);
     }
   }
@@ -504,19 +502,18 @@ $('#exportBtn').addEventListener('click', () => {
 
 /* ---------- transcribe the open file ----------
    The file goes to Transcripts as it is set here. Untouched and whole, it is sent as it is; with parts, one side only
-   or clearer speech, it is written first (and saved like any export), then sent. The new tab is opened at the click,
-   while the click still counts, and sent on when the file is ready. */
-const openTranscripts = (tab, id, eng) => { try { localStorage.setItem('mixtape-transcript-engine', eng); } catch (e) {} const url = `${host.transcribeHref}?song=${encodeURIComponent(id)}`; window.__lastTranscribe = { id, url, engine: eng }; if (tab && !tab.closed) { tab.location = url; return true; } return false; };
+   or clearer speech, it is written first (and saved like any export), then sent. This window then goes to Transcripts,
+   on that file, with the choice made here, and the writing-down starts there (the Cutter keeps its files for the way back). */
+const openTranscripts = (id, eng) => { try { localStorage.setItem('mixtape-transcript-engine', eng); } catch (e) {} const url = `${host.transcribeHref}?song=${encodeURIComponent(id)}&go=1`; window.__lastTranscribe = { id, url, engine: eng }; saveState(); if (window.__cutterGo) window.__cutterGo(url); else location.assign(url); /* __cutterGo: the checks' stand-in for leaving the page */ };
 function transcribeNow(eng) {
   if (!cur || exporting) return; const m = cur.media, rs = exportRangesNow(); if (!rs.length) return toast('Nothing to transcribe: the parts cover the whole file.');
-  const tab = window.open('', '_blank'); try { tab.document.title = 'Transcripts'; tab.document.body.textContent = 'Getting the file ready in the Cutter… this tab opens Transcripts when it is done.'; } catch (e) {}
   const whole = rs.length === 1 && rs[0].t0 === 0 && Math.abs(rs[0].t1 - dur()) < 1e-6;
   if (whole && !sideNow() && !clearNow()) { // nothing to write: the file itself goes
-    (async () => { try { const src = m.file.__src || {}, id = src.lib || await host.addToLibrary(m.file, m.file.name, { duration: m.duration, video: !!m.v }); if (!openTranscripts(tab, id, eng)) toast('The browser blocked the new tab. Allow pop-ups for Mixtape, then press Transcribe… again.', 8000); else toast('Opened in Transcripts, in a new tab.', 4000); } catch (err) { if (tab) tab.close(); toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); } })();
+    (async () => { try { const src = m.file.__src || {}, id = src.lib || await host.addToLibrary(m.file, m.file.name, { duration: m.duration, video: !!m.v }); toast('Opening Transcripts…', 4000); openTranscripts(id, eng); } catch (err) { toast(`Could not send it to Transcripts: ${err.message || err}`, 7000); } })();
     return;
   }
   const R = r => ({ media: m, t0: r.t0, t1: r.t1 }), one = rs.length === 1;
-  startExport([{ label: whole ? m.name : one ? C.fileNameFor(m.name, rs[0], '') : C.fileNameFor(m.name, null, '', true, rs.length), thenTranscribe: { eng, tab },
+  startExport([{ label: whole ? m.name : one ? C.fileNameFor(m.name, rs[0], '') : C.fileNameFor(m.name, null, '', true, rs.length), thenTranscribe: { eng },
     spec: { ...specBase(), tracks: m.a ? 'audio' : specBase().tracks, ranges: rs.map(R), fileName: ext => (whole ? `${m.name}${ext}` : one ? C.fileNameFor(m.name, rs[0], ext) : C.fileNameFor(m.name, null, ext, true, rs.length)) } }], 'Getting it ready for Transcripts');
 }
 $('#trBtn').hidden = !(window.CUTTER_HOST && window.CUTTER_HOST.transcribeHref);
