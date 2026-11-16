@@ -100,3 +100,9 @@
   .mxs .mxs-link, .mxs .mxs-link:hover:not(:disabled) { padding: 10px 2px; }
   .mxs-toastbtn, .mxs-toastbtn:hover, button.mxs-toastbtn:hover:not(:disabled) { height: 40px; line-height: 38px; }
 }
+
+/* the version in use, small beside the page's title */
+.mxs-ver { all: unset; margin-left: 10px; padding: 2px 7px; border-radius: 999px; font: 600 12px/1.5 system-ui, sans-serif; letter-spacing: .02em; opacity: .8; flex: none; cursor: pointer; white-space: nowrap; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); vertical-align: middle; align-self: center; }
+.mxs-ver:hover, .mxs-ver:focus-visible { opacity: 1; } .mxs-ver:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.mxs-ver.mxs-ver-new { opacity: 1; font-weight: 700; border-color: currentColor; }
+.mxs-ver.mxs-ver-float { position: fixed; left: 8px; bottom: 6px; z-index: 5; margin: 0; }

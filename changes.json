@@ -1,5 +1,12 @@
 [
   {
+    "version": 122,
+    "date": "2026-11-16",
+    "items": [
+      "The version you are using is shown small beside each page’s title (for example “v122”), on the home page too. When a newer one has been downloaded and is waiting, it says “update ready”. Click it to check for updates."
+    ]
+  },
+  {
     "version": 121,
     "date": "2026-11-16",
     "items": [

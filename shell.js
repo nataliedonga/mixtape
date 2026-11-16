@@ -232,8 +232,8 @@
   function checkForUpdates() {
     openModal('Check for updates', body => {
       const say = mk('p', '', 'Asking the site for a newer version…'); say.setAttribute('role', 'status'); const acts = mk('p', ''); body.append(say, acts);
-      const ready = () => { say.textContent = 'A newer version is ready. Reload to use it' + (isBusy() ? ' (finish what is running first: a reload stops it).' : '.'); acts.replaceChildren(button('Reload now', 'mxs-btn mxs-primary', reload), ' ', button('What changed', 'mxs-link', () => showChanges(true))); };
-      const none = () => { say.textContent = `You have the newest version${loadedV ? ` (${loadedV})` : ''}.`; };
+      const ready = () => { showVersion(); say.textContent = 'A newer version is ready. Reload to use it' + (isBusy() ? ' (finish what is running first: a reload stops it).' : '.'); acts.replaceChildren(button('Reload now', 'mxs-btn mxs-primary', reload), ' ', button('What changed', 'mxs-link', () => showChanges(true))); };
+      const none = () => { const v = runningV || loadedV; say.textContent = `You have the newest version${v ? ` (${v})` : ''}.`; };
       (async () => {
         const sw = navigator.serviceWorker, r = reg || (sw && await sw.getRegistration().catch(() => null));
         if (!r) { say.textContent = 'This page keeps no offline copy here, so it is always the newest: reload the page to be sure.'; return; }
@@ -245,6 +245,25 @@
       })();
     });
   }
+  /* The version this page is running, shown small beside the page's title (a click checks for updates). It is asked of
+     the offline copy that is serving the page, so it is the version in use, not one that is downloaded and waiting. */
+  let chip = null, runningV = 0;
+  function showVersion(v) {
+    if (v) runningV = v; if (!runningV) return; const ready = !!(reg && reg.waiting);
+    if (!chip) {
+      chip = button('', 'mxs mxs-ver', () => checkForUpdates());
+      const brand = document.querySelector('header .brand'), h = document.querySelector('header h1'), left = document.querySelector('header .tb-left'); // each page names its title its own way
+      if (brand) brand.append(chip); else if (h) h.after(chip); else if (left) left.append(chip); else { chip.classList.add('mxs-ver-float'); document.body.append(chip); }
+    }
+    chip.textContent = `v${runningV}${ready ? ' · update ready' : ''}`; chip.title = `Mixtape version ${runningV}${ready ? '. A newer one is ready: click to reload into it.' : '. Click to check for updates.'}`; chip.setAttribute('aria-label', chip.title); chip.classList.toggle('mxs-ver-new', ready);
+  }
+  function askVersion() {
+    const sw = navigator.serviceWorker;
+    if (sw && sw.controller) { sw.addEventListener('message', e => { if (e.data && e.data.type === 'VERSION') showVersion(vOf(String(e.data.version))); }); try { sw.controller.postMessage({ type: 'VERSION' }); } catch (e) {} }
+    // no offline copy serving the page (the first visit, or a copy too old to answer): the site's own answer
+    setTimeout(() => { if (!runningV) fetch(new URL('sw.js', ROOT).href, { cache: 'no-store' }).then(r => r.text()).then(t => { const m = /VERSION\s*=\s*'(mixtape-v\d+)'/.exec(t); if (m && !runningV) showVersion(vOf(m[1])); }).catch(() => {}); }, 1500);
+  }
+  try { if (/^https?:$/.test(location.protocol)) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', askVersion); else askVersion(); } } catch (e) {}
   function watchUpdates() {
     const sw = navigator.serviceWorker; if (!sw || !/^https?:$/.test(location.protocol)) return;
     let had = !!sw.controller; // no controller yet: this is the first visit, and the first take-over is not an update
@@ -255,7 +274,7 @@
     // is nothing to lose, and nobody has to find the Reload button. Later than that it only shows the bar.
     let touched = false; const touch = () => { touched = true; }; addEventListener('pointerdown', touch, true); addEventListener('keydown', touch, true);
     const justOpened = () => { if (touched || isBusy() || performance.now() > 20000) return false; try { const last = +sessionStorage.getItem('mixtape-auto-reload') || 0; if (Date.now() - last < 120000) return false; sessionStorage.setItem('mixtape-auto-reload', String(Date.now())); } catch (e) { return false; } return true; };
-    const waiting = () => { if (reg && reg.waiting && reg.waiting !== putOff && sw.controller) { if (!bar && !reloading && justOpened()) reload(); else updateBar(); } };
+    const waiting = () => { showVersion(); if (reg && reg.waiting && reg.waiting !== putOff && sw.controller) { if (!bar && !reloading && justOpened()) reload(); else updateBar(); } };
     const track = w => { if (w) w.addEventListener('statechange', () => setTimeout(waiting, 1200)); };
     const hook = r => {
       if (!r || reg) return; reg = r; track(r.installing); r.addEventListener('updatefound', () => track(r.installing));
