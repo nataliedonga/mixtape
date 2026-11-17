@@ -61,6 +61,23 @@ export function addPart(parts, t0, t1, duration, fps = null, name = '') {
 }
 const byTime = (a, b) => a.t0 - b.t0 || a.t1 - b.t1;
 export const sortParts = parts => parts.slice().sort(byTime);
+/* Both people talking at once, in a two-sided sound: where each side is louder than its own speaking level at the same
+   moment. A side's speaking level is a quarter of its loud end (the 90th centile of its peaks), and never under 0.02,
+   so a faint echo of the other person on the line does not count as talking. Short gaps (under 0.15 s) are joined and
+   overlaps shorter than 0.25 s are left out. pk: peaks with .sides. Returns { thr: [left, right], runs: [{ t0, t1 }] } */
+export function sideLevel(sd) { const n = sd.max.length, lv = new Float32Array(n); for (let i = 0; i < n; i++) lv[i] = Math.max(sd.max[i], -sd.min[i]); return lv; }
+export function speakThreshold(lv) { const act = Array.from(lv).filter(v => v > 0.002).sort((a, b) => a - b); return Math.max(0.02, act.length ? 0.25 * act[Math.floor(0.9 * (act.length - 1))] : 0.02); }
+export function crosstalk(pk, thr = null, minRun = 0.25, gap = 0.15) {
+  if (!pk || !pk.sides) return { thr: null, runs: [] };
+  const L = sideLevel(pk.sides[0]), R = sideLevel(pk.sides[1]); thr ||= [speakThreshold(L), speakThreshold(R)];
+  const runs = []; let start = -1, lastOn = -1; const bs = pk.bucketSec, n = L.length, gapB = Math.round(gap / bs);
+  for (let i = 0; i <= n; i++) {
+    const both = i < n && L[i] >= thr[0] && R[i] >= thr[1];
+    if (both) { if (start < 0) start = i; lastOn = i; }
+    else if (start >= 0 && (i === n || i - lastOn > gapB)) { const t0 = pk.t0 + start * bs, t1 = pk.t0 + (lastOn + 1) * bs; if (t1 - t0 >= minRun - 1e-9) runs.push({ t0, t1 }); start = -1; }
+  }
+  return { thr, runs };
+}
 /* the clips a joined file was made of, as parts of it: each one from where it begins to where the next begins, named
    after its clip. clips: [{ name, length }] in the order they were joined. */
 export function clipParts(clips, duration, fps = null) {

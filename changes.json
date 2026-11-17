@@ -1,5 +1,13 @@
 [
   {
+    "version": 124,
+    "date": "2026-11-17",
+    "items": [
+      "Cutter: a two-sided recording (a call with each person on their own side) gets a waveform for each voice, one above the other. Each has its own mute at its start: mute one and you hear, and save, only the other.",
+      "Cutter: where both people talk at once is marked in amber on the timeline and along the overview. “Both talking: 4 times (3 s) ›” above the timeline takes you to each one in turn."
+    ]
+  },
+  {
     "version": 123,
     "date": "2026-11-16",
     "items": [

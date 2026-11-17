@@ -74,6 +74,7 @@
   <div class="tl-bar">
     <span class="eyebrow">Timeline</span>
     <span class="tl-at" id="tlAt"></span>
+    <button id="xtalkBtn" class="sm xtalk" hidden title="Where both people talk at once (marked in amber on the timeline). Click to go to the next one.">Both talking</button>
     <span class="sp"></span>
     <label class="chk" title="Show where the keyframes are (untouched cuts start on them)"><input type="checkbox" id="showKeys" checked> keyframes</label>
     <button id="zoomOut" class="ic sm" title="Zoom out (−)" aria-label="Zoom out">−</button>
@@ -81,7 +82,9 @@
     <button id="zoomIn" class="ic sm" title="Zoom in (+)" aria-label="Zoom in">+</button>
     <button id="zoomFit" class="sm" title="Show the whole file (0)">Whole file</button>
   </div>
+  <div class="tlbox" id="tlBox"><div class="lanemute" id="laneMute" hidden><button data-side="L" aria-pressed="false" title="Mute the left voice">Left</button><button data-side="R" aria-pressed="false" title="Mute the right voice">Right</button></div>
   <canvas id="tl" data-h="168" height="168" role="img" aria-label="Timeline: click to move the playhead, drag to mark a part, drag a part's edges to change it. With the keyboard: the arrow keys move the playhead, N makes a part there, I and O set its start and end; the Parts list has every part with its times."></canvas>
+  </div>
   <canvas id="ov" data-h="26" height="26" role="img" aria-label="Overview of the whole file: drag the window to move along. With the keyboard: plus and minus zoom, 0 shows the whole file."></canvas>
 </section>
 

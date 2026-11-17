@@ -120,7 +120,7 @@ function select(entry) {
   const mon = $('#mon'); mon.hidden = !v; $('#soundcard').hidden = !!v;
   if (v) { const w = Math.min(1280, v.w), h = Math.round(w * v.h / v.w); mon.width = w; mon.height = h; const ctx = mon.getContext('2d'); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h); if (!v.canDecode) { ctx.fillStyle = '#AFC0B5'; ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(`This browser cannot show ${v.codec.toUpperCase()} pictures. Untouched cuts still work.`, w / 2, h / 2); } }
   else { $('#scName').textContent = m.name; $('#scMeta').textContent = `${a.codec.toUpperCase()} · ${(a.sr / 1000).toFixed(1)} kHz · ${C.fmtTime(m.duration)}`; }
-  $('#tl').dataset.h = v ? 168 : 150; sizeCanvases();
+  $('#tl').dataset.h = (v ? 168 : 150) + (a && a.ch === 2 ? 40 : 0); sizeCanvases(); // two sides: a lane each
   updateExportBar(); renderParts(); movePH(0); dirty(); drawOverview(); saveState();
 }
 
@@ -241,7 +241,12 @@ showStep(); $('#tLoop').setAttribute('aria-pressed', S.loop);
    never saved with a person missing by surprise; the export line says so whenever it is on. */
 let side = '';
 const stereo = m => !!(m && m.audio && m.audio.ch === 2), sideNow = () => (cur && stereo(cur.media) ? side : ''), sideWord = s => (s === 'L' ? 'left' : 'right');
-$('#segSide').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; side = b.dataset.v; player.setSide(sideNow()); updateExportBar(); if (side) toast(`Only the ${sideWord(side)} side is heard, and the other is silenced. Files you export or join now are saved that way too.`, 4000); else toast('Both sides again.', 2500); });
+function chooseSide(v) { side = v; player.setSide(sideNow()); updateExportBar(); dirty(); if (side) toast(`Only the ${sideWord(side)} side is heard, and the other is silenced. Files you export or join now are saved that way too.`, 4000); else toast('Both sides again.', 2500); }
+$('#segSide').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; chooseSide(b.dataset.v); });
+// the mute on each side's lane: muting one side keeps the other (the same as “Left only” / “Right only”); muting it again brings it back
+$('#laneMute').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const muteL = b.dataset.side === 'L', mutedNow = muteL ? side === 'R' : side === 'L'; chooseSide(mutedNow ? '' : muteL ? 'R' : 'L'); });
+// both talking at once: the next one after the playhead (then round to the first)
+$('#xtalkBtn').addEventListener('click', () => { const x = xtalkNow(); if (!x || !x.runs.length) return; const r = x.runs.find(q => q.t0 > ph + 0.05) || x.runs[0]; movePH(r.t0); const span = view.t1 - view.t0; if (r.t0 < view.t0 || r.t1 > view.t1) setView(r.t0 - span * 0.2, r.t0 + span * 0.8); });
 /* clearer speech: heard at once, and saved that way while it is on. Like the side, it is not remembered between visits. */
 let clearer = false; const clearNow = () => !!(clearer && cur && cur.media.a);
 $('#clearBtn').addEventListener('click', () => { clearer = !clearer; player.setEnhance(clearNow()); updateExportBar(); toast(clearer ? 'Clearer speech is on: hum cut, quiet voices lifted, loud ones held back. Files you export or join now are saved that way too.' : 'Clearer speech is off.', clearer ? 4000 : 2000); });
@@ -281,6 +286,25 @@ const xOf = (t, W) => (t - view.t0) / (view.t1 - view.t0) * W, tOf = (x, W) => v
 function niceStep(secPerPx) { const want = secPerPx * 90, f = fps(); const steps = [f ? 1 / f : 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400]; return steps.find(s => s >= want) || 14400; }
 function rulerLabel(t, st) { const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = Math.floor(t % 60), p = n => String(n).padStart(2, '0'); const base = h ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`; if (st >= 1) return base; const f = fps(); return f ? `${base}:${p(Math.round((t % 1) * f))}` : `${base}.${p(Math.round((t % 1) * 100))}`; }
 function peaksFor(t0, t1) { const d = cur.detail; return d && d.t0 <= t0 + 1e-6 && d.t1 >= t1 - 1e-6 ? d : cur.peaks; }
+/* both talking at once, from the whole file's peaks (worked out once they are all read) */
+function xtalkNow() { const p = cur && cur.peaks; if (!p || !p.sides || !p.done) return null; if (!p.xtalk) p.xtalk = C.crosstalk(p); return p.xtalk; }
+const lanes = () => !!(cur && cur.media.a && cur.media.audio.ch === 2 && cur.peaks && cur.peaks.sides);
+function drawLanes(L, W) {
+  const box = $('#laneMute'), two = lanes(); box.hidden = !two; const btn = $('#xtalkBtn'), x = two ? xtalkNow() : null;
+  btn.hidden = !(x && x.runs.length); if (x && x.runs.length) { const secs = x.runs.reduce((s, r) => s + r.t1 - r.t0, 0); btn.textContent = `Both talking: ${x.runs.length} time${x.runs.length === 1 ? '' : 's'} (${C.fmtLength(secs)}) ›`; }
+  if (!two) return false;
+  const pk = peaksFor(view.t0, view.t1), h = (L.waveH - 3) / 2, tops = [L.waveTop + 1, L.waveTop + 2 + h], muted = [side === 'R', side === 'L'];
+  // where both talk: amber behind both lanes
+  if (x) { tctx.fillStyle = 'rgba(232,176,74,.22)'; for (const r of x.runs) { if (r.t1 < view.t0 || r.t0 > view.t1) continue; const a = xOf(r.t0, W), b = xOf(r.t1, W); tctx.fillRect(a, L.waveTop, Math.max(2, b - a), L.waveH); tctx.fillStyle = '#E8B04A'; tctx.fillRect(a, L.waveTop + h + 1, Math.max(2, b - a), 1); tctx.fillStyle = 'rgba(232,176,74,.22)'; } }
+  for (let c = 0; c < 2; c++) {
+    tctx.fillStyle = 'rgba(237,230,214,.05)'; if (c === 1) tctx.fillRect(0, tops[1] - 1, W, 1);
+    const sd = pk.sides ? { min: pk.sides[c].min, max: pk.sides[c].max, t0: pk.t0, bucketSec: pk.bucketSec } : null;
+    if (sd) drawWave(tctx, sd, 0, W, tops[c], h, view.t0, view.t1, muted[c] ? 'rgba(120,144,134,.45)' : c ? '#9FC2F0' : '#8FD3C1');
+  }
+  // the mute buttons sit at the start of each lane
+  const off = tl.offsetTop; box.style.top = off + 'px'; box.querySelectorAll('button').forEach((b, c) => { b.style.top = Math.round(tops[c] + 3) + 'px'; b.setAttribute('aria-pressed', String(muted[c])); b.title = muted[c] ? `The ${c ? 'right' : 'left'} voice is muted (heard and saved without it). Click to hear it again.` : `Mute the ${c ? 'right' : 'left'} voice: hear and save only the ${c ? 'left' : 'right'} one.`; });
+  return true;
+}
 function drawWave(ctx, pk, x0, W, top, h, a, b, colour) {
   if (!pk) return; const mid = top + h / 2, amp = h / 2 - 2, per = (b - a) / W; ctx.fillStyle = colour;
   for (let x = 0; x < W; x++) {
@@ -312,7 +336,8 @@ function drawTL() {
   }
   // waveform
   const pk = peaksFor(view.t0, view.t1); tctx.fillStyle = '#10261F'; tctx.fillRect(0, L.waveTop, W, L.waveH);
-  if (cur.media.a) drawWave(tctx, pk, 0, W, L.waveTop + 2, L.waveH - 4, view.t0, view.t1, '#8FD3C1');
+  if (cur.media.a && drawLanes(L, W)) { /* a lane for each side */ }
+  else if (cur.media.a) drawWave(tctx, pk, 0, W, L.waveTop + 2, L.waveH - 4, view.t0, view.t1, '#8FD3C1');
   else { tctx.fillStyle = '#789086'; tctx.font = '12px "Bricolage Grotesque", sans-serif'; tctx.fillText('No sound in this file', 10, L.waveTop + L.waveH / 2); }
   // parts
   const copyish = cur.media.v && S.prec === 'copy' && S.fmt === 'same' && S.tracks !== 'audio' && cur.keys;
@@ -335,6 +360,7 @@ function drawOverview() {
   const dpr = ov._dpr || 1, W = ov.width / dpr, H = +ov.dataset.h; octx.setTransform(dpr, 0, 0, dpr, 0, 0); octx.fillStyle = '#0E211C'; octx.fillRect(0, 0, W, H);
   if (!cur) return; const D = dur();
   if (cur.media.a) drawWave(octx, cur.peaks, 0, W, 1, H - 2, 0, D, 'rgba(143,211,193,.55)');
+  { const x = lanes() ? xtalkNow() : null; if (x) { octx.fillStyle = '#E8B04A'; for (const r of x.runs) octx.fillRect(r.t0 / D * W, 0, Math.max(1, (r.t1 - r.t0) / D * W), 4); } } // both talking, along the top
   cur.parts.forEach((p, i) => { octx.fillStyle = colourOf(i) + (S.mode === 'remove' ? '70' : 'AA'); octx.fillRect(p.t0 / D * W, H - 5, Math.max(2, (p.t1 - p.t0) / D * W), 5); });
   const a = view.t0 / D * W, b = view.t1 / D * W; octx.fillStyle = 'rgba(237,230,214,.10)'; octx.fillRect(a, 0, Math.max(3, b - a), H); octx.strokeStyle = 'rgba(237,230,214,.7)'; octx.lineWidth = 1; octx.strokeRect(a + 0.5, 0.5, Math.max(3, b - a) - 1, H - 1);
   octx.fillStyle = '#FF6B35'; octx.fillRect(ph / D * W - 1, 0, 2, H);

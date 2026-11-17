@@ -107,6 +107,12 @@ button.n, button.n:hover:not(:disabled) { background: none; border: 0; border-ra
 #zoom { width: 160px; accent-color: var(--accent); }
 #tl, #ov { width: 100%; display: block; border-radius: 7px; background: #0E211C; touch-action: none; }
 #tl { cursor: crosshair; }
+.tlbox { position: relative; }
+.lanemute { position: absolute; left: 6px; top: 0; z-index: 2; pointer-events: none; }
+.lanemute button { position: absolute; left: 0; pointer-events: auto; padding: 1px 8px 1px 7px; font-size: 12px; font-weight: 650; border-radius: 6px; background: rgba(14,33,28,.86); border: 1px solid var(--line-2); color: var(--ink); }
+.lanemute button::before { content: '🔊 '; } .lanemute button[aria-pressed="true"]::before { content: '🔇 '; }
+.lanemute button[aria-pressed="true"] { color: var(--dim); text-decoration: line-through; }
+.xtalk { border-color: #E8B04A; color: #F2C97A; }
 #ov { cursor: grab; }
 
 /* export bar */

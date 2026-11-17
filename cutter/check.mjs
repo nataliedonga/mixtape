@@ -100,4 +100,12 @@ ok(C.partsFromCsv('start;end;name\n0:10;0:20;x\nbroken\n1m;90s;', 120).length ==
   ok(cp.length === 3 && cp.map(p => `${p.name}:${p.t0}-${p.t1}`).join(' ') === '001 audio:0-10 002 audio:10-15.5 003 audio:15.5-19.5', 'the clips of a joined file become its parts, each from where it was joined on, named after its clip: ' + cp.map(p => `${p.name}:${p.t0}-${p.t1}`).join(' '));
   ok(C.clipParts([{ name: 'a.mp3', length: 10 }, { name: 'b.mp3', length: 10 }, { name: 'c.mp3', length: 10 }], 12).map(p => p.t1).join() === '10,12' && C.clipParts(null, 5).length === 0, 'clips past the end of a shorter file are left out, and the last is cut to the end'); }
 
+{ // both talking at once: 10 buckets a second; left talks 0-3 s and 5-6 s, right talks 2-4 s and 5-5.1 s (too short), and a faint echo of the left on the right
+  const bs = 0.1, n = 80, side = () => ({ min: new Float32Array(n), max: new Float32Array(n) }), pk = { t0: 0, bucketSec: bs, sides: [side(), side()] };
+  const on = (c, a, b, v) => { for (let i = Math.round(a / bs); i < Math.round(b / bs); i++) { pk.sides[c].max[i] = v; pk.sides[c].min[i] = -v; } };
+  on(0, 0, 3, 0.4); on(0, 5, 6, 0.4); on(1, 0, 3, 0.01); on(1, 2, 4, 0.3); on(1, 5, 5.1, 0.3);
+  const x = C.crosstalk(pk), got = x.runs.map(r => `${r.t0.toFixed(1)}-${r.t1.toFixed(1)}`).join(' ');
+  ok(got === '2.0-3.0', 'both talking: found where both sides speak, not a faint echo and not a 0.1 s blip: ' + got);
+  ok(C.crosstalk({ t0: 0, bucketSec: 0.1, min: new Float32Array(5), max: new Float32Array(5) }).runs.length === 0, 'one side only: nothing is reported'); }
+
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -115,6 +115,13 @@ export async function run(t) {
     await page.waitFor(`__cutter.files.length === ${n0 + 1} && __cutter.files[${n0}].state !== 'opening'`, 30000, 'the two-sided clip to open');
     await page.eval(`(() => { const f = __cutter.files[${n0}]; if (f.state === 'ok' && __cutter.cur !== f) document.querySelectorAll('#fileList > *')[${n0}].click(); return true; })()`);
     await page.waitFor(`__cutter.cur === __cutter.files[${n0}] && !document.querySelector('#segSide').hidden`, 8000, 'the side choice to show for a stereo file');
+    // a waveform for each voice, with its own mute
+    await page.waitFor(`!document.querySelector('#laneMute').hidden && __cutter.cur.peaks && __cutter.cur.peaks.done`, 15000, 'a lane for each side');
+    await page.click('#laneMute [data-side="R"]');
+    const lm = await page.eval(`({ lanes: [...document.querySelectorAll('#laneMute button')].map(b => b.textContent + ':' + b.getAttribute('aria-pressed')).join(' '), side: [...document.querySelectorAll('#segSide button')].find(b => b.getAttribute('aria-pressed') === 'true').textContent, line: document.querySelector('#sum').textContent, h: +document.querySelector('#tl').dataset.h })`);
+    await page.click('#laneMute [data-side="R"]');
+    const lm2 = await page.eval(`[...document.querySelectorAll('#segSide button')].find(b => b.getAttribute('aria-pressed') === 'true').textContent`);
+    t.check('a waveform for each voice', 'a two-sided file gets a lane per side with a mute on each; a real click on the right lane’s mute keeps only the left voice (the same as “Left only”, said in the export line), and a second click brings it back', lm.lanes === 'Left:false Right:true' && lm.side === 'Left only' && /left side only/.test(lm.line) && lm.h >= 190 && lm2 === 'Both voices', { ...lm, after: lm2 });
     // how much of each tone is in each side of a saved file (Goertzel), measured in the page
     const TONES = `async file => { const ctx = new OfflineAudioContext(2, 1, 44100), buf = await ctx.decodeAudioData(await file.arrayBuffer()), sr = buf.sampleRate, g = (d, hz) => { const w = 2 * Math.PI * hz / sr, c = 2 * Math.cos(w); let a = 0, b = 0; const n = Math.min(d.length, sr * 3), s0 = Math.floor(sr * 0.3); for (let i = s0; i < n; i++) { const x = d[i] + c * a - b; b = a; a = x; } return Math.sqrt(Math.max(0, a * a + b * b - c * a * b)) / (n - s0); }; const out = { seconds: +(buf.length / sr).toFixed(3), ch: buf.numberOfChannels }; for (let k = 0; k < buf.numberOfChannels; k++) { const d = buf.getChannelData(k); out['c' + k] = [g(d, 300), g(d, 1000)].map(v => +v.toFixed(4)); } return out; }`;
     await page.eval(setSelect('#fmtSel', 'same')); await page.click('#segPrec [data-v="copy"]');
