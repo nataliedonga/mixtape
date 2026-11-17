@@ -1,5 +1,12 @@
 [
   {
+    "version": 125,
+    "date": "2026-11-17",
+    "items": [
+      "Cutter: a clearer waveform, drawn the way Audacity draws it: to scale instead of squashed, with the average loudness in a lighter shade inside the peaks and a centre line. Each voice is scaled to its own loudest, so a quiet speaker fills their lane as well as a loud one does, and the two lanes of a two-sided recording are taller."
+    ]
+  },
+  {
     "version": 124,
     "date": "2026-11-17",
     "items": [

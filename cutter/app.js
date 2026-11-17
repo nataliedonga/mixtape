@@ -120,7 +120,7 @@ function select(entry) {
   const mon = $('#mon'); mon.hidden = !v; $('#soundcard').hidden = !!v;
   if (v) { const w = Math.min(1280, v.w), h = Math.round(w * v.h / v.w); mon.width = w; mon.height = h; const ctx = mon.getContext('2d'); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h); if (!v.canDecode) { ctx.fillStyle = '#AFC0B5'; ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(`This browser cannot show ${v.codec.toUpperCase()} pictures. Untouched cuts still work.`, w / 2, h / 2); } }
   else { $('#scName').textContent = m.name; $('#scMeta').textContent = `${a.codec.toUpperCase()} · ${(a.sr / 1000).toFixed(1)} kHz · ${C.fmtTime(m.duration)}`; }
-  $('#tl').dataset.h = (v ? 168 : 150) + (a && a.ch === 2 ? 40 : 0); sizeCanvases(); // two sides: a lane each
+  $('#tl').dataset.h = (v ? 168 : 150) + (a && a.ch === 2 ? 90 : 0); sizeCanvases(); // two sides: a lane each, each as tall as one waveform was
   updateExportBar(); renderParts(); movePH(0); dirty(); drawOverview(); saveState();
 }
 
@@ -298,20 +298,31 @@ function drawLanes(L, W) {
   if (x) { tctx.fillStyle = 'rgba(232,176,74,.22)'; for (const r of x.runs) { if (r.t1 < view.t0 || r.t0 > view.t1) continue; const a = xOf(r.t0, W), b = xOf(r.t1, W); tctx.fillRect(a, L.waveTop, Math.max(2, b - a), L.waveH); tctx.fillStyle = '#E8B04A'; tctx.fillRect(a, L.waveTop + h + 1, Math.max(2, b - a), 1); tctx.fillStyle = 'rgba(232,176,74,.22)'; } }
   for (let c = 0; c < 2; c++) {
     tctx.fillStyle = 'rgba(237,230,214,.05)'; if (c === 1) tctx.fillRect(0, tops[1] - 1, W, 1);
-    const sd = pk.sides ? { min: pk.sides[c].min, max: pk.sides[c].max, t0: pk.t0, bucketSec: pk.bucketSec } : null;
-    if (sd) drawWave(tctx, sd, 0, W, tops[c], h, view.t0, view.t1, muted[c] ? 'rgba(120,144,134,.45)' : c ? '#9FC2F0' : '#8FD3C1');
+    const sd = pk.sides ? { ...pk.sides[c], t0: pk.t0, bucketSec: pk.bucketSec } : null, whole = cur.peaks.sides ? { ...cur.peaks.sides[c], t0: cur.peaks.t0, bucketSec: cur.peaks.bucketSec, done: cur.peaks.done } : null;
+    const sc = whole ? (cur.peaks['scale' + c] ||= (whole.done ? laneScale(whole) : 0)) || laneScale(whole) : 1;
+    if (sd) drawWave(tctx, sd, 0, W, tops[c], h, view.t0, view.t1, muted[c] ? 'rgba(120,144,134,.35)' : c ? '#6E9FE0' : '#5FB8A2', sc, muted[c] ? 'rgba(150,170,160,.5)' : c ? '#B9D3F7' : '#B5EBDC');
   }
   // the mute buttons sit at the start of each lane
   const off = tl.offsetTop; box.style.top = off + 'px'; box.querySelectorAll('button').forEach((b, c) => { b.style.top = Math.round(tops[c] + 3) + 'px'; b.setAttribute('aria-pressed', String(muted[c])); b.title = muted[c] ? `The ${c ? 'right' : 'left'} voice is muted (heard and saved without it). Click to hear it again.` : `Mute the ${c ? 'right' : 'left'} voice: hear and save only the ${c ? 'left' : 'right'} one.`; });
   return true;
 }
-function drawWave(ctx, pk, x0, W, top, h, a, b, colour) {
-  if (!pk) return; const mid = top + h / 2, amp = h / 2 - 2, per = (b - a) / W; ctx.fillStyle = colour;
+/* how loud a lane's loud end is (the 99.5th centile of its peaks): the lane is scaled to it, so a quiet voice fills its
+   lane as well as a loud one does (Audacity's "fit to height"); worked out once the whole file is read */
+function laneScale(pk) { if (!pk) return 1; if (pk.scale && pk.done) return pk.scale; const n = pk.max.length, lv = []; for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 4000))) { const v = Math.max(pk.max[i], -pk.min[i]); if (v > 0.002) lv.push(v); } lv.sort((p, q) => p - q); const s = lv.length ? Math.min(1, Math.max(0.02, lv[Math.floor(0.995 * (lv.length - 1))] * 1.05)) : 1; if (pk.done) pk.scale = s; return s; }
+/* the waveform as Audacity draws it: straight (not curved), the peaks in the lane's colour, the average level (RMS) inside
+   them in a stronger shade, and a thin centre line. scale: the level that fills the lane (1 = full scale). */
+function drawWave(ctx, pk, x0, W, top, h, a, b, colour, scale = 1, inner = null) {
+  if (!pk) return; const mid = top + h / 2, amp = h / 2 - 1, per = (b - a) / W, k = amp / scale, hasRms = !!(pk.sq && pk.cnt);
+  ctx.fillStyle = 'rgba(237,230,214,.10)'; ctx.fillRect(x0, Math.round(mid), W, 1);
+  const rms = hasRms && inner ? new Float32Array(W) : null;
+  ctx.fillStyle = colour;
   for (let x = 0; x < W; x++) {
     const t0 = a + x * per, t1 = t0 + per; let i0 = Math.floor((t0 - pk.t0) / pk.bucketSec), i1 = Math.max(i0 + 1, Math.ceil((t1 - pk.t0) / pk.bucketSec)); if (i1 <= 0 || i0 >= pk.max.length) continue; i0 = Math.max(0, i0); i1 = Math.min(pk.max.length, i1);
-    let lo = 0, hi = 0; for (let i = i0; i < i1; i++) { if (pk.min[i] < lo) lo = pk.min[i]; if (pk.max[i] > hi) hi = pk.max[i]; }
-    const y0 = mid - Math.sqrt(Math.min(1, hi)) * amp, y1 = mid - Math.sqrt(Math.min(1, -lo)) * -amp; ctx.fillRect(x0 + x, y0, 1, Math.max(1, y1 - y0));
+    let lo = 0, hi = 0, s2 = 0, n = 0; for (let i = i0; i < i1; i++) { if (pk.min[i] < lo) lo = pk.min[i]; if (pk.max[i] > hi) hi = pk.max[i]; if (rms) { s2 += pk.sq[i]; n += pk.cnt[i]; } }
+    const y0 = mid - Math.min(amp, hi * k), y1 = mid + Math.min(amp, -lo * k); ctx.fillRect(x0 + x, y0, 1, Math.max(1, y1 - y0));
+    if (rms && n) rms[x] = Math.min(amp, Math.sqrt(s2 / n) * k);
   }
+  if (rms) { ctx.fillStyle = inner; for (let x = 0; x < W; x++) if (rms[x] > 0.5) ctx.fillRect(x0 + x, mid - rms[x], 1, rms[x] * 2); }
 }
 function keyBefore(t) { const ks = cur.keys; if (!ks || !ks.length) return null; let lo = 0, hi = ks.length - 1; if (t < ks[0]) return ks[0]; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (ks[m] <= t + 1e-6) lo = m; else hi = m - 1; } return ks[lo]; }
 function drawTL() {
@@ -337,7 +348,7 @@ function drawTL() {
   // waveform
   const pk = peaksFor(view.t0, view.t1); tctx.fillStyle = '#10261F'; tctx.fillRect(0, L.waveTop, W, L.waveH);
   if (cur.media.a && drawLanes(L, W)) { /* a lane for each side */ }
-  else if (cur.media.a) drawWave(tctx, pk, 0, W, L.waveTop + 2, L.waveH - 4, view.t0, view.t1, '#8FD3C1');
+  else if (cur.media.a) drawWave(tctx, pk, 0, W, L.waveTop + 2, L.waveH - 4, view.t0, view.t1, '#5FB8A2', laneScale(cur.peaks), '#B5EBDC');
   else { tctx.fillStyle = '#789086'; tctx.font = '12px "Bricolage Grotesque", sans-serif'; tctx.fillText('No sound in this file', 10, L.waveTop + L.waveH / 2); }
   // parts
   const copyish = cur.media.v && S.prec === 'copy' && S.fmt === 'same' && S.tracks !== 'audio' && cur.keys;
@@ -359,7 +370,7 @@ function drawTL() {
 function drawOverview() {
   const dpr = ov._dpr || 1, W = ov.width / dpr, H = +ov.dataset.h; octx.setTransform(dpr, 0, 0, dpr, 0, 0); octx.fillStyle = '#0E211C'; octx.fillRect(0, 0, W, H);
   if (!cur) return; const D = dur();
-  if (cur.media.a) drawWave(octx, cur.peaks, 0, W, 1, H - 2, 0, D, 'rgba(143,211,193,.55)');
+  if (cur.media.a) drawWave(octx, cur.peaks, 0, W, 1, H - 2, 0, D, 'rgba(143,211,193,.55)', laneScale(cur.peaks));
   { const x = lanes() ? xtalkNow() : null; if (x) { octx.fillStyle = '#E8B04A'; for (const r of x.runs) octx.fillRect(r.t0 / D * W, 0, Math.max(1, (r.t1 - r.t0) / D * W), 4); } } // both talking, along the top
   cur.parts.forEach((p, i) => { octx.fillStyle = colourOf(i) + (S.mode === 'remove' ? '70' : 'AA'); octx.fillRect(p.t0 / D * W, H - 5, Math.max(2, (p.t1 - p.t0) / D * W), 5); });
   const a = view.t0 / D * W, b = view.t1 / D * W; octx.fillStyle = 'rgba(237,230,214,.10)'; octx.fillRect(a, 0, Math.max(3, b - a), H); octx.strokeStyle = 'rgba(237,230,214,.7)'; octx.lineWidth = 1; octx.strokeRect(a + 0.5, 0.5, Math.max(3, b - a) - 1, H - 1);

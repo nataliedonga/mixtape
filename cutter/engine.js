@@ -140,9 +140,9 @@ export class Media {
   }
   /* min/max of the sound per bucket over [t0, t1), decoded a stretch at a time; onChunk(peaks) as it goes */
   async peaks(buckets, t0 = 0, t1 = this.duration, onChunk, cancelled) {
-    const bucketSec = Math.max(1e-4, (t1 - t0) / buckets), nb = Math.ceil((t1 - t0) / bucketSec), min = new Float32Array(nb), max = new Float32Array(nb), out = { min, max, bucketSec, t0, t1, done: false };
+    const bucketSec = Math.max(1e-4, (t1 - t0) / buckets), nb = Math.ceil((t1 - t0) / bucketSec), min = new Float32Array(nb), max = new Float32Array(nb), sq = new Float32Array(nb), cnt = new Uint32Array(nb), out = { min, max, sq, cnt, bucketSec, t0, t1, done: false }; // sq/cnt: the average level (RMS) per bucket
     // a two-sided sound keeps each side's own peaks too (calls are often recorded with each person on their own side)
-    const sides = this.a && this.audio.ch === 2 ? [{ min: new Float32Array(nb), max: new Float32Array(nb) }, { min: new Float32Array(nb), max: new Float32Array(nb) }] : null; if (sides) out.sides = sides;
+    const sides = this.a && this.audio.ch === 2 ? [{ min: new Float32Array(nb), max: new Float32Array(nb), sq: new Float32Array(nb), cnt: new Uint32Array(nb) }, { min: new Float32Array(nb), max: new Float32Array(nb), sq: new Float32Array(nb), cnt: new Uint32Array(nb) }] : null; if (sides) out.sides = sides;
     if (!this.a || !this.audio.canDecode) { out.done = true; return out; }
     const sink = new M.AudioSampleSink(this.a), step = Math.max(30, (t1 - t0) / 40), stride = bucketSec > 0.05 ? 7 : 1;
     for (let w0 = t0; w0 < t1 - EPS; w0 += step) {
@@ -151,7 +151,7 @@ export class Media {
       try {
         for await (const s of sink.samples(w0, w1)) {
           const n = s.numberOfFrames, ch = s.numberOfChannels, sr = s.sampleRate, buf = new Float32Array(n * ch); s.copyTo(buf, { planeIndex: 0, format: 'f32' });
-          for (let i = 0; i < n; i += stride) { const b = Math.floor((s.timestamp + i / sr - t0) / bucketSec); if (b < 0 || b >= nb) continue; for (let c = 0; c < ch; c++) { const x = buf[i * ch + c]; if (x < min[b]) min[b] = x; if (x > max[b]) max[b] = x; if (sides && c < 2) { const sd = sides[c]; if (x < sd.min[b]) sd.min[b] = x; if (x > sd.max[b]) sd.max[b] = x; } } }
+          for (let i = 0; i < n; i += stride) { const b = Math.floor((s.timestamp + i / sr - t0) / bucketSec); if (b < 0 || b >= nb) continue; let s2 = 0; for (let c = 0; c < ch; c++) { const x = buf[i * ch + c]; s2 += x * x; if (x < min[b]) min[b] = x; if (x > max[b]) max[b] = x; if (sides && c < 2) { const sd = sides[c]; sd.sq[b] += x * x; sd.cnt[b]++; if (x < sd.min[b]) sd.min[b] = x; if (x > sd.max[b]) sd.max[b] = x; } } sq[b] += s2 / ch; cnt[b]++; }
           s.close();
         }
       } catch (e) { /* a stretch that will not decode is left flat */ }
