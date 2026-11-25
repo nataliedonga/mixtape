@@ -553,7 +553,7 @@ async function importPackBody(file) {
   if (listFail) bits.push('the playlists and favorites in the file could not be saved');
   toast(bits.join(' · '), lost || short || listFail ? 10000 : 4500);
 }
-async function importFiles(list) {
+async function importFiles(list, meta = null) { // meta: names for a recording made here ({ title, artist, album })
   const files = [...list].filter(isAudio);
   if (!files.length) { toast('No songs found there. Pick audio files such as MP3, M4A, WAV, OGG or FLAC.', 4500); return []; }
   if (importing) { toast('Still adding the last batch. Try again in a moment.'); return []; }
@@ -566,7 +566,7 @@ async function importFiles(list) {
     const key = f.name + '|' + f.size; if (seen.has(key)) { dup++; ids.push(seen.get(key)); continue; }
     const tags = await readTags(f), guess = parseName(f.name);
     const t = { id: uid(), name: f.name, size: f.size, type: f.type || '', title: clean(tags.title) || guess.title, artist: clean(tags.artist) || guess.artist,
-      album: clean(tags.album), track: parseInt(tags.track, 10) || 0, duration: await probeDuration(f), added: base - i, blob: f, art: pictureBlob(tags.picture) };
+      album: clean(tags.album), track: parseInt(tags.track, 10) || 0, duration: await probeDuration(f), added: base - i, blob: f, art: pictureBlob(tags.picture), ...(meta || {}) };
     tracks.set(t.id, t); seen.set(key, t.id); ids.push(t.id);
     try { await saveTrack(t); } catch (e) { lost++; }
     added++;
@@ -878,4 +878,6 @@ if (window.MixtapeShell) MixtapeShell.init({ tool: 'player', toast, busy: () => 
 ] } });
 // clearer speech, or one side of a two-sided recording only, while listening (sound.js; nothing is routed until it is first switched on)
 import('./sound.js').then(m => m.soundControl({ after: $('#sleepBtn'), media: () => audio, cls: 'pill', toast })).catch(e => console.warn('sound:', e));
+// Record: the sound of another tab, the whole computer or the microphone, into the library (recorder.js)
+import('./recorder.js').then(m => m.recorderButton({ after: $('#folderBtn'), add: (files, meta) => importFiles(files, meta), toast, cls: 'btn' })).catch(e => console.warn('record:', e));
 })();

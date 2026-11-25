@@ -1,5 +1,12 @@
 [
   {
+    "version": 126,
+    "date": "2026-11-25",
+    "items": [
+      "Player: Record. Next to “Add folder”, record the sound of another browser tab (a website, a video, a call), of the whole computer, or of the microphone. The browser asks which tab or screen to share: tick “Also share tab audio” (or “Also share system audio” for the whole screen). A red bar shows the time and the level, with Pause and Stop. When you stop, or the shared tab is closed, the recording goes into your library under “Recordings”. Only the sound is kept, and nothing leaves this device. Record only what you have the right to record."
+    ]
+  },
+  {
     "version": 125,
     "date": "2026-11-17",
     "items": [
