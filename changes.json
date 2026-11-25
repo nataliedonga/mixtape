@@ -1,5 +1,12 @@
 [
   {
+    "version": 127,
+    "date": "2026-11-26",
+    "items": [
+      "Player: Record is simpler. Three choices: Screen (a video of the screen, with sound or without, saved to Downloads), Laptop sound (anything playing on this laptop, into your library) and Microphone (into your library). For Screen and Laptop sound the browser asks what to share: choose “Entire screen” and keep “Also share system audio” ticked."
+    ]
+  },
+  {
     "version": 126,
     "date": "2026-11-25",
     "items": [
