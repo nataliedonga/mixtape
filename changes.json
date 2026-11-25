@@ -1,5 +1,14 @@
 [
   {
+    "version": 128,
+    "date": "2026-11-26",
+    "items": [
+      "Transcripts: Mixtape no longer listens for voices after the words are written down (it was slow on long recordings). A call recorded with each person on their own side gets its speakers from the sides instead: exact, in seconds, and nothing is sent.",
+      "Transcripts: Claude sets the speakers and notations. After every transcript, Claude (Opus 5.5, at Anthropic) reads the words, works out who is who from the conversation, splits paragraphs where the speaker changes, and puts in notations. Legal transcripts follow TranscribeMe's guidelines, all others Rev's style. Every change is applied at once and highlighted; Ctrl + Z takes it all back. It needs your own Anthropic API key, pasted once into the bar above the transcript and kept in this browser only. Only the words are sent, never the sound, and a recording marked sensitive is never sent. Turn off \"After every transcript\" to run it only when you press the button.",
+      "Transcripts: Ask Claude. A chat beside the transcript about what Claude changed, what it left alone and how much, with the cost so far."
+    ]
+  },
+  {
     "version": 127,
     "date": "2026-11-26",
     "items": [

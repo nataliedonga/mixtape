@@ -16,6 +16,9 @@ const URL_RE = /\bhttps?:\/\/[^\s"'`<>)\\]*/g;
 // Names, never fetched: xmlns and other W3C constants, and the namespace names a Word document (.docx) must carry inside
 // its XML (transcribe/exportdoc.js writes them into the file; nothing is requested from them).
 const W3C = /^https?:\/\/(www\.w3\.org|schemas\.openxmlformats\.org)\//;
+// The one address Mixtape may reach, by her choice (2026-11-26): Anthropic's API, from the Transcripts page only, for
+// Claude setting speakers and notations with her own key (transcribe/claude.js). It is allowed in that page's
+// Content-Security-Policy and nowhere else.
 // References that are known to point at nothing here, each with its reason. Anything else that is missing fails.
 const EXPECTED_MISSING = [
   { file: 'cutter/app.js', ref: 'sw.js', why: 'only reached in the standalone Cutter (never when Mixtape hosts it), which has a service worker of its own' },
@@ -67,10 +70,12 @@ export async function run(t) {
   const ours = code.filter(f => !THIRD_PARTY.some(p => f.startsWith(p))), theirs = files.filter(f => THIRD_PARTY.some(p => f.startsWith(p)) && (CODE.test(f) || /\.js\.gz$/.test(f)));
 
   // 1. Mixtape's own code names no web address (outside comments and W3C constants)
+  //    One address is allowed, by her choice (2026-11-26): Anthropic's API, in the Transcripts page's Content-Security-Policy
+  //    only, for Claude setting speakers and notations with her own key (transcribe/claude.js).
   const hits = [], stripped = new Map();
   for (const f of ours) {
     const s = strip(f, fs.readFileSync(path.join(t.root, f), 'utf8')); stripped.set(f, s);
-    for (const m of s.matchAll(URL_RE)) if (!W3C.test(m[0])) hits.push(`${f}:${lineOf(s, m.index)} ${m[0].slice(0, 80)}`);
+    for (const m of s.matchAll(URL_RE)) if (!W3C.test(m[0]) && !(f === 'transcribe/index.html' && /^https:\/\/api\.anthropic\.com;?$/.test(m[0]))) hits.push(`${f}:${lineOf(s, m.index)} ${m[0].slice(0, 80)}`);
   }
   t.check('no web address in Mixtape’s own code', 'no http(s):// in any shipped HTML, JS or CSS outside comments and W3C constants (xmlns)', hits.length === 0, hits.length ? hits.slice(0, 8) : `${ours.length} files clean`);
 

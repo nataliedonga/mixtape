@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- Nothing on this page may contact another server: it can only load from, and talk to, the site it came from. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' blob: https://api.anthropic.com; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Transcripts · Mixtape</title>
 <meta name="theme-color" content="#F6F3EC" media="(prefers-color-scheme: light)">

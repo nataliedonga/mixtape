@@ -9,6 +9,7 @@
 import { suggest, unglue } from '../roles-core.js';
 import { styleOf } from './matter.js';
 import { initClips } from './clips.js';
+import { initClaude, claudePending } from './claude.js';
 import { soundControl } from '../sound.js';
 const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let api, bar, open = true, lastKey = '', busy = false;
@@ -76,7 +77,7 @@ function mark(o) { // the highlight in the text: the names set from the words, a
 function draw() {
   if (busy) return; const c = api.cur;
   if (c && c.tr && !c.tr.unglued && !api.job && c.tr.done && c.tr.mode === 'heard') applyGlue();
-  if (c && c.tr && !c.tr.auto && !api.job && c.tr.done && c.tr.mode === 'heard') { applyAuto(); if (busy) return; }
+  if (c && c.tr && !c.tr.auto && !api.job && c.tr.done && c.tr.mode === 'heard' && !claudePending(c.tr)) { applyAuto(); if (busy) return; } // when Claude will read it, the rules wait (and are not run on top of Claude's answer)
   const o = c && !api.job ? state() : null; mark(o);
   const key = JSON.stringify(o) + open; if (key === lastKey) return; lastKey = key;
   if (!o) { bar.hidden = true; bar.textContent = ''; return; }
@@ -122,6 +123,7 @@ export function initRoles(a) {
   if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__roles = { draw, state, suggest };
   draw();
   initClips(a); // a recording joined from clips shows where each clip begins
+  initClaude(a); // speakers from the sides, then Claude sets speakers and notations; and the chat about it
   const snd = soundControl({ after: $('#speed'), media: () => api.cur && api.cur.media, toast: api.toast }); // clearer speech, or one side only, while listening
   let sndFor = null; setInterval(() => { const m = api.cur && api.cur.media; if (m && m !== sndFor) { sndFor = m; snd.refresh(); } }, 700); // each recording has its own player: the next one opened gets the same sound
 }

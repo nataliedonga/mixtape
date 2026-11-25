@@ -529,7 +529,7 @@ async function start(mode, text) {
     worker = new Worker('../asr-worker.js', { type: 'module' }); const files = {};
     const hear = msg => new Promise((res, rej) => { worker.onmessage = m => { const x = m.data; if (x.type === 'load') { files[x.file] = x; const tot = Object.values(files).reduce((s, f) => s + (f.total || 0), 0), got = Object.values(files).reduce((s, f) => s + (f.loaded || 0), 0); st.textContent = `Getting the recogniser (once only): ${Math.round(got / 1e6)} of ${Math.round(tot / 1e6)} MB`; bar.style.width = (tot ? got / tot * 100 : 0) + '%'; } else if (x.type === 'window') res(x.words); else if (x.type === 'error') rej(new Error(x.message)); }; worker.onerror = e => rej(new Error(e.message || 'the recogniser could not start')); worker.postMessage(msg, [msg.audio.buffer]); });
     // who speaks when: a second worker, in step with the recogniser (transcripts only; a read-along has one narrator)
-    const findSpeakers = tr.mode === 'heard' && tr.speakers !== false; tr.voices ||= [];
+    const findSpeakers = false; tr.voices ||= []; // the speaker finder is no longer run (slow on long recordings): speakers come from the sides of a two-sided recording, then from Claude (claude.js)
     if (findSpeakers) spkWorker = new Worker('../speaker-worker.js', { type: 'module' });
     const sfiles = {};
     const speakers = msg => !spkWorker ? Promise.resolve(null) : new Promise(res => { spkWorker.onmessage = m => { const x = m.data; if (x.type === 'load') { sfiles[x.what] = x; } else if (x.type === 'speakers') res(x); else if (x.type === 'error') { console.warn('speakers:', x.message); res(null); } }; spkWorker.onerror = e => { console.warn('speakers:', e.message); res(null); }; spkWorker.postMessage(msg, [msg.audio.buffer]); });
@@ -609,7 +609,7 @@ initRemove({ toast, get cur() { return cur; }, get job() { return job; }, reload
 initMatter({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
 initExportAs({ toast, sensitive, sensLine: SENS_LINE, get cur() { return cur; } });
 initTags({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
-initRoles({ toast, save, drawAll, remember, get cur() { return cur; }, get job() { return job; } });
+initRoles({ toast, save, drawAll, remember, sensitive, get cur() { return cur; }, get job() { return job; } });
 initPart({ toast, drawAll, save, get cur() { return cur; } });
 initReverb({ M, toast, save, drawAll, remember, window16k, partChosen, partTrim, get cur() { return cur; }, get job() { return job; }, setJob(v) { job = v; } });
 /* ---------- start ---------- */

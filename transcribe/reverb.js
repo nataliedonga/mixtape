@@ -219,14 +219,14 @@ export async function startReverb() {
           const lw = T.labelTurns(words, rs.turns.map(t => ({ s: +t.s + t0, e: +t.e + t0, sp: String(t.sp) }))), used = new Set(T.speakerNames(lw));
           who = { words: lw, voices: (rs.voices || []).filter(v => v && used.has(v.name) && Array.isArray(v.c)).map(v => ({ name: String(v.name), c: v.c.map(Number), n: 1 })), count: used.size, kind: 'rev' };
         } else if (rs && rs.error) console.warn('Rev speaker model:', rs.error);
-        if (!who) try { st.textContent = 'Finding who speaks when, on this computer…'; bar.style.width = '0%'; who = await addSpeakers(a, words, t0, dur, p => { bar.style.width = Math.round(p * 100) + '%'; st.textContent = `Finding who speaks when, on this computer: ${Math.round(p * 100)}%`; }, job); }
+        if (false) try { st.textContent = 'Finding who speaks when, on this computer…'; /* the speaker finder is no longer run (slow on long recordings): speakers come from the sides of a two-sided recording, then from Claude (claude.js) */ bar.style.width = '0%'; who = await addSpeakers(a, words, t0, dur, p => { bar.style.width = Math.round(p * 100) + '%'; st.textContent = `Finding who speaks when, on this computer: ${Math.round(p * 100)}%`; }, job); }
         catch (e) { if (e && e.stopped) who = null; else console.warn('speakers:', e); }
         if (who && who.words.length === words.length) { cur.tr.words = who.words; cur.tr.voices = who.voices; cur.tr.speakers = true; if (who.kind) { cur.tr.voiceKind = who.kind; cur.tr.speakersBy = 'reverb-diarization-v2 (Rev)'; } }
         if (api.partTrim) api.partTrim(cur.tr); // what the website leaves out is not kept
         await api.save(); await clean();
         let marks = -1; lastStatus = (await readJSON('status.json')) || lastStatus;
         if (wantPunct() && canPunct()) { try { marks = await punctCore(cur, job, st, bar); } catch (e) { if (!e.stopped) { console.warn('punctuation:', e); api.toast(`The words are ready, but punctuation could not be added (${e.message || e}). You can add it later from the transcript.`, 9000); } } }
-        api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb${who && cur.tr.speakers ? `, ${who.count || who.voices.length} speaker${(who.count || who.voices.length) === 1 ? '' : 's'} found${who.kind ? ' by Rev’s speaker model' : rs && rs.error ? ' in this page (Rev’s speaker model could not run)' : ''} (click a name to rename it everywhere)` : ', without speakers (they could not be found this time)'}${marks > 0 ? ', punctuation and capitals added' : ''}. Personal use only.`, 9000); return;
+        api.toast(`Transcript ready: ${words.length.toLocaleString()} words by Reverb${who && cur.tr.speakers ? `, ${who.count || who.voices.length} speakers found by Rev’s speaker model` : ''}${marks > 0 ? ', punctuation and capitals added' : ''}. Speakers and notations come next. Personal use only.`, 9000); return;
       }
       const s = await readJSON('status.json'), alive = s && s.alive && Date.now() / 1000 - s.alive < 8; quiet = alive ? 0 : quiet + 1;
       if (quiet > 8) throw new Error('Reverb’s helper stopped answering. Start it again from your reverb-personal folder, then press Transcribe');
