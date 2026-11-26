@@ -13,7 +13,9 @@
    The key is the user's own Anthropic API key, kept in this browser only (localStorage) and sent only to
    api.anthropic.com. The SDK is Anthropic's own (vendor/anthropic, Apache-2.0). */
 import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
-import { paragraphs, asText, pieces, request, instructions, SCHEMA, apply, tally, cost } from '../claude-core.js';
+import { paragraphs, asText, pieces, request, instructions, SCHEMA, apply, punctuate, tally, cost } from '../claude-core.js';
+import { styleOf } from './matter.js';
+import { guideFor } from '../style-guides.js';
 const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const KEY = 'mixtape-anthropic-key', AUTO = 'mixtape-claude-auto', MODEL = 'claude-opus-5-5';
 let api, bar, chat, running = null, sdk = null;
@@ -75,7 +77,7 @@ async function run(why = 'auto') {
     // 2. Claude, a part at a time
     const cl = await client(), legal = legalOf(r), paras = paragraphs(r.words), parts = pieces(paras), cast = castOf(r);
     job.step = 'claude'; job.parts = parts.length; draw();
-    let words = r.words, people = [], log = [], usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, summary = [];
+    let words = r.words, marks = 0, people = [], log = [], usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, summary = [];
     for (let k = 0; k < parts.length; k++) {
       if (job.stop || api.cur !== c) throw Object.assign(new Error('stopped'), { stopped: true });
       if (api.sensitive && api.sensitive(c.track.id)) throw new Error('the recording was marked sensitive while Claude was reading it, so it stopped');
@@ -87,15 +89,17 @@ async function run(why = 'auto') {
       const text = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); let ans;
       try { ans = JSON.parse(text); } catch (e) { throw new Error('Claude’s answer could not be read'); }
       for (const [kk, v] of Object.entries(msg.usage || {})) if (typeof v === 'number' && kk in usage) usage[kk] += v;
+      const pu = punctuate(words, ps, (ans.paras || []).filter(x => x.para >= parts[k][0] && x.para < parts[k][1])); words = pu.words; marks += pu.marked; // punctuation first: it changes no word, so the paragraph numbers stay
       const res = apply(words, ps, parts[k], ans); words = res.words; log.push(...res.log); if (ans.summary) summary.push(ans.summary);
       for (const p of ans.people || []) if (!people.some(x => x.id === p.id)) people.push(p);
       // the paragraph numbers move as splits and notations go in: the next part is counted afresh from the words
       const shift = paragraphs(words).length - ps.length; for (let j = k + 1; j < parts.length; j++) { parts[j] = [parts[j][0] + shift, parts[j][1] + shift]; }
     }
-    api.remember(); r.words = words; r.speakers = true; r.auto = r.auto || { at: Date.now(), names: [] }; // the rule-based guesses are not run on top of Claude's
-    r.claude = { at: Date.now(), model: MODEL, legal, people, log, count: tally(log), usage, cost: cost(usage), summary: summary.join(' '), why, chat: (r.claude && r.claude.chat) || [] };
+    api.remember(); r.words = words; r.speakers = true; r.punct = { at: Date.now(), by: 'claude', marked: marks };
+    if (!styleOf(r)) r.styleFor = legal ? 'tm-clean' : 'rev'; // the guide's word rules (fillers, numbers, written-out forms) are applied by Mixtape's own style, set to match (a matter's chosen style wins) r.auto = r.auto || { at: Date.now(), names: [] }; // the rule-based guesses are not run on top of Claude's
+    r.claude = { at: Date.now(), model: MODEL, legal, people, log, count: { ...tally(log), marks }, usage, cost: cost(usage), summary: summary.join(' '), why, chat: (r.claude && r.claude.chat) || [] };
     api.drawAll(); await api.save();
-    const n = r.claude.count; api.toast(`Claude set the speakers${n.splits ? `, split ${n.splits} paragraph${n.splits === 1 ? '' : 's'}` : ''}${n.inserts ? `, and put in ${n.inserts} notation${n.inserts === 1 ? '' : 's'}` : ''}. Ctrl + Z undoes it all.`, 8000);
+    const n = r.claude.count; api.toast(`Claude punctuated it, set the speakers${n.splits ? `, split ${n.splits} paragraph${n.splits === 1 ? '' : 's'}` : ''}${n.inserts ? `, and put in ${n.inserts} notation${n.inserts === 1 ? '' : 's'}` : ''}. Ctrl + Z undoes it all.`, 8000);
   } catch (e) {
     if (!e.stopped) { r.claude = { ...(r.claude || {}), error: errText(e), at: Date.now() }; try { await api.save(); } catch (x) {} }
   } finally { running = null; draw(); }
@@ -154,7 +158,7 @@ function draw() {
     html = `<div class="cb-t"><b class="cl">Claude could not finish</b><small>${esc(cl.error)}. The transcript is as it was.</small></div><button data-c="run">Try again</button><button data-c="forget">Change key</button>`;
   } else if (cl.log) {
     const n = cl.count || tally(cl.log);
-    html = `<div class="cb-t"><b class="cl">Claude set the speakers</b><small>${(cl.people || []).length} people · ${n.speakers} paragraph${n.speakers === 1 ? '' : 's'} given a speaker · ${n.splits} split · ${n.inserts} notation${n.inserts === 1 ? '' : 's'} put in${n.skipped ? ` · ${n.skipped} it suggested could not be placed` : ''} · ${money(cl.cost || 0)} · ${cl.legal ? 'TranscribeMe guidelines' : 'Rev style'}</small></div><button class="yes" data-c="chat">Ask Claude</button><button data-c="run" title="Read it again with the speakers as they are now">Run again</button>`;
+    html = `<div class="cb-t"><b class="cl">Claude punctuated it and set the speakers</b><small>${(cl.people || []).length} people · ${n.speakers} paragraph${n.speakers === 1 ? '' : 's'} given a speaker · ${n.splits} split · ${n.inserts} notation${n.inserts === 1 ? '' : 's'} put in · ${(n.marks || 0).toLocaleString()} words punctuated or capitalised${n.skipped ? ` · ${n.skipped} it suggested could not be placed` : ''} · ${money(cl.cost || 0)} · ${cl.legal ? 'TranscribeMe guidelines' : 'Rev style'}</small></div><button class="yes" data-c="chat">Ask Claude</button><button data-c="run" title="Read it again with the speakers as they are now">Run again</button>`;
   } else {
     html = `<div class="cb-t"><b class="cl">Claude</b><small>${autoOn() ? 'Waiting to read this transcript.' : 'Automatic reading is off.'}</small></div><button class="yes" data-c="run">Set speakers and notations</button>`;
   }
@@ -178,7 +182,8 @@ function chatSystem(r, title) {
   const paras = paragraphs(r.words), cl = r.claude || {};
   return `You set the speakers and notations in this transcript earlier, and now you talk with the person who checks it. Answer plainly and briefly, with paragraph numbers and times, about what you changed, what you left alone, how sure you were, and why. You cannot change the transcript from this chat: if she wants something changed, say exactly what (paragraph, words, new speaker) so she can do it, or tell her to press "Run again" after she has fixed the parts she is sure of. Never invent words that are not in the transcript.
 
-Guidelines followed: ${cl.legal ? "TranscribeMe's (legal transcript)" : "Rev's style guide"}.
+The style guide is the bible for this transcript; when she asks whether something follows the rules, answer from it and quote the rule:
+${guideFor(!!cl.legal)}
 Recording: ${title}
 People you labelled: ${(cl.people || []).map(p => `${p.label} (${p.why || 'no reason given'})`).join('; ') || 'none'}
 Your own summary: ${cl.summary || 'none'}
@@ -192,7 +197,7 @@ function openChat() {
 }
 function drawChat(streaming = '') {
   const r = api.cur && api.cur.tr, cl = (r && r.claude) || {}, n = cl.count || tally(cl.log || []), msgs = chat.querySelector('.msgs');
-  msgs.innerHTML = `<div class="facts">What Claude did: ${(cl.people || []).length} people labelled (${esc((cl.people || []).map(p => p.label).join(', '))}); ${n.speakers} paragraphs given a speaker; ${n.splits} paragraphs split; ${n.inserts} notations put in; ${n.skipped} suggestions it could not place. Cost so far ${money((cl.cost || 0) + (cl.chatCost || 0))}. No heard word was changed.</div>`
+  msgs.innerHTML = `<div class="facts">What Claude did: ${(cl.people || []).length} people labelled (${esc((cl.people || []).map(p => p.label).join(', '))}); ${n.speakers} paragraphs given a speaker; ${n.splits} paragraphs split; ${n.inserts} notations put in; ${(n.marks || 0)} words given punctuation or capitals; ${n.skipped} suggestions it could not place. Cost so far ${money((cl.cost || 0) + (cl.chatCost || 0))}. No heard word was changed.</div>`
     + (cl.chat || []).map(m => `<div class="m ${m.role === 'user' ? 'u' : 'a'}">${esc(m.text)}</div>`).join('') + (streaming ? `<div class="m a">${esc(streaming)}</div>` : '');
   msgs.scrollTop = msgs.scrollHeight;
 }

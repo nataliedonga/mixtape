@@ -1,5 +1,13 @@
 [
   {
+    "version": 130,
+    "date": "2026-11-26",
+    "items": [
+      "Transcripts: the style guide is Claude's bible. Claude now gets the whole guide every time (TranscribeMe's for legal transcripts, Rev's for all others) and follows every rule in it for speakers, paragraphs, punctuation, capital letters and notations, including each guide's own dash for a false start. It still never changes a heard word: the guide's word rules (fillers, numbers, written-out forms) are applied by Mixtape's style, which is set to match. The chat answers from the same guide.",
+      "Transcripts: Claude adds punctuation and capitals, word by word: a word it tried to change, add or drop is refused and keeps its old form."
+    ]
+  },
+  {
     "version": 129,
     "date": "2026-11-26",
     "items": [

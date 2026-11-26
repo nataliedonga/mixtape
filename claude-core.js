@@ -6,6 +6,8 @@
    Which guidelines: a legal transcript follows TranscribeMe's guidelines, any other transcript follows Rev's (her
    choice, 2026-11-26; to be updated as they go). */
 
+import { guideFor } from './style-guides.js';
+
 /* ---- what is sent: the transcript as numbered paragraphs ---- */
 const bare = t => String(t).toLowerCase().replace(/[^a-z0-9']+/g, '');
 const clock = s => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60, p = n => String(n).padStart(2, '0'); return `${h ? h + ':' + p(m) : m}:${p(x)}`; };
@@ -38,23 +40,20 @@ const COMMON = `You are a senior transcript editor. You receive a transcript tha
 Your job, using the logic of the conversation:
 1. Decide who the people are and give each a label (rules below). Use names only when the transcript itself gives them (a greeting, an introduction, "Ms. Dlamini, you may proceed"). Never invent a name.
 2. Say who speaks at every point: list each place where the speaker changes. A change at the start of a paragraph has starts_with "". A change inside a paragraph has starts_with set to the first 3 to 8 words of the new speaker's part, copied exactly, character for character, from that paragraph.
-3. Put in the notations the guidelines call for, only where the words clearly show the event (an exhibit is marked or received, a recess is taken, a witness is sworn). Each goes after the paragraph given; "after" is "" for the end of that paragraph, or the exact last 3 to 8 words after which it belongs.
+3. Punctuate: for every paragraph you were given (except notations), write it out again in "paras" with sentence punctuation and capital letters as the guidelines below ask: full stops, commas, question marks, capitals at sentence starts, for names, for "I". Use exactly the same words in exactly the same order: you may only change capital letters and add or move punctuation marks attached to words. Never add, drop, merge, split or respell a word; never turn number words into digits; never remove a filler (um, uh) or a repeated word: the guidelines' word rules are applied separately.
+4. Put in the notations the guidelines call for, only where the words clearly show the event (an exhibit is marked or received, a recess is taken, a witness is sworn). Each goes after the paragraph given; "after" is "" for the end of that paragraph, or the exact last 3 to 8 words after which it belongs.
 
 Evidence, strongest first: a side of the recording (left/right are different people, recorded separately: trust them), a label the audio gave, what is said (questions and answers, "Your Honour", who is addressed by name, who swears or is sworn), and the flow of the exchange. Think it through; when it is not clear, keep the label the audio gave and say why in "why".
 
-Rules: never change, add or remove any heard word; quote exactly. Paragraph numbers must be ones you were given. The first entry of "turns" must be the first paragraph you were given (unless it is a notation). Notation paragraphs get no speaker. Keep "why" short (under 20 words), and leave it "" where the change is obvious. "summary": two or three plain sentences on what you changed and what you were unsure of.`;
+Rules: never change, add or remove any heard word; quote exactly (quote the words as they were given to you). Paragraph numbers must be ones you were given. The first entry of "turns" must be the first paragraph you were given (unless it is a notation). Notation paragraphs get no speaker. Keep "why" short (under 20 words), and leave it "" where the change is obvious. "summary": two or three plain sentences on what you changed and what you were unsure of.`;
 
-const LEGAL = `This is a LEGAL transcript (a hearing, deposition, trial, interview under oath). Follow TranscribeMe's guidelines:
-- Each new speaker starts a new line. Speaker labels: the person's name as given in the proceedings when known (e.g. "Judge Mokoena", "Ms. Dlamini", "Mr. Botha"); otherwise their role ("Judge", "Witness", "Counsel for the plaintiff", "Counsel for the defendant", "Interpreter", "Clerk"); otherwise "Speaker 1", "Speaker 2". Do not guess a name.
-- Notations in parentheses, sentence case, full stop inside, on their own line: (Exhibit 4 was marked for identification.) (Exhibit 4 was received into evidence.) (A recess was taken.) (The witness was sworn.) (Off the record.) (Back on the record.) Use the exhibit's own number or letter as said.
-- Tags such as [inaudible], [crosstalk], [laughter] are not yours to add: leave the words as they are.`;
+const LEGAL = `This is a LEGAL transcript (a hearing, deposition, trial, interview under oath). Follow TranscribeMe's guidelines, given in full below.`;
 
-const NORMAL = `This is an ordinary transcript (an interview, a call, a meeting, a podcast). Follow Rev's style guide:
-- Speaker labels: the person's full name when the recording gives it ("Lerato Mokoena"); otherwise a role that is clear from the conversation ("Interviewer", "Caller", "Agent", "Host"); otherwise "Speaker 1", "Speaker 2". Do not guess a name.
-- Notations are rarely needed outside legal work: put one in only for an event that matters to reading the transcript, as a short parenthetical, e.g. (Call transferred.) (Recording paused.) Usually "inserts" is empty.
-- A new speaker label each time the speaker changes; the same person keeps the same label throughout.`;
+const NORMAL = `This is an ordinary transcript (an interview, a call, a meeting, a podcast). Follow Rev's style guide, given in full below.`;
 
-export function instructions(legal) { return `${COMMON}\n\n${legal ? LEGAL : NORMAL}`; }
+const BIBLE = `THE STYLE GUIDE BELOW IS YOUR BIBLE. Follow every rule in it that concerns speakers, paragraphs, punctuation, capital letters and notations. Where anything else in these instructions seems to differ from the guide, the guide wins, except for one thing: you never add, remove or change a heard word (the guide's word rules, such as removing fillers or writing numbers as digits, are applied separately by Mixtape, which hides words without deleting them). When the guide gives an example, match its marks exactly. In "summary", say which guide rules you applied and any you could not apply.`;
+
+export function instructions(legal) { return `${COMMON}\n\n${legal ? LEGAL : NORMAL}\n\n${BIBLE}\n\n${guideFor(legal)}`; }
 export function request(paras, piece, { title = '', people = [], legal = false, cast = [] } = {}) {
   const [a, b] = piece, before = paras.slice(Math.max(0, a - 6), a);
   return [
@@ -66,8 +65,9 @@ export function request(paras, piece, { title = '', people = [], legal = false, 
   ].filter(Boolean).join('\n\n');
 }
 export const SCHEMA = {
-  type: 'object', additionalProperties: false, required: ['people', 'turns', 'inserts', 'summary'],
+  type: 'object', additionalProperties: false, required: ['people', 'turns', 'paras', 'inserts', 'summary'],
   properties: {
+    paras: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['para', 'text'], properties: { para: { type: 'integer' }, text: { type: 'string' } } } },
     people: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'label', 'why'], properties: { id: { type: 'string' }, label: { type: 'string' }, why: { type: 'string' } } } },
     turns: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['para', 'starts_with', 'speaker', 'why'], properties: { para: { type: 'integer' }, starts_with: { type: 'string' }, speaker: { type: 'string' }, why: { type: 'string' } } } },
     inserts: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['para', 'after', 'text', 'why'], properties: { para: { type: 'integer' }, after: { type: 'string' }, text: { type: 'string' }, why: { type: 'string' } } } },
@@ -135,6 +135,26 @@ export function apply(words, paras, piece, answer) {
   return { words: res, log };
 }
 const speakerBefore = (ws, i) => { for (let k = i; k >= 0; k--) if (ws[k].p && !(ws[k].lg && ws[k].lg.k === 'n')) return ws[k].sp || ''; return ''; };
+
+/* punctuation and capitals from Claude's "paras": each heard word takes the new form only when it is the same word
+   (same letters and digits, ignoring case and marks); a word that does not line up keeps its old form. Returns
+   { words, marked, refused } — a new array. */
+export function punctuate(words, paras, answerParas) {
+  const out = words.slice(); let marked = 0, refused = 0;
+  for (const x of answerParas || []) {
+    const p = paras[x.para]; if (!p || p.note || typeof x.text !== 'string') continue;
+    const neu = x.text.trim().split(/\s+/).filter(Boolean); let i = 0, j = 0;
+    while (i < p.n && j < neu.length) {
+      if (!bare(neu[j])) { if (i > 0 && /^[-–—.,;:?!]+$/.test(neu[j])) { const prev = out[p.i0 + i - 1]; out[p.i0 + i - 1] = { ...prev, t: `${prev.t} ${neu[j].replace(/[–—]/g, '--')}` }; marked++; } j++; continue; } // a mark on its own ("--"): it goes with the word before
+      const old = out[p.i0 + i], a = bare(old.t), b = bare(neu[j]);
+      if (a === b) { if (old.t !== neu[j]) { out[p.i0 + i] = { ...old, t: neu[j] }; marked++; } i++; j++; continue; }
+      // out of step: look a little ahead on each side for the next word that matches, and carry on from there
+      let di = -1, dj = -1; for (let k = 1; k <= 3 && di < 0; k++) { if (i + k < p.n && bare(out[p.i0 + i + k].t) === b) di = k; else if (j + k < neu.length && bare(neu[j + k]) === a) dj = k; }
+      refused++; if (di > 0) i += di; else if (dj > 0) j += dj; else { i++; j++; }
+    }
+  }
+  return { words: out, marked, refused };
+}
 
 /* how much it changed, in plain numbers */
 export function tally(log) {
