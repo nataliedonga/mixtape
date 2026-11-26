@@ -16,6 +16,7 @@ import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
 import { paragraphs, asText, pieces, request, instructions, SCHEMA, apply, restyle, applyOps, EDIT_TOOL, itemReader, joinSameSpeaker, finish, dashes, tally, cost } from '../claude-core.js';
 import { styleOf } from './matter.js';
 import { guideFor } from '../style-guides.js';
+import { readGuide, ACCEPT, countWords } from './guidefile.js';
 const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const KEY = 'mixtape-anthropic-key', AUTO = 'mixtape-claude-auto', MODEL = 'claude-opus-5-5';
 let api, bar, chat, running = null, sdk = null;
@@ -28,7 +29,7 @@ const legalOf = r => (r && r.guideKind ? r.guideKind === 'legal' : !!(r && r.leg
 const GKEY = k => `mixtape-style-guide-${k}`;
 const ownGuide = legal => { try { const g = JSON.parse(localStorage.getItem(GKEY(legal ? 'legal' : 'normal')) || 'null'); return g && typeof g.text === 'string' && g.text.trim() ? g : null; } catch (e) { return null; } };
 const guideText = legal => { const g = ownGuide(legal); return g ? g.text : guideFor(legal); };
-const guideName = legal => { const g = ownGuide(legal); return g ? g.name : legal ? 'built-in legal guide' : 'built-in ordinary guide'; };
+const guideName = legal => { const g = ownGuide(legal); return g ? g.name : legal ? 'Mixtape’s built-in legal guide' : 'Mixtape’s built-in guide'; };
 const castOf = r => { try { const m = (JSON.parse(localStorage.getItem('mixtape-matters') || '{}') || {})[r.matter]; return m && Array.isArray(m.people) ? m.people.map(p => String(p && p.name || '').trim()).filter(Boolean) : []; } catch (e) { return []; } };
 const money = d => (d < 0.01 ? 'under 1 cent' : `$${d.toFixed(2)}`);
 
@@ -79,6 +80,7 @@ async function run(why = 'auto') {
       r.sidesDone = true; await api.save();
     }
     if (!getKey() && !window.__claudeFake) { draw(); return; }
+    if (why === 'auto' && !autoOn()) { draw(); return; } // “After every transcript” is off: the sides are found, Claude waits to be asked
     if (api.sensitive && api.sensitive(c.track.id)) { r.claude = { ...(r.claude || {}), skipped: 'sensitive' }; return; }
     // 2. Claude, a part at a time, each decision shown and (punctuation) applied as it arrives
     const cl = await client(), legal = legalOf(r), cast = castOf(r), parts = pieces(paragraphs(r.words), 1500);
@@ -169,6 +171,24 @@ const STYLE = `
 #claudeBar .feed { flex-basis: 100%; margin: 4px 0 0; padding: 8px 10px 8px 28px; max-height: 190px; overflow: auto; border-radius: 8px; background: color-mix(in srgb, currentColor 5%, transparent); font: 12.5px/1.5 var(--f-mono, ui-monospace, monospace); }
 #claudeBar .gline { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; opacity: .9; } #claudeBar .gline select { height: 28px; border-radius: 6px; border: 1px solid var(--faint, #888); background: transparent; color: inherit; font: inherit; } #claudeBar .gline button { height: 28px; } #claudeBar .gname { opacity: .8; }
 .w.claudestyled { text-decoration: underline dotted color-mix(in srgb, #7c6cf2 80%, transparent); text-underline-offset: 3px; }
+#guideSheet { width: min(660px, calc(100vw - 28px)); max-height: calc(100vh - 40px); padding: 0; border: 1px solid var(--line, #8884); border-radius: 16px; background: var(--sheet, Canvas); color: var(--ink, CanvasText); font: 14px/1.5 var(--f-ui, system-ui, sans-serif); box-shadow: 0 24px 70px #0007; overflow: auto; }
+#guideSheet::backdrop { background: #0009; }
+#guideSheet header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 14px 18px; background: var(--sheet, Canvas); border-bottom: 1px solid var(--line, #8884); } #guideSheet header b { flex: 1; font-size: 17px; font-weight: 650; }
+#guideSheet .lead { margin: 14px 18px 4px; color: var(--muted, inherit); }
+#guideSheet button { height: 32px; padding: 0 13px; border: 1px solid var(--faint, #888); border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; } #guideSheet button:disabled { opacity: .5; cursor: default; }
+#guideSheet button.yes { background: var(--accent, #1f6f78); border-color: var(--accent, #1f6f78); color: var(--accent-ink, #fff); font-weight: 650; }
+#guideSheet .gcard { margin: 12px 18px; padding: 14px 16px; border: 1.5px dashed var(--faint, #8886); border-radius: 12px; transition: border-color .15s, background .15s; }
+#guideSheet .gcard.has { border-style: solid; border-color: var(--line, #8884); } #guideSheet .gcard.over { border-style: solid; border-color: var(--accent, #3FB8C4); background: color-mix(in srgb, var(--accent, #3FB8C4) 12%, transparent); }
+#guideSheet .gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; } #guideSheet .gh b { font-weight: 650; } #guideSheet .gh small { flex-basis: 100%; color: var(--muted, inherit); }
+#guideSheet .gtag { font-size: 11.5px; padding: 1px 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent, #3FB8C4) 22%, transparent); }
+#guideSheet .gfile { display: flex; gap: 10px; align-items: center; margin: 12px 0 0; padding: 10px 12px; border-radius: 9px; background: color-mix(in srgb, currentColor 6%, transparent); } #guideSheet .gfile b { display: block; overflow-wrap: anywhere; } #guideSheet .gfile small { color: var(--muted, inherit); }
+#guideSheet .gicon { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, currentColor 10%, transparent); font-weight: 700; } #guideSheet .gcard.has .gicon { background: var(--accent, #1f6f78); color: var(--accent-ink, #fff); }
+#guideSheet .gcard.busy .gicon { animation: gspin 1s linear infinite; border: 2px solid color-mix(in srgb, currentColor 20%, transparent); border-top-color: var(--accent, #3FB8C4); background: none; color: transparent; } @keyframes gspin { to { transform: rotate(360deg); } }
+#guideSheet .gnote { margin: 10px 0 0; padding: 8px 12px; border-radius: 9px; } #guideSheet .gnote.ok { background: color-mix(in srgb, #2e9d5b 18%, transparent); } #guideSheet .gnote.bad { background: color-mix(in srgb, #d0453a 18%, transparent); }
+#guideSheet .gacts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; } #guideSheet .gor { flex: 1; min-width: 150px; font-size: 13px; color: var(--muted, inherit); }
+#guideSheet .gtext { margin: 12px 0 0; max-height: 260px; overflow: auto; padding: 12px; border-radius: 9px; background: var(--paper, #0002); white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.55 var(--f-read, Georgia, serif); }
+#guideSheet footer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 18px 16px; } #guideSheet footer small { flex: 1 1 280px; color: var(--muted, inherit); } #guideSheet .gend { display: flex; gap: 8px; margin-left: auto; }
+#claudeBar .gname b { font-weight: 600; }
 #claudeBar .feed li { margin: 0; } #claudeBar .feed li:last-child { font-weight: 650; }`;
 
 function draw() {
@@ -193,7 +213,7 @@ function draw() {
     html = `<div class="cb-t"><b class="cl">Claude</b><small>${autoOn() ? 'Waiting to read this transcript.' : 'Automatic reading is off.'}</small></div><button class="yes" data-c="run">Set speakers and notations</button>`;
   }
   if (!running && key) { const lg = legalOf(r), own = ownGuide(lg);
-    html += `<div class="gline"><label>Guide <select id="claudeKind" title="Which style guide this transcript follows"><option value="legal"${lg ? ' selected' : ''}>Legal</option><option value="normal"${lg ? '' : ' selected'}>Ordinary</option></select></label><span class="gname" title="The guide Claude follows for this kind of transcript">${own ? `yours: ${esc(own.name)} (${Math.round(own.text.split(/\s+/).length / 100) / 10}k words)` : 'built-in'}</span><button data-c="loadguide" title="Load your own style guide for ${lg ? 'legal' : 'ordinary'} transcripts from a text file. It is kept in this browser only and sent to Claude with each transcript.">Load your guide…</button>${own ? '<button data-c="dropguide" title="Go back to the built-in guide">Use built-in</button>' : ''}<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="claudeAuto"${autoOn() ? ' checked' : ''}> After every transcript</label><input type="file" id="claudeGuideFile" accept=".txt,.md,text/plain" hidden></div>`; }
+    html += `<div class="gline"><label>This is <select id="claudeKind" title="Which style guide this transcript follows"><option value="legal"${lg ? ' selected' : ''}>a legal transcript</option><option value="normal"${lg ? '' : ' selected'}>an ordinary transcript</option></select></label><span class="gname">Style guide: <b>${esc(guideName(lg))}</b></span><button data-c="guides" title="Add the style guide you were given (PDF, Word or text), read it, or go back to the built-in one">${own ? 'Style guides…' : 'Add your style guide…'}</button><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="claudeAuto"${autoOn() ? ' checked' : ''}> After every transcript</label></div>`; }
   if (bar.dataset.k !== html) { const f0 = bar.querySelector('.feed'), atEnd = !f0 || f0.scrollTop + f0.clientHeight >= f0.scrollHeight - 8; bar.innerHTML = html; bar.dataset.k = html; const f = bar.querySelector('.feed'); if (f && atEnd) f.scrollTop = f.scrollHeight; } // the list follows the newest line unless you scrolled up
   // highlight what Claude put in
   for (const p of document.querySelectorAll('#text .para')) { const w = r.words[+p.dataset.i0]; p.classList.toggle('claudeins', !!(w && w.lg && w.lg.by === 'claude')); p.classList.toggle('claudelive', !!(running && running.live != null && +p.dataset.i0 === running.live)); }
@@ -207,8 +227,7 @@ async function onBar(e) {
   if (a === 'stop') { if (running) { running.stop = true; if (running.abort) running.abort(); } return; }
   if (a === 'run') { r.claude = { chat: (r.claude && r.claude.chat) || [] }; return run('asked'); }
   if (a === 'chat') return openChat();
-  if (a === 'loadguide') return bar.querySelector('#claudeGuideFile').click();
-  if (a === 'dropguide') { try { localStorage.removeItem(GKEY(legalOf(r) ? 'legal' : 'normal')); } catch (err) {} api.toast('Back to the built-in guide for this kind of transcript.', 4000); return draw(); }
+  if (a === 'guides') return openGuides();
 }
 
 /* ---- 3. the chat ---- */
@@ -277,6 +296,59 @@ function maybeRun() {
   if (r.auto) return; // a transcript finished before this, or already read by the rules: Claude reads it only when asked (the button)
   if (!r.sidesDone || (autoOn() && (getKey() || window.__claudeFake))) run('auto');
 }
+/* ---------- the style guides sheet: add the guide you were given, as the file it came in ---------- */
+let sheet = null; const gs = { busy: {}, note: {}, view: null, fresh: null, pick: 'legal' };
+const KINDS = [['legal', 'Legal transcripts', 'Court hearings, depositions, anything with the Legal switch on'], ['normal', 'All other transcripts', 'Interviews, meetings, calls, podcasts']];
+const dayOf = at => { try { return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return ''; } };
+function drawGuides() {
+  if (!sheet) return; const c = api.cur, r = c && c.tr, mine = r ? (legalOf(r) ? 'legal' : 'normal') : null;
+  const canRun = !!(r && r.done && (getKey() || window.__claudeFake) && !running && !(api.sensitive && api.sensitive(c.track.id)));
+  const cards = KINDS.map(([k, title, sub]) => { const lg = k === 'legal', own = ownGuide(lg), busy = gs.busy[k], note = gs.note[k], view = gs.view === k, words = own ? (own.words || countWords(own.text)) : 0;
+    return `<section class="gcard${own ? ' has' : ''}${busy ? ' busy' : ''}" data-kind="${k}"><div class="gh"><b>${title}</b>${mine === k ? '<span class="gtag">this transcript</span>' : ''}<small>${sub}</small></div>
+      <div class="gfile"><span class="gicon" aria-hidden="true">${own ? '✓' : '·'}</span><div><b>${busy ? esc(busy) : own ? esc(own.name) : lg ? 'Mixtape’s built-in legal guide' : 'Mixtape’s built-in guide'}</b><small>${busy ? 'Reading it on this computer…' : own ? `${own.pages ? `${own.pages} page${own.pages === 1 ? '' : 's'} · ` : ''}${words.toLocaleString()} words${own.at ? ` · added ${dayOf(own.at)}` : ''} · Claude follows all of it` : 'In use until you add your own'}</small></div></div>
+      ${note ? `<p class="gnote ${note.ok ? 'ok' : 'bad'}" role="status">${esc(note.text)}</p>` : ''}
+      <div class="gacts"><button class="${own ? '' : 'yes'}" data-g="pick"${busy ? ' disabled' : ''}>${own ? 'Replace…' : 'Add your guide…'}</button><span class="gor">or drop the file here · PDF, Word or text</span><button data-g="view" aria-expanded="${view}">${view ? 'Hide' : 'Read it'}</button>${own ? '<button data-g="remove">Remove</button>' : ''}</div>
+      ${view ? `<pre class="gtext" tabindex="0">${esc(guideText(lg))}</pre>` : ''}</section>`; }).join('');
+  const f = gs.fresh, other = f && mine && f !== mine;
+  sheet.innerHTML = `<header><b>Style guides</b><button type="button" data-g="close" aria-label="Close">Close</button></header>
+    <p class="lead">Add the style guide you were given, just as it is. Claude then follows it for every transcript of that kind: speakers, paragraphs, punctuation and the way words are written.</p>
+    ${cards}
+    <footer><small>Your guide stays in this browser. It goes to Claude together with a transcript, so Claude can follow it; nothing is sent for recordings marked sensitive.</small><span class="gend">${f && canRun ? `<button class="yes" data-g="restyle">${other ? 'Use it for this transcript and restyle' : 'Restyle this transcript now'}</button>` : ''}<button data-g="close">Done</button></span></footer>
+    <input type="file" id="guideFile" accept="${ACCEPT}" hidden>`;
+}
+function openGuides() {
+  if (!sheet) { sheet = document.createElement('dialog'); sheet.id = 'guideSheet'; sheet.setAttribute('aria-label', 'Style guides'); document.body.append(sheet);
+    sheet.addEventListener('click', onGuides);
+    sheet.addEventListener('change', e => { if (e.target.id === 'guideFile' && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; addGuide(gs.pick, f); } });
+    sheet.addEventListener('close', () => { gs.note = {}; gs.view = null; gs.fresh = null; draw(); });
+    // a file dropped on a card becomes that kind's guide; dropped anywhere else in the sheet it does nothing (and never opens in the tab)
+    const cardAt = e => e.target.closest && e.target.closest('.gcard');
+    sheet.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); const cd = cardAt(e); for (const x of sheet.querySelectorAll('.gcard')) x.classList.toggle('over', x === cd); e.dataTransfer.dropEffect = cd ? 'copy' : 'none'; });
+    sheet.addEventListener('dragleave', e => { if (!sheet.contains(e.relatedTarget)) for (const x of sheet.querySelectorAll('.gcard')) x.classList.remove('over'); });
+    sheet.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); const cd = cardAt(e), f = e.dataTransfer.files && e.dataTransfer.files[0]; for (const x of sheet.querySelectorAll('.gcard')) x.classList.remove('over'); if (cd && f) addGuide(cd.dataset.kind, f); });
+  }
+  gs.note = {}; gs.view = null; gs.fresh = null; drawGuides(); if (!sheet.open) sheet.showModal();
+}
+async function addGuide(kind, file) {
+  if (gs.busy[kind]) return; const lg = kind === 'legal';
+  gs.busy[kind] = file.name; delete gs.note[kind]; drawGuides();
+  try {
+    const g = await readGuide(file);
+    try { localStorage.setItem(GKEY(kind), JSON.stringify({ name: g.name, text: g.text, pages: g.pages, words: g.words, at: Date.now() })); }
+    catch (e) { throw Object.assign(new Error('The guide was read, but this browser has no room left to keep it. Free some space in Mixtape and add it again.'), { friendly: true }); }
+    gs.fresh = kind; if (gs.view === kind) gs.view = null;
+    gs.note[kind] = { ok: true, text: `Added. Claude will follow it for every ${lg ? 'legal' : 'other'} transcript from now on.` };
+  } catch (e) { gs.note[kind] = { ok: false, text: e && e.friendly ? e.message : 'That file could not be read. Try the guide as a PDF, a Word document (.docx) or a text file.' }; if (!(e && e.friendly)) console.warn('style guide', e); }
+  delete gs.busy[kind]; drawGuides(); draw();
+}
+async function onGuides(e) {
+  const b = e.target.closest('button'); if (!b) return; const a = b.dataset.g, cd = b.closest('.gcard'), kind = cd && cd.dataset.kind;
+  if (a === 'close') return sheet.close();
+  if (a === 'pick') { gs.pick = kind; return sheet.querySelector('#guideFile').click(); }
+  if (a === 'view') { gs.view = gs.view === kind ? null : kind; return drawGuides(); }
+  if (a === 'remove') { try { localStorage.removeItem(GKEY(kind)); } catch (err) {} gs.fresh = kind; if (gs.view === kind) gs.view = null; gs.note[kind] = { ok: true, text: 'Removed from this browser. The built-in guide is in use again.' }; drawGuides(); return draw(); }
+  if (a === 'restyle') { const c = api.cur, r = c && c.tr; if (!r) return; if (gs.fresh && gs.fresh !== (legalOf(r) ? 'legal' : 'normal')) { r.guideKind = gs.fresh; try { await api.save(); } catch (err) {} } sheet.close(); r.claude = { chat: (r.claude && r.claude.chat) || [] }; return run('asked'); }
+}
 /* the rule-based guesses (roles.js) wait for Claude when Claude will read this transcript */
 export function claudePending(r) { return !!(r && !r.auto && r.mode === 'heard' && r.done && (running || ((getKey() || window.__claudeFake) && autoOn() && !(r.claude && (r.claude.log || r.claude.error || r.claude.skipped))) || !r.sidesDone)); }
 
@@ -287,7 +359,6 @@ export function initClaude(a) {
   bar.addEventListener('change', async e => {
     const r = api.cur && api.cur.tr;
     if (e.target.id === 'claudeKind' && r) { r.guideKind = e.target.value; try { await api.save(); } catch (err) {} draw(); api.toast(`This transcript follows the ${r.guideKind === 'legal' ? 'legal' : 'ordinary'} guide (${guideName(r.guideKind === 'legal')}). Press Run again to restyle it.`, 6000); return; }
-    if (e.target.id === 'claudeGuideFile' && e.target.files[0] && r) { const f = e.target.files[0]; let text = ''; try { text = await f.text(); } catch (err) {} e.target.value = ''; if (text.trim().length < 200) return api.toast('That file has too little text to be a style guide. Use a plain text (.txt) file of the guide.', 7000); if (text.length > 400000) return api.toast('That file is too long for a style guide (over 400,000 characters).', 7000); const lg = legalOf(r); try { localStorage.setItem(GKEY(lg ? 'legal' : 'normal'), JSON.stringify({ name: f.name.replace(/\.[a-z0-9]+$/i, ''), text, at: Date.now() })); } catch (err) { return api.toast('The guide could not be kept in this browser (its storage may be full).', 7000); } draw(); api.toast(`“${f.name}” is now the guide for every ${lg ? 'legal' : 'ordinary'} transcript. Press Run again to restyle this one.`, 7000); return; }
     if (e.target.id === 'claudeAuto') { try { localStorage.setItem(AUTO, e.target.checked ? '1' : '0'); } catch (err) {} draw(); maybeRun(); }
   });
   bar.addEventListener('keydown', e => { if (e.target.id === 'claudeKey' && e.key === 'Enter') { e.preventDefault(); bar.querySelector('[data-c="savekey"]').click(); } });
@@ -299,6 +370,6 @@ export function initClaude(a) {
   chat.querySelector('textarea').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chat.querySelector('form').requestSubmit(); } if (e.key === 'Escape') chat.hidden = true; });
   new MutationObserver(maybeRun).observe($('#text'), { childList: true });
   setInterval(maybeRun, 1500); // a transcript that finishes while the text is not redrawn
-  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__claude = { run, send, draw, sides, bySide, get running() { return running; } };
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__claude = { run, send, draw, sides, bySide, openGuides, addGuide, get running() { return running; } };
   maybeRun();
 }

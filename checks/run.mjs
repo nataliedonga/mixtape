@@ -18,7 +18,7 @@ import { launch, sleep } from './lib/browser.mjs';
 import { makeMedia } from './lib/media.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..');
-const SUITES = ['static', 'node', 'pages', 'sw', 'player', 'cutter', 'transcripts', 'studio', 'reader', 'sound'];
+const SUITES = ['static', 'node', 'pages', 'sw', 'player', 'cutter', 'transcripts', 'guides', 'studio', 'reader', 'sound'];
 const ALIAS = { transcribe: 'transcripts', transcript: 'transcripts', serviceworker: 'sw', 'service-worker': 'sw', page: 'pages', suites: 'node' };
 const LIMIT = { transcripts: process.env.FULL ? 600 : 120 }; // seconds a suite may take before it is given up on (default 120)
 

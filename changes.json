@@ -1,5 +1,15 @@
 [
   {
+    "version": 135,
+    "date": "2026-11-26",
+    "items": [
+      "Transcripts: add your style guide as the file you were given. In Claude’s bar press “Add your style guide…”: pick the PDF, Word document or text file, or drop it on the card. Mixtape reads it on this computer (24 pages take under a second) and shows its name, pages and words. There is one place for legal transcripts and one for all others.",
+      "Transcripts: after adding a guide, one button restyles the open transcript with it. “Read it” shows the words Claude is given, and “Remove” goes back to the built-in guide.",
+      "Transcripts: files that cannot be a guide are refused in plain words: a scanned PDF (with how to make it readable in the Reader), a locked PDF, an old .doc file, a picture, or a file with too little writing. The guide already in use stays.",
+      "Transcripts: with “After every transcript” unticked, Claude no longer reads a transcript the first time it is opened; it waits for the button."
+    ]
+  },
+  {
     "version": 134,
     "date": "2026-11-26",
     "items": [
