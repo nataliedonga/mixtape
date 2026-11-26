@@ -1,5 +1,12 @@
 [
   {
+    "version": 133,
+    "date": "2026-11-26",
+    "items": [
+      "Transcripts: each guide's dash example now appears only in that guide, so an ordinary transcript is never shown TranscribeMe's form or a legal one Rev's."
+    ]
+  },
+  {
     "version": 132,
     "date": "2026-11-26",
     "items": [
