@@ -13,7 +13,7 @@
    The key is the user's own Anthropic API key, kept in this browser only (localStorage) and sent only to
    api.anthropic.com. The SDK is Anthropic's own (vendor/anthropic, Apache-2.0). */
 import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
-import { paragraphs, asText, pieces, request, instructions, SCHEMA, apply, punctuate, tally, cost } from '../claude-core.js';
+import { paragraphs, asText, pieces, request, instructions, SCHEMA, apply, punctuate, itemReader, tally, cost } from '../claude-core.js';
 import { styleOf } from './matter.js';
 import { guideFor } from '../style-guides.js';
 const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -74,40 +74,56 @@ async function run(why = 'auto') {
     }
     if (!getKey() && !window.__claudeFake) { draw(); return; }
     if (api.sensitive && api.sensitive(c.track.id)) { r.claude = { ...(r.claude || {}), skipped: 'sensitive' }; return; }
-    // 2. Claude, a part at a time
-    const cl = await client(), legal = legalOf(r), paras = paragraphs(r.words), parts = pieces(paras), cast = castOf(r);
-    job.step = 'claude'; job.parts = parts.length; draw();
+    // 2. Claude, a part at a time, each decision shown and (punctuation) applied as it arrives
+    const cl = await client(), legal = legalOf(r), cast = castOf(r), parts = pieces(paragraphs(r.words), 1500);
+    job.step = 'claude'; job.parts = parts.length; job.feed = []; draw();
+    api.remember(); // one Ctrl + Z for everything Claude does, even if it is stopped part-way
     let words = r.words, marks = 0, people = [], log = [], usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, summary = [];
+    const feed = t => { job.feed.push(t); if (job.feed.length > 80) job.feed.shift(); drawSoon(); };
     for (let k = 0; k < parts.length; k++) {
       if (job.stop || api.cur !== c) throw Object.assign(new Error('stopped'), { stopped: true });
       if (api.sensitive && api.sensitive(c.track.id)) throw new Error('the recording was marked sensitive while Claude was reading it, so it stopped');
       job.part = k + 1; draw();
-      const ps = paragraphs(words), body = { model: MODEL, max_tokens: 64000, thinking: { type: 'adaptive' }, output_config: { effort: 'high', format: { type: 'json_schema', schema: SCHEMA } },
+      const ps = paragraphs(words), [a, b] = parts[k], label = id => (people.find(p => p.id === id) || {}).label || id;
+      const body = { model: MODEL, max_tokens: 64000, thinking: { type: 'adaptive' }, output_config: { effort: 'high', format: { type: 'json_schema', schema: SCHEMA } },
         system: [{ type: 'text', text: instructions(legal), cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: request(ps, parts[k], { title: c.track.title, people, legal, cast }) }] };
-      const msg = await ask(cl, body);
+      const rd = itemReader((key, x) => {
+        if (key === 'people' && x.id && !people.some(p => p.id === x.id)) { people.push(x); feed(`Person: ${x.label}${x.why ? ` (${x.why})` : ''}`); }
+        else if (key === 'turns' && x.para >= a && x.para < b) feed(`¶${x.para}${x.starts_with ? ` from “${x.starts_with}”` : ''} → ${label(x.speaker)}${x.why ? ` (${x.why})` : ''}`);
+        else if (key === 'paras' && x.para >= a && x.para < b) { const pu = punctuate(words, ps, [x]); words = pu.words; marks += pu.marked; r.words = words; job.live = ps[x.para] && ps[x.para].i0; feed(`¶${x.para} punctuated${pu.marked ? ` (${pu.marked} word${pu.marked === 1 ? '' : 's'})` : ', nothing to change'}${pu.refused ? `, ${pu.refused} refused` : ''}`); redrawSoon(); }
+        else if (key === 'inserts' && x.text) feed(`Notation after ¶${x.para}: ${x.text}`);
+      });
+      const msg = await ask(cl, body, d => rd.push(d), job);
       if (msg.stop_reason === 'refusal') throw new Error('Claude declined to read this part');
-      const text = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); let ans;
+      const text = (msg.content || []).filter(bl => bl.type === 'text').map(bl => bl.text).join(''); let ans;
       try { ans = JSON.parse(text); } catch (e) { throw new Error('Claude’s answer could not be read'); }
       for (const [kk, v] of Object.entries(msg.usage || {})) if (typeof v === 'number' && kk in usage) usage[kk] += v;
-      const pu = punctuate(words, ps, (ans.paras || []).filter(x => x.para >= parts[k][0] && x.para < parts[k][1])); words = pu.words; marks += pu.marked; // punctuation first: it changes no word, so the paragraph numbers stay
+      const pu = punctuate(words, ps, (ans.paras || []).filter(x => x.para >= a && x.para < b)); words = pu.words; marks += pu.marked; // anything the live reading missed (it changes no word, so the numbers stay)
       const res = apply(words, ps, parts[k], ans); words = res.words; log.push(...res.log); if (ans.summary) summary.push(ans.summary);
       for (const p of ans.people || []) if (!people.some(x => x.id === p.id)) people.push(p);
+      const t = tally(res.log); feed(`Part ${k + 1} of ${parts.length} done: ${t.speakers} speakers set, ${t.splits} split, ${t.inserts} notation${t.inserts === 1 ? '' : 's'}${t.skipped ? `, ${t.skipped} could not be placed` : ''}`);
+      r.words = words; job.live = null; api.drawAll(); try { await api.save(); } catch (e) {} // each finished part is kept
       // the paragraph numbers move as splits and notations go in: the next part is counted afresh from the words
-      const shift = paragraphs(words).length - ps.length; for (let j = k + 1; j < parts.length; j++) { parts[j] = [parts[j][0] + shift, parts[j][1] + shift]; }
+      const shift = paragraphs(words).length - ps.length; for (let jx = k + 1; jx < parts.length; jx++) { parts[jx] = [parts[jx][0] + shift, parts[jx][1] + shift]; }
     }
-    api.remember(); r.words = words; r.speakers = true; r.punct = { at: Date.now(), by: 'claude', marked: marks };
-    if (!styleOf(r)) r.styleFor = legal ? 'tm-clean' : 'rev'; // the guide's word rules (fillers, numbers, written-out forms) are applied by Mixtape's own style, set to match (a matter's chosen style wins) r.auto = r.auto || { at: Date.now(), names: [] }; // the rule-based guesses are not run on top of Claude's
+    r.words = words; r.speakers = true; r.punct = { at: Date.now(), by: 'claude', marked: marks };
+    if (!styleOf(r)) r.styleFor = legal ? 'tm-clean' : 'rev'; // the guide's word rules (fillers, numbers, written-out forms) are applied by Mixtape's own style, set to match (a matter's chosen style wins)
+    r.auto = r.auto || { at: Date.now(), names: [] }; // the rule-based guesses are not run on top of Claude's
     r.claude = { at: Date.now(), model: MODEL, legal, people, log, count: { ...tally(log), marks }, usage, cost: cost(usage), summary: summary.join(' '), why, chat: (r.claude && r.claude.chat) || [] };
-    api.drawAll(); await api.save();
+    job.feed = []; api.drawAll(); await api.save();
     const n = r.claude.count; api.toast(`Claude punctuated it, set the speakers${n.splits ? `, split ${n.splits} paragraph${n.splits === 1 ? '' : 's'}` : ''}${n.inserts ? `, and put in ${n.inserts} notation${n.inserts === 1 ? '' : 's'}` : ''}. Ctrl + Z undoes it all.`, 8000);
   } catch (e) {
     if (!e.stopped) { r.claude = { ...(r.claude || {}), error: errText(e), at: Date.now() }; try { await api.save(); } catch (x) {} }
   } finally { running = null; draw(); }
 }
-async function ask(cl, body) {
-  try { return await cl.beta.messages.stream({ ...body, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }).finalMessage(); } // if Opus declines a part, Anthropic's fallback model answers it
-  catch (e) { if (e && e.status === 400 && /fallback/i.test(String(e.message))) return cl.messages.stream(body).finalMessage(); throw e; }
+async function ask(cl, body, onText, job) {
+  const go = st => { if (onText) st.on('text', onText); if (job) job.abort = () => { try { st.abort(); } catch (e) {} }; return st.finalMessage(); };
+  try { return await go(cl.beta.messages.stream({ ...body, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' })); } // if Opus declines a part, Anthropic's fallback model answers it
+  catch (e) { if (e && e.status === 400 && /fallback/i.test(String(e.message))) return go(cl.messages.stream(body)); if (job && job.stop) throw Object.assign(new Error('stopped'), { stopped: true }); throw e; }
 }
+let drawT = 0, redrawT = 0;
+const drawSoon = () => { clearTimeout(drawT); drawT = setTimeout(draw, 120); };
+const redrawSoon = () => { if (redrawT) return; redrawT = setTimeout(() => { redrawT = 0; api.drawAll(); draw(); }, 700); }; // the text is redrawn at most every 0.7 s while punctuation streams in
 function errText(e) {
   const s = e && e.status;
   if (s === 401) return 'the API key was not accepted. Check it and save it again';
@@ -139,7 +155,10 @@ const STYLE = `
 #claudeChat .facts { font-size: 13px; opacity: .85; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--faint, #8886); }
 #claudeChat form { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--faint, #8884); }
 #claudeChat textarea { flex: 1; min-height: 42px; max-height: 140px; resize: vertical; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--faint, #888); background: transparent; color: inherit; font: inherit; }
-.para.claudeins { background: color-mix(in srgb, #7c6cf2 18%, transparent); border-radius: 6px; }`;
+.para.claudeins { background: color-mix(in srgb, #7c6cf2 18%, transparent); border-radius: 6px; }
+.para.claudelive { box-shadow: inset 3px 0 0 var(--accent, #3FB8C4); background: color-mix(in srgb, var(--accent, #3FB8C4) 10%, transparent); border-radius: 6px; transition: background .4s; }
+#claudeBar .feed { flex-basis: 100%; margin: 4px 0 0; padding: 8px 10px 8px 28px; max-height: 190px; overflow: auto; border-radius: 8px; background: color-mix(in srgb, currentColor 5%, transparent); font: 12.5px/1.5 var(--f-mono, ui-monospace, monospace); }
+#claudeBar .feed li { margin: 0; } #claudeBar .feed li:last-child { font-weight: 650; }`;
 
 function draw() {
   const c = api.cur, r = c && c.tr; if (!bar) return;
@@ -149,7 +168,7 @@ function draw() {
   let html = '';
   if (running) {
     const j = running, p = j.step === 'sides' ? (j.progress || 0) : j.parts ? (j.part - 1) / j.parts : 0;
-    html = `<div class="cb-t"><b class="cl">${j.step === 'sides' ? 'Finding the speakers from the sides of the recording…' : `Claude is reading the transcript${j.parts > 1 ? `: part ${j.part} of ${j.parts}` : '…'}`}</b><small>${j.step === 'sides' ? 'Only for calls with each person on their own side: exact, and nothing is sent.' : 'Only the words are sent to Anthropic, never the sound. You can keep working.'}</small></div><button data-c="stop">Stop</button><div class="prog"><i style="width:${Math.round(p * 100)}%"></i></div>`;
+    html = `<div class="cb-t"><b class="cl">${j.step === 'sides' ? 'Finding the speakers from the sides of the recording…' : `Claude is reading the transcript${j.parts > 1 ? `: part ${j.part} of ${j.parts}` : '…'}`}</b><small>${j.step === 'sides' ? 'Only for calls with each person on their own side: exact, and nothing is sent.' : 'Only the words are sent to Anthropic, never the sound. You can keep working.'}</small></div><button data-c="stop">Stop</button><div class="prog"><i style="width:${Math.round(p * 100)}%"></i></div>${j.feed && j.feed.length ? `<ol class="feed" aria-live="polite">${j.feed.slice(-40).map(t => `<li>${esc(t)}</li>`).join('')}</ol>` : ''}`;
   } else if (api.sensitive && api.sensitive(c.track.id)) {
     html = `<div class="cb-t"><b class="cl">Claude</b><small>This recording is marked sensitive: nothing from it is sent to Claude.</small></div>`;
   } else if (!key) {
@@ -163,16 +182,16 @@ function draw() {
     html = `<div class="cb-t"><b class="cl">Claude</b><small>${autoOn() ? 'Waiting to read this transcript.' : 'Automatic reading is off.'}</small></div><button class="yes" data-c="run">Set speakers and notations</button>`;
   }
   if (!running && key) html += `<label style="font-size:13px;opacity:.8;display:flex;gap:6px;align-items:center"><input type="checkbox" id="claudeAuto"${autoOn() ? ' checked' : ''}> After every transcript</label>`;
-  if (bar.dataset.k !== html) { bar.innerHTML = html; bar.dataset.k = html; }
+  if (bar.dataset.k !== html) { const f0 = bar.querySelector('.feed'), atEnd = !f0 || f0.scrollTop + f0.clientHeight >= f0.scrollHeight - 8; bar.innerHTML = html; bar.dataset.k = html; const f = bar.querySelector('.feed'); if (f && atEnd) f.scrollTop = f.scrollHeight; } // the list follows the newest line unless you scrolled up
   // highlight what Claude put in
-  for (const p of document.querySelectorAll('#text .para')) { const w = r.words[+p.dataset.i0]; p.classList.toggle('claudeins', !!(w && w.lg && w.lg.by === 'claude')); }
+  for (const p of document.querySelectorAll('#text .para')) { const w = r.words[+p.dataset.i0]; p.classList.toggle('claudeins', !!(w && w.lg && w.lg.by === 'claude')); p.classList.toggle('claudelive', !!(running && running.live != null && +p.dataset.i0 === running.live)); }
 }
 async function onBar(e) {
   const b = e.target.closest('button'), c = api.cur, r = c && c.tr; if (!b || !r) return;
   const a = b.dataset.c;
   if (a === 'savekey') { const v = ($('#claudeKey').value || '').trim(); if (!/^sk-ant-/.test(v)) return api.toast('That does not look like an Anthropic API key (they start with sk-ant-).', 6000); try { localStorage.setItem(KEY, v); } catch (err) { return api.toast('The key could not be kept in this browser.', 6000); } $('#claudeKey').value = ''; api.toast('Key saved in this browser.', 3000); draw(); if (!r.claude || !r.claude.log) run('first key'); return; }
   if (a === 'forget') { try { localStorage.removeItem(KEY); } catch (err) {} r.claude = {}; return draw(); }
-  if (a === 'stop') { if (running) running.stop = true; return; }
+  if (a === 'stop') { if (running) { running.stop = true; if (running.abort) running.abort(); } return; }
   if (a === 'run') { r.claude = { chat: (r.claude && r.claude.chat) || [] }; return run('asked'); }
   if (a === 'chat') return openChat();
 }

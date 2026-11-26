@@ -1,5 +1,5 @@
 // node claude-check.mjs — applying Claude's answer to a transcript, on an invented hearing (no network, no real recording).
-import { paragraphs, asText, pieces, apply, punctuate, findQuote, tally, cost, request, instructions, SCHEMA } from './claude-core.js';
+import { paragraphs, asText, pieces, apply, punctuate, itemReader, findQuote, tally, cost, request, instructions, SCHEMA } from './claude-core.js';
 let pass = 0, fail = 0; const ok = (c, name) => { if (c) { pass++; console.log('ok   ' + name); } else { fail++; console.log('FAIL ' + name); } };
 const mk = lines => { const w = []; let t = 0; for (const [sp, text, side] of lines) text.split(' ').forEach((x, k) => w.push({ t: x, s: +(t += 0.4).toFixed(2), e: +(t + 0.3).toFixed(2), ...(k === 0 ? { p: true, ...(sp ? { sp } : {}), ...(side ? { side } : {}) } : {}) })); return w; };
 const words = mk([
@@ -51,5 +51,11 @@ ok(Math.abs(cost({ input_tokens: 12000, output_tokens: 6000 }) - 0.168) < 1e-9, 
   ok(/Oxford comma/.test(instructions(false)) && /semicolon/.test(instructions(false)) && /two hyphens straight after/.test(instructions(true)) && /set off with commas/.test(instructions(true)), 'Rev’s and TranscribeMe’s punctuation rules are in the instructions'); }
 
 ok(/YOUR BIBLE/.test(instructions(true)) && /STYLE GUIDE: TranscribeMe/.test(instructions(true)) && !/STYLE GUIDE: Rev/.test(instructions(true)) && /STYLE GUIDE: Rev/.test(instructions(false)) && !/STYLE GUIDE: TranscribeMe/.test(instructions(false)), 'each transcript gets its own whole style guide as its bible: TranscribeMe for legal, Rev for the rest');
+
+{ // an answer read while it arrives, in small pieces, items handed over as each one closes
+  const json = JSON.stringify({ people: [{ id: 'P1', label: 'Judge', why: 'says "order" {in court}' }], turns: [{ para: 0, starts_with: '', speaker: 'P1', why: '' }, { para: 2, starts_with: 'yes I {did}', speaker: 'P2', why: 'a "quote" \ and brace }' }], paras: [{ para: 0, text: 'Order, please.' }], inserts: [], summary: 'done' });
+  const got = []; const rd = itemReader((k, x) => got.push(k + ':' + (x.para ?? x.id)));
+  for (let i = 0; i < json.length; i += 7) rd.push(json.slice(i, i + 7));
+  ok(got.join(' ') === 'people:P1 turns:0 turns:2 paras:0', 'items are read as they arrive, even with braces and quotes inside the text: ' + got.join(' ')); }
 
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

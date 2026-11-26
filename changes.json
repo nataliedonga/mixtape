@@ -1,5 +1,13 @@
 [
   {
+    "version": 131,
+    "date": "2026-11-26",
+    "items": [
+      "Transcripts: watch Claude work. While it reads, the bar shows a live list of every decision as it is made (who each person is, which paragraph goes to whom, each notation), and the punctuation lands in the transcript paragraph by paragraph, with the paragraph being worked on marked. Speakers and notations go in at the end of each part. Parts are smaller (about 1,500 words), so something changes every few seconds. Stop works at once, and what was finished is kept (Ctrl + Z still undoes all of it).",
+      "Transcripts: fixed: after Claude had finished, Mixtape's older rule-based speaker guesses could still run on top of its work."
+    ]
+  },
+  {
     "version": 130,
     "date": "2026-11-26",
     "items": [

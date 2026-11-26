@@ -163,3 +163,26 @@ export function tally(log) {
 }
 /* the cost of an answer, in dollars, from its usage (Claude Opus 5.5: $4 in, $20 out per million; cache reads $0.20) */
 export function cost(u) { if (!u) return 0; return ((u.input_tokens || 0) * 4 + (u.cache_creation_input_tokens || 0) * 5 + (u.cache_read_input_tokens || 0) * 0.2 + (u.output_tokens || 0) * 20) / 1e6; }
+
+/* Reading an answer while it is still arriving: the JSON comes in pieces, and each finished item of a top-level list
+   ("turns", "paras", "inserts", "people") is handed over as soon as its closing brace arrives, so the page can show,
+   and apply, each decision as it is made. onItem(key, item). Text that is not yet a whole item is kept for later. */
+export function itemReader(onItem) {
+  let buf = '', pos = 0, depth = 0, inStr = false, esc = false, key = '', keyStart = -1, lastStr = '', itemStart = -1;
+  return {
+    push(delta) {
+      buf += delta;
+      for (; pos < buf.length; pos++) {
+        const c = buf[pos];
+        if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') { inStr = false; if (depth === 1) lastStr = buf.slice(keyStart + 1, pos); } continue; }
+        if (c === '"') { inStr = true; keyStart = pos; continue; }
+        if (c === ':' && depth === 1) { key = lastStr; continue; }
+        if (c === '{' || c === '[') { depth++; if (c === '{' && depth === 3) itemStart = pos; continue; }
+        if (c === '}' || c === ']') {
+          if (c === '}' && depth === 3 && itemStart >= 0) { let item = null; try { item = JSON.parse(buf.slice(itemStart, pos + 1)); } catch (e) {} if (item) onItem(key, item); itemStart = -1; }
+          depth--;
+        }
+      }
+    },
+  };
+}
