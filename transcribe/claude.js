@@ -107,6 +107,7 @@ async function ask(cl, body) {
 function errText(e) {
   const s = e && e.status;
   if (s === 401) return 'the API key was not accepted. Check it and save it again';
+  if (s === 400 && /workspace/i.test(String(e && e.message))) return 'this API key was made for the whole account, not inside a workspace. In the Anthropic console open Settings → Workspaces, choose one (or make one called Mixtape), create a key there, then press Change key and paste it';
   if (s === 429) return 'Anthropic says too many requests just now. Try again in a minute';
   if (s === 402 || /credit|billing/i.test(String(e && e.message))) return 'the Anthropic account has no credit left';
   if (s >= 500) return 'Anthropic’s servers had a problem. Try again in a moment';

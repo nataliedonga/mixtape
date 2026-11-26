@@ -1,5 +1,12 @@
 [
   {
+    "version": 129,
+    "date": "2026-11-26",
+    "items": [
+      "Transcripts: when an Anthropic key was made for the whole account instead of inside a workspace, Claude's bar now says so in plain words and how to make the right key."
+    ]
+  },
+  {
     "version": 128,
     "date": "2026-11-26",
     "items": [
