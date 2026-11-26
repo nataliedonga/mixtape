@@ -1,5 +1,14 @@
 [
   {
+    "version": 134,
+    "date": "2026-11-26",
+    "items": [
+      "Transcripts: your own style guide. In Claude's bar, choose Legal or Ordinary for the transcript and press “Load your guide…” to load the guide as a text file. It is kept in this browser only, replaces the built-in guide for that kind of transcript, and is given to Claude whole, as its bible, with every transcript.",
+      "Transcripts: Claude now applies the guide's word rules too, not only speakers and punctuation: stutters, partial words and fillers the guide drops are left out; informal forms, numbers, money, dates and times are written the guide's way; speakers are labelled the guide's way. What was heard is always kept underneath: restyled words are underlined (hover to see what was heard), left-out words are hidden, and Ctrl + Z takes it all back. Words that were never said are refused.",
+      "Transcripts: the chat can now change the transcript. Tell it what you want (“the judge is THE COURT everywhere”, “make ¶12 the witness”, “write the numbers in ¶30 as digits”) and it does it, lists what it changed, and your instruction wins over the guide for that change. One Ctrl + Z takes a chat change back."
+    ]
+  },
+  {
     "version": 133,
     "date": "2026-11-26",
     "items": [

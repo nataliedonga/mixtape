@@ -18,7 +18,7 @@ export function paragraphs(words) {
   const out = []; let cur = null;
   words.forEach((w, i) => {
     if (i === 0 || w.p) { cur = { k: out.length, i0: i, n: 0, s: w.s ?? null, sp: w.sp || '', side: w.side || '', note: !!(w.lg && w.lg.k === 'n'), toks: [] }; out.push(cur); }
-    cur.n++; cur.toks.push(String(w.t));
+    cur.n++; if (!w.cut) cur.toks.push(String(w.t));
   });
   for (const p of out) { p.text = p.toks.join(' '); delete p.toks; }
   return out;
@@ -35,25 +35,26 @@ export function pieces(paras, size = 6000) {
 }
 
 /* ---- the instructions ---- */
-const COMMON = `You are a senior transcript editor. You receive a transcript that a speech recogniser wrote down: numbered paragraphs, each with its start time and, where the audio told us, a speaker label or the side of the recording it came from. The paragraphs were broken where the recogniser heard a pause, so one paragraph can hold two speakers, and labels may be missing or wrong.
+const COMMON = `You are a senior transcript editor. You receive a transcript that a speech recogniser wrote down: numbered paragraphs, each with its start time and, where the audio told us, a speaker label or the side of the recording it came from. The paragraphs were broken wherever the recogniser heard a pause, so one paragraph can hold two speakers, and labels may be missing or wrong. The words are raw: little or no punctuation, stutters and fillers as heard.
 
-Your job, using the logic of the conversation:
-1. Decide who the people are and give each a label (rules below). Use names only when the transcript itself gives them (a greeting, an introduction, "Ms. Dlamini, you may proceed"). Never invent a name.
-2. Say who speaks, and where each paragraph begins. The paragraphs you were given were broken at every pause, which the guide does not allow ("not for a short pause"): consecutive paragraphs by the same speaker are joined into one, unless you keep a break. List in "turns": (a) every place where the speaker changes, and (b) every place where the guide wants a new paragraph although the speaker stays the same (for Rev: the speaker turns to address someone else, or after "strike that"). A place at the start of a paragraph has starts_with "". A place inside a paragraph has starts_with set to the first 3 to 8 words from that point, copied exactly from that paragraph. Any break you do not list, between paragraphs of one speaker, is removed.
-3. Punctuate: for every paragraph you were given (except notations), write it out again in "paras" with sentence punctuation and capital letters as the guidelines below ask: full stops, commas, question marks, capitals at sentence starts, for names, for "I". Every sentence ends with a mark: every paragraph's text must end with a full stop, a question mark or the guide's dash for speech that trails off or is cut off. Mark every false start the guide describes: when a speaker abandons a phrase and starts again ("I went to the we drove there", "is it was it on the fifth"), put the dash your style guide gives for a false start at the break, exactly in the guide's form (see its punctuation rules and example). Look for them deliberately: they are common in speech. Use exactly the same words in exactly the same order: you may only change capital letters and add or move punctuation marks attached to words. Never add, drop, merge, split or respell a word; never turn number words into digits; never remove a filler (um, uh) or a repeated word: the guidelines' word rules are applied separately.
-4. Put in the notations the guidelines call for, only where the words clearly show the event (an exhibit is marked or received, a recess is taken, a witness is sworn). Each goes after the paragraph given; "after" is "" for the end of that paragraph, or the exact last 3 to 8 words after which it belongs.
+Your job is to turn it into a transcript that follows the style guide given below, using the logic of the conversation:
+1. Decide who the people are. Label each speaker exactly the way the guide labels speakers (its speaker IDs, its capitals, its question-and-answer labels where the guide uses them and the conversation is in that mode). Use names only when the transcript itself gives them. Never invent a name. List the people in "people" (id, label, why).
+2. Say who speaks, and where each paragraph begins. Consecutive paragraphs by the same speaker are joined into one unless you keep a break. List in "turns": (a) every place where the speaker changes, and (b) every place where the guide wants a new paragraph although the speaker stays the same (see the guide's paragraph rules). "speaker" is the label to print there. A place at the start of a paragraph has starts_with "". A place inside a paragraph has starts_with set to the first 3 to 8 words from that point, copied exactly as they were given to you. Any break between two paragraphs of one speaker that you do not list is removed.
+3. Write every paragraph you were given out again in "paras", styled exactly as the guide requires: its punctuation and capitals, and its word rules too (for example: leaving out stutters, partial words and the fillers the guide says to leave out; writing informal forms the way the guide says; numbers, money, dates and times in the guide's format; quotation marks; the guide's spellings; its marks for false starts, repetitions and interruptions). Everything the guide does not tell you to change stays word for word and in order: never paraphrase, never correct grammar, never add a word that was not said. You cannot hear the audio, so never add a tag such as [inaudible] or [crosstalk]. Mixtape keeps the original words underneath every change you make, so the person checking can see and undo each one.
+4. Lines that are not speech (notations, parentheticals): only if the guide has them, in the guide's exact form, and only where the words clearly show the event; list them in "inserts" ("after" is "" for the end of that paragraph, or the exact last 3 to 8 words after which it belongs). If the guide has no such lines, "inserts" is empty.
 
-Evidence, strongest first: a side of the recording (left/right are different people, recorded separately: trust them), a label the audio gave, what is said (questions and answers, "Your Honour", who is addressed by name, who swears or is sworn), and the flow of the exchange. Think it through; when it is not clear, keep the label the audio gave and say why in "why".
+Evidence for who is speaking, strongest first: a side of the recording (left/right are different people, recorded separately: trust them), a label the audio gave, what is said (questions and answers, forms of address, who is named, who swears or is sworn), and the flow of the exchange. Think it through; when it is not clear, keep the label the audio gave and say why in "why".
 
-Rules: never change, add or remove any heard word; quote exactly (quote the words as they were given to you). Paragraph numbers must be ones you were given. The first entry of "turns" must be the first paragraph you were given (unless it is a notation). Notation paragraphs get no speaker. Keep "why" short (under 20 words), and leave it "" where the change is obvious. "summary": two or three plain sentences on what you changed and what you were unsure of.`;
+Rules: paragraph numbers must be ones you were given. The first entry of "turns" must be the first paragraph you were given (unless it is a notation). Keep "why" short (under 20 words), and leave it "" where the change is obvious. "summary": two or three plain sentences on what you changed and what you were unsure of.`;
 
-const LEGAL = `This is a LEGAL transcript (a hearing, deposition, trial, interview under oath). Follow TranscribeMe's guidelines, given in full below.`;
+const LEGAL = `This is a LEGAL transcript (a hearing, deposition, trial, interview under oath). Follow the style guide for legal transcripts, given in full below.`;
 
-const NORMAL = `This is an ordinary transcript (an interview, a call, a meeting, a podcast). Follow Rev's style guide, given in full below.`;
+const NORMAL = `This is an ordinary transcript (an interview, a call, a meeting, a podcast). Follow the style guide for ordinary transcripts, given in full below.`;
 
-const BIBLE = `THE STYLE GUIDE BELOW IS YOUR BIBLE. Follow every rule in it that concerns speakers, paragraphs, punctuation, capital letters and notations. Where anything else in these instructions seems to differ from the guide, the guide wins, except for one thing: you never add, remove or change a heard word (the guide's word rules, such as removing fillers or writing numbers as digits, are applied separately by Mixtape, which hides words without deleting them). When the guide gives an example, match its marks exactly. In "summary", say which guide rules you applied, how many false starts you marked, and any rule you could not apply.`;
+const BIBLE = `THE STYLE GUIDE BELOW IS YOUR BIBLE. Follow every rule in it. Where anything above seems to differ from the guide, the guide wins. When the guide gives an example, match its form exactly. Parts of the guide that need the audio (tags for unclear speech), outside research, or the transcriber's own tools do not apply to you: skip them. In "summary", say which guide rules you applied most and any rule you could not apply.`;
 
-export function instructions(legal) { return `${COMMON}\n\n${legal ? LEGAL : NORMAL}\n\n${BIBLE}\n\n${guideFor(legal)}`; }
+/* own: the user's own guide text for this kind of transcript (kept in her browser, never in Mixtape's code); else the built-in one */
+export function instructions(legal, own = '') { return `${COMMON}\n\n${legal ? LEGAL : NORMAL}\n\n${BIBLE}\n\n${own && own.trim() ? own.trim() : guideFor(legal)}`; }
 export function request(paras, piece, { title = '', people = [], legal = false, cast = [] } = {}) {
   const [a, b] = piece, before = paras.slice(Math.max(0, a - 6), a);
   return [
@@ -76,18 +77,19 @@ export const SCHEMA = {
 };
 
 /* ---- applying an answer ---- */
-/* where `quote` begins (or ends, with end = true) among the tokens toks[a..b), matching on the bare words; -1 if not there */
+/* where `quote` begins (or ends, with end = true) among toks[a..b), matching on the bare letters; -1 if not there.
+   Empty tokens (words that were cut) are passed over, and a token may hold several words ("going to"). */
 export function findQuote(toks, a, b, quote, end = false) {
-  const q = String(quote || '').split(/\s+/).map(bare).filter(Boolean); if (!q.length) return -1;
-  const ws = []; for (let i = a; i < b; i++) ws.push(bare(toks[i]));
-  for (let i = 0; i + q.length <= ws.length; i++) { let ok = true; for (let j = 0; j < q.length; j++) if (ws[i + j] !== q[j]) { ok = false; break; } if (ok) return a + (end ? i + q.length - 1 : i); }
+  const q = bare(quote); if (!q) return -1;
+  const idx = [], bs = []; for (let i = a; i < b; i++) { const x = bare(toks[i]); if (x) { idx.push(i); bs.push(x); } }
+  for (let i = 0; i < bs.length; i++) { let acc = '', k = i; while (k < bs.length && acc.length < q.length) acc += bs[k++]; if (acc === q) return end ? idx[k - 1] : idx[i]; }
   return -1;
 }
 /* answer: { people, turns, inserts } for paragraphs [a, b). Returns { words, log } — a new array; the words handed in
    are not changed. log: [{ kind: 'speaker' | 'split' | 'insert' | 'skipped', para, from, to, quote, why, text }] */
 export function apply(words, paras, piece, answer) {
   const [a, b] = piece, label = new Map((answer.people || []).map(p => [p.id, String(p.label || '').trim() || p.id]));
-  const log = [], toks = words.map(w => w.t);
+  const log = [], toks = words.map(w => (w.cut ? '' : w.t));
   // every place a speaker starts, as a word index
   const starts = new Map(); // word index -> label
   const okPara = k => Number.isInteger(k) && k >= a && k < b && paras[k] && !paras[k].note;
@@ -138,25 +140,47 @@ export function apply(words, paras, piece, answer) {
 }
 const speakerBefore = (ws, i) => { for (let k = i; k >= 0; k--) if (ws[k].p && !(ws[k].lg && ws[k].lg.k === 'n')) return ws[k].sp || ''; return ''; };
 
-/* punctuation and capitals from Claude's "paras": each heard word takes the new form only when it is the same word
-   (same letters and digits, ignoring case and marks); a word that does not line up keeps its old form. Returns
-   { words, marked, refused } — a new array. */
-export function punctuate(words, paras, answerParas) {
-  const out = words.slice(); let marked = 0, refused = 0;
+/* A paragraph as Claude styled it, laid over the heard words. The two are lined up word by word (longest common run
+   of the same letters). Where they agree, the word takes the new marks and capitals. Where Claude left words out (a
+   stutter, a filler the guide drops), those words are cut: kept in the data, hidden. Where it wrote something else
+   for a run of words ("gonna" as "going to", "four fifty five dollars" as "$455"), the first word shows the styled
+   form and keeps what was heard in .o, and the rest of the run is cut. Words Claude added from nowhere are refused,
+   and so is a rewrite of more than 12 words at once. Nothing is ever deleted, and the number of words never changes.
+   Returns { words, marked, styled, cut, refused, changes: [{ from, to }] }. */
+const MARK = /^[-–—.,;:?!"'()\[\]]+$/;
+function newTokens(text) { // marks standing alone (" -- ", " - ") go with the word before them
+  const out = []; for (const t of String(text || '').trim().split(/\s+/).filter(Boolean)) { if (MARK.test(t) && !bare(t) && out.length) out[out.length - 1] += ' ' + t.replace(/[–—]/g, '--'); else out.push(t); } return out;
+}
+export function restyle(words, paras, answerParas) {
+  const out = words.slice(), changes = []; let marked = 0, styled = 0, cut = 0, refused = 0;
   for (const x of answerParas || []) {
     const p = paras[x.para]; if (!p || p.note || typeof x.text !== 'string') continue;
-    const neu = x.text.trim().split(/\s+/).filter(Boolean); let i = 0, j = 0;
-    while (i < p.n && j < neu.length) {
-      if (!bare(neu[j])) { if (i > 0 && /^[-–—.,;:?!]+$/.test(neu[j])) { const prev = out[p.i0 + i - 1]; out[p.i0 + i - 1] = { ...prev, t: `${prev.t} ${neu[j].replace(/[–—]/g, '--')}` }; marked++; } j++; continue; } // a mark on its own ("--"): it goes with the word before
-      const old = out[p.i0 + i], a = bare(old.t), b = bare(neu[j]);
-      if (a === b) { if (old.t !== neu[j]) { out[p.i0 + i] = { ...old, t: neu[j] }; marked++; } i++; j++; continue; }
-      // out of step: look a little ahead on each side for the next word that matches, and carry on from there
-      let di = -1, dj = -1; for (let k = 1; k <= 3 && di < 0; k++) { if (i + k < p.n && bare(out[p.i0 + i + k].t) === b) di = k; else if (j + k < neu.length && bare(neu[j + k]) === a) dj = k; }
-      refused++; if (di > 0) i += di; else if (dj > 0) j += dj; else { i++; j++; }
+    const oi = []; for (let i = p.i0; i < p.i0 + p.n; i++) if (!out[i].cut) oi.push(i);
+    const A = oi.map(i => bare(out[i].t)), N = newTokens(x.text), B = N.map(bare), n = A.length, m = B.length;
+    if (!n) continue;
+    // longest common subsequence
+    const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] && A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    let i = 0, j = 0; const hunk = (i0, i1, j0, j1) => {
+      if (i0 === i1 && j0 === j1) return;
+      if (i0 === i1) { refused += j1 - j0; return; } // words from nowhere
+      if (i1 - i0 > 12 || j1 - j0 > 12) { refused += Math.max(i1 - i0, j1 - j0); return; } // too much rewritten at once
+      const heard = oi.slice(i0, i1).map(k => out[k].o ?? out[k].t).join(' ');
+      if (j0 === j1) { for (let k = i0; k < i1; k++) { out[oi[k]] = { ...out[oi[k]], cut: 'claude' }; cut++; } changes.push({ from: heard, to: '' }); return; }
+      const first = oi[i0], to = N.slice(j0, j1).join(' ');
+      out[first] = { ...out[first], t: to, o: heard }; styled++; changes.push({ from: heard, to });
+      for (let k = i0 + 1; k < i1; k++) { out[oi[k]] = { ...out[oi[k]], cut: 'claude' }; cut++; }
+    };
+    let hi = 0, hj = 0;
+    while (i < n && j < m) {
+      if (A[i] && A[i] === B[j]) { hunk(hi, i, hj, j); const k = oi[i]; if (out[k].t !== N[j]) { out[k] = { ...out[k], t: N[j] }; marked++; } i++; j++; hi = i; hj = j; }
+      else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++;
     }
+    hunk(hi, n, hj, m);
   }
-  return { words: out, marked, refused };
+  return { words: out, marked, styled, cut, refused, changes };
 }
+export const punctuate = restyle; // its first form only added marks
 
 /* Paragraphs, as the guides want them: consecutive paragraphs by the same speaker become one, except where Claude kept a
    break (keep: word indices). A notation always stands alone. Returns { words, joined }. */
@@ -180,16 +204,16 @@ export function finish(words) {
     const b = k + 1 < starts.length ? starts[k + 1] : out.length, w0 = out[a];
     if (w0.lg && w0.lg.k === 'n') return;
     // the end
-    const last = b - 1, t = String(out[last].t);
+    let last = b - 1; while (last > a && out[last].cut) last--; if (out[last].cut) return; const t = String(out[last].t);
     if (!/(\.|\?|!|--)["')\]]*$/.test(t)) { out[last] = { ...out[last], t: /[,;:]["')\]]*$/.test(t) ? t.replace(/[,;:](["')\]]*)$/, '.$1') : t.replace(/(["')\]]*)$/, '.$1') }; ends++; }
     // the start
-    const f = String(out[a].t), m = /^([("'\[]*)([a-z])/.exec(f); if (m) { out[a] = { ...out[a], t: m[1] + m[2].toUpperCase() + f.slice(m[0].length) }; caps++; }
+    let fa = a; while (fa < b - 1 && out[fa].cut) fa++; const f = String(out[fa].t), m = /^((?:--)?[("'\[]*)([a-z])/.exec(f); if (m && !/^--/.test(f)) { out[fa] = { ...out[fa], t: m[1] + m[2].toUpperCase() + f.slice(m[0].length) }; caps++; } // a line that continues after an interruption ("--and then") keeps its small letter
   });
   for (let i = 0; i < out.length; i++) { const t = String(out[i].t); if (/^i('[a-z]+)?([.,?!;:-]*)$/.test(t)) { out[i] = { ...out[i], t: 'I' + t.slice(1) }; caps++; } }
   return { words: out, ends, caps };
 }
 /* how many false starts carry the guide's dash */
-export const dashes = words => words.filter(w => /--/.test(String(w.t))).length;
+export const dashes = words => words.filter(w => !w.cut && /--/.test(String(w.t))).length;
 
 /* how much it changed, in plain numbers */
 export function tally(log) {
@@ -220,4 +244,42 @@ export function itemReader(onItem) {
       }
     },
   };
+}
+
+/* ---- changes asked for in the chat ----
+   ops refer to the paragraph numbers of the transcript as it was shown. They are carried out from the last paragraph
+   back, so the numbers stay true. Returns { words, done: [plain lines], failed: [plain lines] }. */
+export const EDIT_TOOL = {
+  name: 'edit_transcript',
+  description: 'Change the transcript as the person asked. Paragraph numbers are those of the transcript as shown to you. Use set_text to rewrite one paragraph in the styled form wanted (same words in the same order, apart from what the style guide or her instruction changes); set_speaker to give a paragraph, or the part of it starting at starts_with, to a speaker; rename_speaker to change a label everywhere; split to start a new paragraph (same speaker) at starts_with; join_with_previous to remove a paragraph break; insert_line to add a line that is not speech after a paragraph; remove_line to take such a line out.',
+  input_schema: { type: 'object', additionalProperties: false, required: ['ops'], properties: { ops: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['op'], properties: {
+    op: { type: 'string', enum: ['set_text', 'set_speaker', 'rename_speaker', 'split', 'join_with_previous', 'insert_line', 'remove_line'] },
+    para: { type: 'integer' }, starts_with: { type: 'string' }, speaker: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' } } } } } },
+};
+export function applyOps(words, ops) {
+  const paras = paragraphs(words), done = [], failed = []; let out = words.slice();
+  const toks = () => out.map(w => (w.cut ? '' : w.t));
+  const list = (ops || []).map((o, k) => ({ ...o, k })).sort((x, y) => (y.para ?? -1) - (x.para ?? -1) || y.k - x.k);
+  for (const o of list) {
+    if (o.op === 'rename_speaker') { const n = out.filter(w => w.sp === o.from).length; if (!n || !String(o.to || '').trim()) { failed.push(`no speaker is called "${o.from}"`); continue; } out = out.map(w => (w.sp === o.from ? { ...w, sp: String(o.to).trim() } : w)); done.push(`"${o.from}" is now "${o.to}" everywhere (${n} paragraphs)`); continue; }
+    const p = paras[o.para]; if (!p) { failed.push(`there is no paragraph ${o.para}`); continue; }
+    const at = () => { if (!o.starts_with || !String(o.starts_with).trim()) return p.i0; return findQuote(toks(), p.i0, p.i0 + p.n, o.starts_with); };
+    if (o.op === 'set_text') { if (p.note) { failed.push(`paragraph ${o.para} is not speech`); continue; } const r = restyle(out, paras, [{ para: o.para, text: o.text }]); out = r.words; done.push(`paragraph ${o.para} rewritten (${r.marked} marks, ${r.styled} restyled, ${r.cut} left out${r.refused ? `, ${r.refused} refused: only heard words can be kept` : ''})`); }
+    else if (o.op === 'set_speaker' || o.op === 'split') {
+      const i = at(); if (i < 0) { failed.push(`the words "${o.starts_with}" are not in paragraph ${o.para}`); continue; } if (p.note) { failed.push(`paragraph ${o.para} is not speech`); continue; }
+      const who = o.op === 'split' ? p.sp : String(o.speaker || '').trim(); if (o.op === 'set_speaker' && !who) { failed.push('no speaker was given'); continue; }
+      out[i] = { ...out[i], p: true, ...(who ? { sp: who } : {}) }; done.push(o.op === 'split' ? `new paragraph in ${o.para} at "${o.starts_with}"` : `paragraph ${o.para}${i !== p.i0 ? ` from "${o.starts_with}"` : ''} is now ${who}`);
+    }
+    else if (o.op === 'join_with_previous') { const q = paras[o.para - 1]; if (!q || p.note || q.note) { failed.push(`paragraph ${o.para} cannot be joined to the one before`); continue; } const { p: _p, sp, side, ...rest } = out[p.i0]; out[p.i0] = rest; done.push(`paragraph ${o.para} joined to ${o.para - 1}`); }
+    else if (o.op === 'insert_line') {
+      const text = String(o.text || '').trim(); if (!text) { failed.push('no text for the line'); continue; }
+      let i = p.i0 + p.n - 1; if (o.after && String(o.after).trim()) { const e = findQuote(toks(), p.i0, p.i0 + p.n, o.after, true); if (e < 0) { failed.push(`the words "${o.after}" are not in paragraph ${o.para}`); continue; } i = e; }
+      const s0 = out[i].e ?? out[i].s, note = text.split(/\s+/).map((t, j) => (j === 0 ? { t, s: s0, e: s0, p: true, lg: { k: 'n', auto: text, by: 'claude' } } : { t, s: s0, e: s0 }));
+      const rest = out.slice(i + 1); if (rest.length && !rest[0].p) rest[0] = { ...rest[0], p: true, sp: speakerBefore(out, i) };
+      out = out.slice(0, i + 1).concat(note, rest); done.push(`line put in after paragraph ${o.para}: ${text}`);
+    }
+    else if (o.op === 'remove_line') { if (!p.note) { failed.push(`paragraph ${o.para} is speech, not a line that can be removed`); continue; } out = out.slice(0, p.i0).concat(out.slice(p.i0 + p.n)); done.push(`line ${o.para} removed`); }
+    else failed.push(`unknown change "${o.op}"`);
+  }
+  return { words: out, done: done.reverse(), failed };
 }

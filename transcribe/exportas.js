@@ -23,7 +23,7 @@ function make(o) { // the file's text and name, from the choices
     if (page) { text = T().toTxt(words, { clean: o.clean, style: o.style, timestamps: o.times, speakers: o.speakers, caps: o.style === 'rev' }); if (sens) text = api.sensLine + '\n\n' + text; }
     else { const timed = r.words.slice(0, T().timedUpTo(r.words)); text = o.kind === 'srt' ? T().toSrt(timed, o.clean) : T().toVtt(timed, o.clean); if (sens && o.kind === 'vtt') text = text.replace(/^WEBVTT[^\n]*\n+/, m => m.trimEnd() + '\n\nNOTE ' + api.sensLine + '\n\n'); }
     if (o.kind === 'docx' || o.kind === 'pdf') { // the same paragraphs, as a document
-      const hidden = o.clean ? T().cleanHidden(words, o.style) : null;
+      const hidden = o.clean ? T().cleanHidden(words, o.style) : T().cutHidden(words);
       doc = { title: cur.track.title || 'Transcript', note: sens ? api.sensLine : '', paras: T().paragraphs(words).map(p => ({ time: o.times ? clock(p.start) : '', speaker: o.speakers && p.speaker ? (o.style === 'rev' ? p.speaker.toUpperCase() : p.speaker) : '', text: T().joinShown(words, p.i0, p.i1, hidden) })).filter(p => p.text) };
     }
   } finally { T().setCleanStyle(was); }

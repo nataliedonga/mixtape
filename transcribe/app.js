@@ -124,7 +124,7 @@ function drawText() {
   const el = $('#text'), r = cur && cur.tr; lit = -1;
   drawTools();
   if (!r || !r.words.length) { el.innerHTML = ''; return; }
-  const ps = T.paragraphs(r.words), hidden = V.clean ? T.cleanHidden(r.words) : null;
+  const ps = T.paragraphs(r.words), hidden = V.clean ? T.cleanHidden(r.words) : T.cutHidden(r.words); // words a styling pass cut are never shown
   SUG = sugMap(r); NT = noteMap(r);
   el.classList.toggle('show-unsure', V.unsure); el.classList.toggle('tidy', V.tidy && r.mode === 'heard'); // a read-along has one narrator: it stays one flowing page
   el.innerHTML = ps.map((p, pi) => paraHTML(r.words, p, pi, hidden)).join('');

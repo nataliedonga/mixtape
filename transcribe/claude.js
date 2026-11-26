@@ -13,7 +13,7 @@
    The key is the user's own Anthropic API key, kept in this browser only (localStorage) and sent only to
    api.anthropic.com. The SDK is Anthropic's own (vendor/anthropic, Apache-2.0). */
 import * as M from '../vendor/mediabunny/mediabunny.min.mjs';
-import { paragraphs, asText, pieces, request, instructions, SCHEMA, apply, punctuate, itemReader, joinSameSpeaker, finish, dashes, tally, cost } from '../claude-core.js';
+import { paragraphs, asText, pieces, request, instructions, SCHEMA, apply, restyle, applyOps, EDIT_TOOL, itemReader, joinSameSpeaker, finish, dashes, tally, cost } from '../claude-core.js';
 import { styleOf } from './matter.js';
 import { guideFor } from '../style-guides.js';
 const $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -22,7 +22,13 @@ let api, bar, chat, running = null, sdk = null;
 const getKey = () => { try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } };
 const autoOn = () => { try { return localStorage.getItem(AUTO) !== '0'; } catch (e) { return true; } };
 const T = () => window.TranscriptCore;
-const legalOf = r => !!(r && r.legal && r.legal.on);
+/* which guide a transcript follows: her choice in the bar if she made one, else legal when the Legal switch is on */
+const legalOf = r => (r && r.guideKind ? r.guideKind === 'legal' : !!(r && r.legal && r.legal.on));
+/* her own style guides: loaded from a text file, kept in this browser only (never in Mixtape's code), used whole as the bible */
+const GKEY = k => `mixtape-style-guide-${k}`;
+const ownGuide = legal => { try { const g = JSON.parse(localStorage.getItem(GKEY(legal ? 'legal' : 'normal')) || 'null'); return g && typeof g.text === 'string' && g.text.trim() ? g : null; } catch (e) { return null; } };
+const guideText = legal => { const g = ownGuide(legal); return g ? g.text : guideFor(legal); };
+const guideName = legal => { const g = ownGuide(legal); return g ? g.name : legal ? 'built-in legal guide' : 'built-in ordinary guide'; };
 const castOf = r => { try { const m = (JSON.parse(localStorage.getItem('mixtape-matters') || '{}') || {})[r.matter]; return m && Array.isArray(m.people) ? m.people.map(p => String(p && p.name || '').trim()).filter(Boolean) : []; } catch (e) { return []; } };
 const money = d => (d < 0.01 ? 'under 1 cent' : `$${d.toFixed(2)}`);
 
@@ -78,7 +84,7 @@ async function run(why = 'auto') {
     const cl = await client(), legal = legalOf(r), cast = castOf(r), parts = pieces(paragraphs(r.words), 1500);
     job.step = 'claude'; job.parts = parts.length; job.feed = []; draw();
     api.remember(); // one Ctrl + Z for everything Claude does, even if it is stopped part-way
-    let words = r.words, marks = 0, keep = new Set(), kept = 0, people = [], log = [], usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, summary = [];
+    let words = r.words, marks = 0, styledN = 0, cutN = 0, refusedN = 0, changes = [], keep = new Set(), kept = 0, people = [], log = [], usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, summary = [];
     const feed = t => { job.feed.push(t); if (job.feed.length > 80) job.feed.shift(); drawSoon(); };
     for (let k = 0; k < parts.length; k++) {
       if (job.stop || api.cur !== c) throw Object.assign(new Error('stopped'), { stopped: true });
@@ -86,11 +92,11 @@ async function run(why = 'auto') {
       job.part = k + 1; draw();
       const ps = paragraphs(words), [a, b] = parts[k], label = id => (people.find(p => p.id === id) || {}).label || id;
       const body = { model: MODEL, max_tokens: 64000, thinking: { type: 'adaptive' }, output_config: { effort: 'high', format: { type: 'json_schema', schema: SCHEMA } },
-        system: [{ type: 'text', text: instructions(legal), cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: request(ps, parts[k], { title: c.track.title, people, legal, cast }) }] };
+        system: [{ type: 'text', text: instructions(legal, (ownGuide(legal) || {}).text || ''), cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: request(ps, parts[k], { title: c.track.title, people, legal, cast }) }] };
       const rd = itemReader((key, x) => {
         if (key === 'people' && x.id && !people.some(p => p.id === x.id)) { people.push(x); feed(`Person: ${x.label}${x.why ? ` (${x.why})` : ''}`); }
         else if (key === 'turns' && x.para >= a && x.para < b) feed(`¶${x.para}${x.starts_with ? ` from “${x.starts_with}”` : ''} → ${label(x.speaker)}${x.why ? ` (${x.why})` : ''}`);
-        else if (key === 'paras' && x.para >= a && x.para < b) { const pu = punctuate(words, ps, [x]); words = pu.words; marks += pu.marked; r.words = words; job.live = ps[x.para] && ps[x.para].i0; feed(`¶${x.para} punctuated${pu.marked ? ` (${pu.marked} word${pu.marked === 1 ? '' : 's'})` : ', nothing to change'}${pu.refused ? `, ${pu.refused} refused` : ''}`); redrawSoon(); }
+        else if (key === 'paras' && x.para >= a && x.para < b) { const pu = restyle(words, ps, [x]); words = pu.words; marks += pu.marked; styledN += pu.styled; cutN += pu.cut; refusedN += pu.refused; changes.push(...pu.changes); r.words = words; job.live = ps[x.para] && ps[x.para].i0; feed(`¶${x.para} styled: ${pu.marked} marks${pu.styled ? `, ${pu.styled} restyled (${pu.changes.filter(q => q.to).slice(0, 3).map(q => `${q.from} → ${q.to}`).join('; ')})` : ''}${pu.cut ? `, ${pu.cut} left out` : ''}${pu.refused ? `, ${pu.refused} refused` : ''}`); redrawSoon(); }
         else if (key === 'inserts' && x.text) feed(`Notation after ¶${x.para}: ${x.text}`);
       });
       const msg = await ask(cl, body, d => rd.push(d), job);
@@ -98,7 +104,7 @@ async function run(why = 'auto') {
       const text = (msg.content || []).filter(bl => bl.type === 'text').map(bl => bl.text).join(''); let ans;
       try { ans = JSON.parse(text); } catch (e) { throw new Error('Claude’s answer could not be read'); }
       for (const [kk, v] of Object.entries(msg.usage || {})) if (typeof v === 'number' && kk in usage) usage[kk] += v;
-      const pu = punctuate(words, ps, (ans.paras || []).filter(x => x.para >= a && x.para < b)); words = pu.words; marks += pu.marked; // anything the live reading missed (it changes no word, so the numbers stay)
+      const pu = restyle(words, ps, (ans.paras || []).filter(x => x.para >= a && x.para < b)); words = pu.words; marks += pu.marked; styledN += pu.styled; cutN += pu.cut; changes.push(...pu.changes); // anything the live reading missed (it changes no word, so the numbers stay)
       const res = apply(words, ps, parts[k], ans); words = res.words; log.push(...res.log); if (ans.summary) summary.push(ans.summary);
       for (const i of res.keep) keep.add(i + kept); // breaks Claude chose to keep (counted afresh below, after earlier parts were joined)
       for (const p of ans.people || []) if (!people.some(x => x.id === p.id)) people.push(p);
@@ -110,11 +116,11 @@ async function run(why = 'auto') {
     // the guide's paragraph rule and the rules that need no judgement, made sure of by Mixtape itself
     const jn = joinSameSpeaker(words, keep); words = jn.words; const fin = finish(words); words = fin.words;
     r.words = words; r.speakers = true; r.punct = { at: Date.now(), by: 'claude', marked: marks };
-    if (!styleOf(r)) r.styleFor = legal ? 'tm-clean' : 'rev'; // the guide's word rules (fillers, numbers, written-out forms) are applied by Mixtape's own style, set to match (a matter's chosen style wins)
+    r.styleFor = 'guide'; // Claude styled it to the guide, word rules included: Mixtape's own style rules leave it alone
     r.auto = r.auto || { at: Date.now(), names: [] }; // the rule-based guesses are not run on top of Claude's
-    r.claude = { at: Date.now(), model: MODEL, legal, people, log, count: { ...tally(log), marks, joined: jn.joined, ends: fin.ends, caps: fin.caps, dashes: dashes(words) }, usage, cost: cost(usage), summary: summary.join(' '), why, chat: (r.claude && r.claude.chat) || [] };
+    r.claude = { at: Date.now(), model: MODEL, legal, people, log, guide: guideName(legal), changes: changes.slice(0, 400), count: { ...tally(log), marks, styled: styledN, cut: cutN, refused: refusedN, joined: jn.joined, ends: fin.ends, caps: fin.caps, dashes: dashes(words) }, usage, cost: cost(usage), summary: summary.join(' '), why, chat: (r.claude && r.claude.chat) || [] };
     job.feed = []; api.drawAll(); await api.save();
-    const n = r.claude.count; api.toast(`Claude punctuated it, set the speakers${n.splits ? `, split ${n.splits} paragraph${n.splits === 1 ? '' : 's'}` : ''}${n.inserts ? `, and put in ${n.inserts} notation${n.inserts === 1 ? '' : 's'}` : ''}. Ctrl + Z undoes it all.`, 8000);
+    const n = r.claude.count; api.toast(`Claude styled it to the guide, set the speakers${n.splits ? `, split ${n.splits} paragraph${n.splits === 1 ? '' : 's'}` : ''}${n.inserts ? `, and put in ${n.inserts} notation${n.inserts === 1 ? '' : 's'}` : ''}. Ctrl + Z undoes it all.`, 8000);
   } catch (e) {
     if (!e.stopped) { r.claude = { ...(r.claude || {}), error: errText(e), at: Date.now() }; try { await api.save(); } catch (x) {} }
   } finally { running = null; draw(); }
@@ -161,6 +167,8 @@ const STYLE = `
 .para.claudeins { background: color-mix(in srgb, #7c6cf2 18%, transparent); border-radius: 6px; }
 .para.claudelive { box-shadow: inset 3px 0 0 var(--accent, #3FB8C4); background: color-mix(in srgb, var(--accent, #3FB8C4) 10%, transparent); border-radius: 6px; transition: background .4s; }
 #claudeBar .feed { flex-basis: 100%; margin: 4px 0 0; padding: 8px 10px 8px 28px; max-height: 190px; overflow: auto; border-radius: 8px; background: color-mix(in srgb, currentColor 5%, transparent); font: 12.5px/1.5 var(--f-mono, ui-monospace, monospace); }
+#claudeBar .gline { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; opacity: .9; } #claudeBar .gline select { height: 28px; border-radius: 6px; border: 1px solid var(--faint, #888); background: transparent; color: inherit; font: inherit; } #claudeBar .gline button { height: 28px; } #claudeBar .gname { opacity: .8; }
+.w.claudestyled { text-decoration: underline dotted color-mix(in srgb, #7c6cf2 80%, transparent); text-underline-offset: 3px; }
 #claudeBar .feed li { margin: 0; } #claudeBar .feed li:last-child { font-weight: 650; }`;
 
 function draw() {
@@ -180,14 +188,16 @@ function draw() {
     html = `<div class="cb-t"><b class="cl">Claude could not finish</b><small>${esc(cl.error)}. The transcript is as it was.</small></div><button data-c="run">Try again</button><button data-c="forget">Change key</button>`;
   } else if (cl.log) {
     const n = cl.count || tally(cl.log);
-    html = `<div class="cb-t"><b class="cl">Claude punctuated it and set the speakers</b><small>${(cl.people || []).length} people · ${n.speakers} paragraph${n.speakers === 1 ? '' : 's'} given a speaker · ${n.splits} split · ${n.inserts} notation${n.inserts === 1 ? '' : 's'} put in · ${(n.marks || 0).toLocaleString()} words punctuated or capitalised · ${n.dashes ?? 0} false start${n.dashes === 1 ? '' : 's'} marked · ${n.joined ?? 0} pause break${n.joined === 1 ? '' : 's'} joined${n.ends ? ` · ${n.ends} missing full stop${n.ends === 1 ? '' : 's'} added by Mixtape` : ''}${n.skipped ? ` · ${n.skipped} it suggested could not be placed` : ''} · ${money(cl.cost || 0)} · ${cl.legal ? 'TranscribeMe guidelines' : 'Rev style'}</small></div><button class="yes" data-c="chat">Ask Claude</button><button data-c="run" title="Read it again with the speakers as they are now">Run again</button>`;
+    html = `<div class="cb-t"><b class="cl">Claude styled it to the guide and set the speakers</b><small>${(cl.people || []).length} people · ${n.speakers} paragraph${n.speakers === 1 ? '' : 's'} given a speaker · ${n.splits} split · ${n.inserts} notation${n.inserts === 1 ? '' : 's'} put in · ${(n.marks || 0).toLocaleString()} words punctuated or capitalised · ${n.styled ?? 0} restyled · ${n.cut ?? 0} left out (stutters, fillers) · ${n.dashes ?? 0} false start${n.dashes === 1 ? '' : 's'} marked · ${n.joined ?? 0} pause break${n.joined === 1 ? '' : 's'} joined${n.ends ? ` · ${n.ends} missing full stop${n.ends === 1 ? '' : 's'} added by Mixtape` : ''}${n.skipped ? ` · ${n.skipped} it suggested could not be placed` : ''} · ${money(cl.cost || 0)} · guide: ${esc(cl.guide || (cl.legal ? 'legal' : 'ordinary'))}</small></div><button class="yes" data-c="chat">Ask Claude</button><button data-c="run" title="Read it again with the speakers as they are now">Run again</button>`;
   } else {
     html = `<div class="cb-t"><b class="cl">Claude</b><small>${autoOn() ? 'Waiting to read this transcript.' : 'Automatic reading is off.'}</small></div><button class="yes" data-c="run">Set speakers and notations</button>`;
   }
-  if (!running && key) html += `<label style="font-size:13px;opacity:.8;display:flex;gap:6px;align-items:center"><input type="checkbox" id="claudeAuto"${autoOn() ? ' checked' : ''}> After every transcript</label>`;
+  if (!running && key) { const lg = legalOf(r), own = ownGuide(lg);
+    html += `<div class="gline"><label>Guide <select id="claudeKind" title="Which style guide this transcript follows"><option value="legal"${lg ? ' selected' : ''}>Legal</option><option value="normal"${lg ? '' : ' selected'}>Ordinary</option></select></label><span class="gname" title="The guide Claude follows for this kind of transcript">${own ? `yours: ${esc(own.name)} (${Math.round(own.text.split(/\s+/).length / 100) / 10}k words)` : 'built-in'}</span><button data-c="loadguide" title="Load your own style guide for ${lg ? 'legal' : 'ordinary'} transcripts from a text file. It is kept in this browser only and sent to Claude with each transcript.">Load your guide…</button>${own ? '<button data-c="dropguide" title="Go back to the built-in guide">Use built-in</button>' : ''}<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="claudeAuto"${autoOn() ? ' checked' : ''}> After every transcript</label><input type="file" id="claudeGuideFile" accept=".txt,.md,text/plain" hidden></div>`; }
   if (bar.dataset.k !== html) { const f0 = bar.querySelector('.feed'), atEnd = !f0 || f0.scrollTop + f0.clientHeight >= f0.scrollHeight - 8; bar.innerHTML = html; bar.dataset.k = html; const f = bar.querySelector('.feed'); if (f && atEnd) f.scrollTop = f.scrollHeight; } // the list follows the newest line unless you scrolled up
   // highlight what Claude put in
   for (const p of document.querySelectorAll('#text .para')) { const w = r.words[+p.dataset.i0]; p.classList.toggle('claudeins', !!(w && w.lg && w.lg.by === 'claude')); p.classList.toggle('claudelive', !!(running && running.live != null && +p.dataset.i0 === running.live)); }
+  for (const el of document.querySelectorAll('#text .w[data-i]')) { const w = r.words[+el.dataset.i], on = !!(w && w.o != null && w.o !== w.t); if (on !== el.classList.contains('claudestyled')) { el.classList.toggle('claudestyled', on); if (on) el.title = `Heard: ${w.o}`; else el.removeAttribute('title'); } }
 }
 async function onBar(e) {
   const b = e.target.closest('button'), c = api.cur, r = c && c.tr; if (!b || !r) return;
@@ -197,19 +207,25 @@ async function onBar(e) {
   if (a === 'stop') { if (running) { running.stop = true; if (running.abort) running.abort(); } return; }
   if (a === 'run') { r.claude = { chat: (r.claude && r.claude.chat) || [] }; return run('asked'); }
   if (a === 'chat') return openChat();
+  if (a === 'loadguide') return bar.querySelector('#claudeGuideFile').click();
+  if (a === 'dropguide') { try { localStorage.removeItem(GKEY(legalOf(r) ? 'legal' : 'normal')); } catch (err) {} api.toast('Back to the built-in guide for this kind of transcript.', 4000); return draw(); }
 }
 
 /* ---- 3. the chat ---- */
 function chatSystem(r, title) {
-  const paras = paragraphs(r.words), cl = r.claude || {};
-  return `You set the speakers and notations in this transcript earlier, and now you talk with the person who checks it. Answer plainly and briefly, with paragraph numbers and times, about what you changed, what you left alone, how sure you were, and why. You cannot change the transcript from this chat: if she wants something changed, say exactly what (paragraph, words, new speaker) so she can do it, or tell her to press "Run again" after she has fixed the parts she is sure of. Never invent words that are not in the transcript.
+  const paras = paragraphs(r.words), cl = r.claude || {}, legal = cl.legal ?? legalOf(r);
+  return `You work with the person who checks this transcript. You styled it earlier (speakers, paragraphs, punctuation, the guide's word rules); now she talks to you about it.
 
-The style guide is the bible for this transcript; when she asks whether something follows the rules, answer from it and quote the rule:
-${guideFor(!!cl.legal)}
+When she asks for a change, make it with the edit_transcript tool: do not just describe it or tell her to do it herself. Her instruction wins: if it differs from the style guide, do what she asks for that change (and say in one line that it departs from the guide, quoting the rule, so she knows). If an instruction is general ("make every interruption end with a double dash", "the judge is THE COURT everywhere"), carry it out across the whole transcript, in as many edit_transcript calls as it takes. Only heard words can be kept or restyled: you cannot add words that were not said, and you cannot hear the audio. After changing things, say briefly what you changed, with paragraph numbers. When she only asks a question, answer it plainly and briefly, with paragraph numbers and times.
+
+The style guide is the bible for this transcript:
+${guideText(!!legal)}
+
 Recording: ${title}
-People you labelled: ${(cl.people || []).map(p => `${p.label} (${p.why || 'no reason given'})`).join('; ') || 'none'}
-Your own summary: ${cl.summary || 'none'}
-What you changed (log): ${JSON.stringify((cl.log || []).slice(0, 1500))}
+People labelled: ${(cl.people || []).map(p => `${p.label} (${p.why || 'no reason given'})`).join('; ') || 'none'}
+Your summary from the styling run: ${cl.summary || 'none'}
+Words restyled then (heard → shown; "" means left out): ${JSON.stringify((cl.changes || []).slice(0, 200))}
+Speaker and paragraph changes then (log): ${JSON.stringify((cl.log || []).slice(0, 600))}
 
 The transcript as it is now:
 ${asText(paras)}`;
@@ -219,7 +235,7 @@ function openChat() {
 }
 function drawChat(streaming = '') {
   const r = api.cur && api.cur.tr, cl = (r && r.claude) || {}, n = cl.count || tally(cl.log || []), msgs = chat.querySelector('.msgs');
-  msgs.innerHTML = `<div class="facts">What Claude did: ${(cl.people || []).length} people labelled (${esc((cl.people || []).map(p => p.label).join(', '))}); ${n.speakers} paragraphs given a speaker; ${n.splits} paragraphs split; ${n.inserts} notations put in; ${(n.marks || 0)} words given punctuation or capitals; ${n.skipped} suggestions it could not place. Cost so far ${money((cl.cost || 0) + (cl.chatCost || 0))}. No heard word was changed.</div>`
+  msgs.innerHTML = `<div class="facts">What Claude did: ${(cl.people || []).length} people labelled (${esc((cl.people || []).map(p => p.label).join(', '))}); ${n.speakers} paragraphs given a speaker; ${n.splits} paragraphs split; ${n.inserts} notations put in; ${(n.marks || 0)} words given punctuation or capitals; ${n.styled ?? 0} words restyled and ${n.cut ?? 0} left out (what was heard is kept underneath: restyled words are underlined, hover to see); ${n.skipped} suggestions it could not place. Cost so far ${money((cl.cost || 0) + (cl.chatCost || 0))}. You can ask for changes here: “make ¶12 the witness”, “write out the numbers in ¶30”.</div>`
     + (cl.chat || []).map(m => `<div class="m ${m.role === 'user' ? 'u' : 'a'}">${esc(m.text)}</div>`).join('') + (streaming ? `<div class="m a">${esc(streaming)}</div>` : '');
   msgs.scrollTop = msgs.scrollHeight;
 }
@@ -230,13 +246,25 @@ async function send(text) {
   r.claude = r.claude || {}; r.claude.chat = r.claude.chat || []; r.claude.chat.push({ role: 'user', text }); drawChat('…');
   const form = chat.querySelector('form'); form.querySelector('button').disabled = true;
   try {
-    const cl = await client(); let out = '';
-    const st = cl.messages.stream({ model: MODEL, max_tokens: 16000, thinking: { type: 'adaptive' }, output_config: { effort: 'medium' },
-      system: [{ type: 'text', text: chatSystem(r, c.track.title), cache_control: { type: 'ephemeral' } }], messages: r.claude.chat.map(m => ({ role: m.role, content: m.text })) });
-    st.on('text', d => { out += d; drawChat(out); });
-    const msg = await st.finalMessage();
-    if (!out) out = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('') || (msg.stop_reason === 'refusal' ? 'Claude declined to answer that.' : '(no answer)');
-    r.claude.chat.push({ role: 'assistant', text: out }); r.claude.chatCost = (r.claude.chatCost || 0) + cost(msg.usage);
+    const cl = await client(); let out = '', remembered = false, spent = 0;
+    const msgs = r.claude.chat.map(m => ({ role: m.role, content: m.text }));
+    for (let round = 0; round < 8; round++) { // she asks; Claude may change the transcript (a tool call), is told what happened, and goes on
+      const st = cl.messages.stream({ model: MODEL, max_tokens: 32000, thinking: { type: 'adaptive' }, output_config: { effort: 'medium' }, tools: [EDIT_TOOL],
+        system: [{ type: 'text', text: chatSystem(r, c.track.title), cache_control: { type: 'ephemeral' } }], messages: msgs });
+      st.on('text', d => { out += d; drawChat(out); });
+      const msg = await st.finalMessage(); spent += cost(msg.usage);
+      const uses = (msg.content || []).filter(b => b.type === 'tool_use');
+      if (msg.stop_reason !== 'tool_use' || !uses.length) { if (!out) out = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('') || (msg.stop_reason === 'refusal' ? 'Claude declined to answer that.' : '(no answer)'); break; }
+      const results = [];
+      for (const u of uses) {
+        let res; try { if (!remembered) { api.remember(); remembered = true; } res = applyOps(r.words, (u.input && u.input.ops) || []); r.words = finish(res.words).words; r.styleFor = r.styleFor || 'guide'; } catch (e) { res = { done: [], failed: [String(e.message || e)] }; }
+        out += `${out && !out.endsWith('\n') ? '\n' : ''}${res.done.map(t => `✓ ${t}`).concat(res.failed.map(t => `✗ ${t}`)).join('\n')}\n`; drawChat(out);
+        results.push({ type: 'tool_result', tool_use_id: u.id, content: `Done:\n${res.done.join('\n') || '(nothing)'}\nCould not do:\n${res.failed.join('\n') || '(nothing)'}\nParagraph numbers may have moved. The transcript now:\n${asText(paragraphs(r.words))}`, ...(res.failed.length && !res.done.length ? { is_error: true } : {}) });
+      }
+      api.drawAll(); draw();
+      msgs.push({ role: 'assistant', content: msg.content }, { role: 'user', content: results });
+    }
+    r.claude.chat.push({ role: 'assistant', text: out.trim() }); r.claude.chatCost = (r.claude.chatCost || 0) + spent;
   } catch (e) { r.claude.chat.push({ role: 'assistant', text: `(Could not answer: ${errText(e)}.)` }); }
   finally { form.querySelector('button').disabled = false; drawChat(); try { await api.save(); } catch (e) {} }
 }
@@ -256,7 +284,12 @@ export function initClaude(a) {
   api = a; const st = document.createElement('style'); st.textContent = STYLE; document.head.appendChild(st);
   bar = document.createElement('section'); bar.id = 'claudeBar'; bar.hidden = true; bar.setAttribute('aria-label', 'Claude'); $('#text').before(bar);
   bar.addEventListener('click', onBar);
-  bar.addEventListener('change', e => { if (e.target.id === 'claudeAuto') { try { localStorage.setItem(AUTO, e.target.checked ? '1' : '0'); } catch (err) {} draw(); maybeRun(); } });
+  bar.addEventListener('change', async e => {
+    const r = api.cur && api.cur.tr;
+    if (e.target.id === 'claudeKind' && r) { r.guideKind = e.target.value; try { await api.save(); } catch (err) {} draw(); api.toast(`This transcript follows the ${r.guideKind === 'legal' ? 'legal' : 'ordinary'} guide (${guideName(r.guideKind === 'legal')}). Press Run again to restyle it.`, 6000); return; }
+    if (e.target.id === 'claudeGuideFile' && e.target.files[0] && r) { const f = e.target.files[0]; let text = ''; try { text = await f.text(); } catch (err) {} e.target.value = ''; if (text.trim().length < 200) return api.toast('That file has too little text to be a style guide. Use a plain text (.txt) file of the guide.', 7000); if (text.length > 400000) return api.toast('That file is too long for a style guide (over 400,000 characters).', 7000); const lg = legalOf(r); try { localStorage.setItem(GKEY(lg ? 'legal' : 'normal'), JSON.stringify({ name: f.name.replace(/\.[a-z0-9]+$/i, ''), text, at: Date.now() })); } catch (err) { return api.toast('The guide could not be kept in this browser (its storage may be full).', 7000); } draw(); api.toast(`“${f.name}” is now the guide for every ${lg ? 'legal' : 'ordinary'} transcript. Press Run again to restyle this one.`, 7000); return; }
+    if (e.target.id === 'claudeAuto') { try { localStorage.setItem(AUTO, e.target.checked ? '1' : '0'); } catch (err) {} draw(); maybeRun(); }
+  });
   bar.addEventListener('keydown', e => { if (e.target.id === 'claudeKey' && e.key === 'Enter') { e.preventDefault(); bar.querySelector('[data-c="savekey"]').click(); } });
   chat = document.createElement('aside'); chat.id = 'claudeChat'; chat.hidden = true; chat.setAttribute('aria-label', 'Ask Claude about this transcript');
   chat.innerHTML = `<header><b>Ask Claude about this transcript</b><button type="button" data-x aria-label="Close">Close</button></header><div class="msgs" aria-live="polite"></div><form><textarea placeholder="What did you change in the first ten minutes? Why is paragraph 42 the witness?" aria-label="Your question"></textarea><button class="yes" type="submit">Send</button></form>`;
