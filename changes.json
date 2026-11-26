@@ -1,5 +1,14 @@
 [
   {
+    "version": 132,
+    "date": "2026-11-26",
+    "items": [
+      "Transcripts: the style guide's paragraph rule. The recogniser breaks paragraphs at every pause, which the guides do not allow; now one speaker's pause breaks are joined into one paragraph, and only the breaks the guide wants are kept (a new speaker; for Rev also a speaker turning to address someone else, or after \"strike that\"), which Claude marks.",
+      "Transcripts: no sentence is left without its mark. After Claude, Mixtape makes sure every paragraph ends with a full stop, a question mark or the guide's dash, starts with a capital, and that \"i\" is \"I\".",
+      "Transcripts: Claude is shown worked examples of false starts in each guide's dash (Rev \"the -- we\", TranscribeMe \"the-- we\") and asked to look for them, and the bar now says how many false starts were marked, how many pause breaks were joined and how many missing full stops Mixtape added."
+    ]
+  },
+  {
     "version": 131,
     "date": "2026-11-26",
     "items": [

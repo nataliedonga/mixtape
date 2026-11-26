@@ -1,5 +1,5 @@
 // node claude-check.mjs — applying Claude's answer to a transcript, on an invented hearing (no network, no real recording).
-import { paragraphs, asText, pieces, apply, punctuate, itemReader, findQuote, tally, cost, request, instructions, SCHEMA } from './claude-core.js';
+import { paragraphs, asText, pieces, apply, punctuate, itemReader, joinSameSpeaker, finish, dashes, findQuote, tally, cost, request, instructions, SCHEMA } from './claude-core.js';
 let pass = 0, fail = 0; const ok = (c, name) => { if (c) { pass++; console.log('ok   ' + name); } else { fail++; console.log('FAIL ' + name); } };
 const mk = lines => { const w = []; let t = 0; for (const [sp, text, side] of lines) text.split(' ').forEach((x, k) => w.push({ t: x, s: +(t += 0.4).toFixed(2), e: +(t + 0.3).toFixed(2), ...(k === 0 ? { p: true, ...(sp ? { sp } : {}), ...(side ? { side } : {}) } : {}) })); return w; };
 const words = mk([
@@ -31,7 +31,7 @@ const many = paragraphs(mk(Array.from({ length: 40 }, (_, i) => ['', `line ${i} 
 const ps = pieces(many, 6000); ok(ps.length === 3 && ps[0][1] === ps[1][0] && ps[2][1] === 40 && ps[0][1] === 15, 'a long transcript is cut into parts of about 6,000 words: ' + JSON.stringify(ps));
 const req = request(many, ps[2], { title: 'Test', people: [{ id: 'P1', label: 'Judge' }], legal: true });
 ok(/People already labelled .*P1 = Judge/.test(req) && /for context only/.test(req) && /The paragraphs to answer for \(30 to 39\)/.test(req), 'a later part carries the people and a few paragraphs before it');
-ok(/TranscribeMe/.test(instructions(true)) && /Rev's style guide/.test(instructions(false)) && !/TranscribeMe/.test(instructions(false)), 'legal transcripts follow TranscribeMe, others follow Rev');
+ok(/STYLE GUIDE: TranscribeMe/.test(instructions(true)) && /Rev's style guide/.test(instructions(false)) && !/STYLE GUIDE: TranscribeMe/.test(instructions(false)), 'legal transcripts follow TranscribeMe, others follow Rev');
 ok(SCHEMA.required.join() === 'people,turns,paras,inserts,summary' && SCHEMA.properties.turns.items.additionalProperties === false, 'the answer has a fixed shape');
 ok(Math.abs(cost({ input_tokens: 12000, output_tokens: 6000 }) - 0.168) < 1e-9, 'cost: 12,000 words in and 6,000 out on Opus 5.5 is $0.168');
 { // punctuation and capitals: only the same words, in the same order
@@ -57,5 +57,19 @@ ok(/YOUR BIBLE/.test(instructions(true)) && /STYLE GUIDE: TranscribeMe/.test(ins
   const got = []; const rd = itemReader((k, x) => got.push(k + ':' + (x.para ?? x.id)));
   for (let i = 0; i < json.length; i += 7) rd.push(json.slice(i, i + 7));
   ok(got.join(' ') === 'people:P1 turns:0 turns:2 paras:0', 'items are read as they arrive, even with braces and quotes inside the text: ' + got.join(' ')); }
+
+{ // the guide's paragraph rule: one speaker's pause breaks are joined; a kept break and a notation stay
+  const w = mk([['A', 'so I went'], ['A', 'to the shop'], ['B', 'and then'], ['B', 'Your Honour may I'], ['B', 'strike that']]);
+  w.splice(6, 0, { t: '(A', s: 2, e: 2, p: true, lg: { k: 'n' } }, { t: 'recess.)', s: 2, e: 2 });
+  const ps0 = paragraphs(w), keep = new Set([ps0[5].i0]); // Claude kept the break at "strike that"
+  const j = joinSameSpeaker(w, keep), flat = j.words.map(x => (x.p ? ' / ' + (x.sp ? x.sp + ': ' : '') : ' ') + x.t).join('').trim();
+  ok(flat === '/ A: so I went to the shop / (A recess.) / B: and then Your Honour may I / B: strike that' && j.joined === 2, 'pause breaks by one speaker are joined; a notation and a break Claude kept stay: ' + flat + ' (' + j.joined + ' joined)'); }
+{ // the rules that need no judgement
+  const w = mk([['A', 'so where were you'], ['B', 'i was at home,'], ['A', 'and then you --'], ['B', "yes i'm sure?"]]);
+  // (nothing else to set up)
+  const f = finish(w), t = f.words.map(x => (x.p ? ' / ' : ' ') + x.t).join('').trim();
+  ok(t === "/ So where were you. / I was at home. / And then you -- / Yes I'm sure?", 'every paragraph ends with a mark (a dash counts), starts with a capital; "i" is "I"; a comma at the end becomes a full stop: ' + t);
+  ok(f.ends >= 2 && f.caps >= 3, 'what Mixtape fixed itself is counted: ' + f.ends + ' ends, ' + f.caps + ' capitals'); }
+{ const w = mk([['A', 'I went to the -- we drove there.']]); ok(dashes(w) === 1 && dashes(finish(w).words) === 1, 'false starts with the guide’s dash are counted, and a paragraph already ending with a mark is left alone'); }
 
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -39,8 +39,8 @@ const COMMON = `You are a senior transcript editor. You receive a transcript tha
 
 Your job, using the logic of the conversation:
 1. Decide who the people are and give each a label (rules below). Use names only when the transcript itself gives them (a greeting, an introduction, "Ms. Dlamini, you may proceed"). Never invent a name.
-2. Say who speaks at every point: list each place where the speaker changes. A change at the start of a paragraph has starts_with "". A change inside a paragraph has starts_with set to the first 3 to 8 words of the new speaker's part, copied exactly, character for character, from that paragraph.
-3. Punctuate: for every paragraph you were given (except notations), write it out again in "paras" with sentence punctuation and capital letters as the guidelines below ask: full stops, commas, question marks, capitals at sentence starts, for names, for "I". Use exactly the same words in exactly the same order: you may only change capital letters and add or move punctuation marks attached to words. Never add, drop, merge, split or respell a word; never turn number words into digits; never remove a filler (um, uh) or a repeated word: the guidelines' word rules are applied separately.
+2. Say who speaks, and where each paragraph begins. The paragraphs you were given were broken at every pause, which the guide does not allow ("not for a short pause"): consecutive paragraphs by the same speaker are joined into one, unless you keep a break. List in "turns": (a) every place where the speaker changes, and (b) every place where the guide wants a new paragraph although the speaker stays the same (for Rev: the speaker turns to address someone else, or after "strike that"). A place at the start of a paragraph has starts_with "". A place inside a paragraph has starts_with set to the first 3 to 8 words from that point, copied exactly from that paragraph. Any break you do not list, between paragraphs of one speaker, is removed.
+3. Punctuate: for every paragraph you were given (except notations), write it out again in "paras" with sentence punctuation and capital letters as the guidelines below ask: full stops, commas, question marks, capitals at sentence starts, for names, for "I". Every sentence ends with a mark: every paragraph's text must end with a full stop, a question mark or the guide's dash for speech that trails off or is cut off. Mark every false start the guide describes: when a speaker abandons a phrase and starts again ("I went to the we drove there", "is it was it on the fifth"), put the guide's dash at the break (Rev: "I went to the -- we drove there"; TranscribeMe: "I went to the-- we drove there"). Look for them deliberately: they are common in speech. Use exactly the same words in exactly the same order: you may only change capital letters and add or move punctuation marks attached to words. Never add, drop, merge, split or respell a word; never turn number words into digits; never remove a filler (um, uh) or a repeated word: the guidelines' word rules are applied separately.
 4. Put in the notations the guidelines call for, only where the words clearly show the event (an exhibit is marked or received, a recess is taken, a witness is sworn). Each goes after the paragraph given; "after" is "" for the end of that paragraph, or the exact last 3 to 8 words after which it belongs.
 
 Evidence, strongest first: a side of the recording (left/right are different people, recorded separately: trust them), a label the audio gave, what is said (questions and answers, "Your Honour", who is addressed by name, who swears or is sworn), and the flow of the exchange. Think it through; when it is not clear, keep the label the audio gave and say why in "why".
@@ -51,7 +51,7 @@ const LEGAL = `This is a LEGAL transcript (a hearing, deposition, trial, intervi
 
 const NORMAL = `This is an ordinary transcript (an interview, a call, a meeting, a podcast). Follow Rev's style guide, given in full below.`;
 
-const BIBLE = `THE STYLE GUIDE BELOW IS YOUR BIBLE. Follow every rule in it that concerns speakers, paragraphs, punctuation, capital letters and notations. Where anything else in these instructions seems to differ from the guide, the guide wins, except for one thing: you never add, remove or change a heard word (the guide's word rules, such as removing fillers or writing numbers as digits, are applied separately by Mixtape, which hides words without deleting them). When the guide gives an example, match its marks exactly. In "summary", say which guide rules you applied and any you could not apply.`;
+const BIBLE = `THE STYLE GUIDE BELOW IS YOUR BIBLE. Follow every rule in it that concerns speakers, paragraphs, punctuation, capital letters and notations. Where anything else in these instructions seems to differ from the guide, the guide wins, except for one thing: you never add, remove or change a heard word (the guide's word rules, such as removing fillers or writing numbers as digits, are applied separately by Mixtape, which hides words without deleting them). When the guide gives an example, match its marks exactly. In "summary", say which guide rules you applied, how many false starts you marked, and any rule you could not apply.`;
 
 export function instructions(legal) { return `${COMMON}\n\n${legal ? LEGAL : NORMAL}\n\n${BIBLE}\n\n${guideFor(legal)}`; }
 export function request(paras, piece, { title = '', people = [], legal = false, cast = [] } = {}) {
@@ -132,7 +132,9 @@ export function apply(words, paras, piece, answer) {
     res = res.slice(0, x.at + 1).concat(note, rest);
     log.push({ kind: 'insert', para: x.para, text: x.text, quote: x.quote, why: x.why });
   }
-  return { words: res, log };
+  // where Claude placed a turn (word indices after the notations went in): breaks it chose to keep
+  const keep = new Set(); for (const [at] of starts) { let shift = 0; for (const x of ins) if (x.at < at) shift += x.text.split(/\s+/).length; keep.add(at + shift); }
+  return { words: res, log, keep };
 }
 const speakerBefore = (ws, i) => { for (let k = i; k >= 0; k--) if (ws[k].p && !(ws[k].lg && ws[k].lg.k === 'n')) return ws[k].sp || ''; return ''; };
 
@@ -155,6 +157,39 @@ export function punctuate(words, paras, answerParas) {
   }
   return { words: out, marked, refused };
 }
+
+/* Paragraphs, as the guides want them: consecutive paragraphs by the same speaker become one, except where Claude kept a
+   break (keep: word indices). A notation always stands alone. Returns { words, joined }. */
+export function joinSameSpeaker(words, keep = new Set()) {
+  const out = words.slice(); let joined = 0, prevSp = null, prevNote = true;
+  for (let i = 0; i < out.length; i++) {
+    const w = out[i]; if (!(i === 0 || w.p)) continue;
+    const note = !!(w.lg && w.lg.k === 'n');
+    if (i > 0 && !note && !prevNote && w.sp && w.sp === prevSp && !keep.has(i)) { const { p, sp, side, ...rest } = w; out[i] = rest; joined++; continue; }
+    prevNote = note; if (!note) prevSp = w.sp || prevSp;
+  }
+  return { words: out, joined };
+}
+/* The guide's rules that need no judgement, made sure of after Claude: every paragraph ends with a mark (a full stop
+   where none was put; a comma, semicolon or colon at the end becomes a full stop), starts with a capital, and "i" is
+   always "I". Never changes a word's letters otherwise. Returns { words, ends, caps }. */
+export function finish(words) {
+  const out = words.slice(); let ends = 0, caps = 0;
+  const starts = []; out.forEach((w, i) => { if (i === 0 || w.p) starts.push(i); });
+  starts.forEach((a, k) => {
+    const b = k + 1 < starts.length ? starts[k + 1] : out.length, w0 = out[a];
+    if (w0.lg && w0.lg.k === 'n') return;
+    // the end
+    const last = b - 1, t = String(out[last].t);
+    if (!/(\.|\?|!|--)["')\]]*$/.test(t)) { out[last] = { ...out[last], t: /[,;:]["')\]]*$/.test(t) ? t.replace(/[,;:](["')\]]*)$/, '.$1') : t.replace(/(["')\]]*)$/, '.$1') }; ends++; }
+    // the start
+    const f = String(out[a].t), m = /^([("'\[]*)([a-z])/.exec(f); if (m) { out[a] = { ...out[a], t: m[1] + m[2].toUpperCase() + f.slice(m[0].length) }; caps++; }
+  });
+  for (let i = 0; i < out.length; i++) { const t = String(out[i].t); if (/^i('[a-z]+)?([.,?!;:-]*)$/.test(t)) { out[i] = { ...out[i], t: 'I' + t.slice(1) }; caps++; } }
+  return { words: out, ends, caps };
+}
+/* how many false starts carry the guide's dash */
+export const dashes = words => words.filter(w => /--/.test(String(w.t))).length;
 
 /* how much it changed, in plain numbers */
 export function tally(log) {
