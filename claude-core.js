@@ -87,9 +87,12 @@ export function findQuote(toks, a, b, quote, end = false) {
 }
 /* answer: { people, turns, inserts } for paragraphs [a, b). Returns { words, log } — a new array; the words handed in
    are not changed. log: [{ kind: 'speaker' | 'split' | 'insert' | 'skipped', para, from, to, quote, why, text }] */
-export function apply(words, paras, piece, answer) {
+/* given: the words as they were when Claude was asked (same length, same order). Claude quotes places in the words it was
+   GIVEN, so the quotes are looked up there: by the time this runs the paragraph may already be restyled (a spelling
+   corrected, a filler left out), and the quote would no longer be found in it. */
+export function apply(words, paras, piece, answer, given = words) {
   const [a, b] = piece, label = new Map((answer.people || []).map(p => [p.id, String(p.label || '').trim() || p.id]));
-  const log = [], toks = words.map(w => (w.cut ? '' : w.t));
+  const log = [], toks = (given.length === words.length ? given : words).map(w => (w.cut ? '' : w.t));
   // every place a speaker starts, as a word index
   const starts = new Map(); // word index -> label
   const okPara = k => Number.isInteger(k) && k >= a && k < b && paras[k] && !paras[k].note;
@@ -98,6 +101,7 @@ export function apply(words, paras, piece, answer) {
     const p = paras[t.para], who = label.get(t.speaker) || String(t.speaker || '').trim(); if (!who) continue;
     let at = p.i0;
     if (t.starts_with && String(t.starts_with).trim()) { at = findQuote(toks, p.i0, p.i0 + p.n, t.starts_with); if (at < 0) { log.push({ kind: 'skipped', para: t.para, quote: t.starts_with, why: 'the quoted words were not found in that paragraph, so this change was not made' }); continue; } }
+    if (at !== p.i0) while (at < p.i0 + p.n - 1 && words[at].cut) at++; // a turn that begins on a word since left out begins on the next word that shows
     starts.set(at, { who, why: t.why || '', para: t.para, split: at !== p.i0, quote: t.starts_with || '' });
   }
   // walk the words of this part: each paragraph (or split) gets the speaker in force

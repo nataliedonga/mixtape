@@ -92,7 +92,7 @@ async function run(why = 'auto') {
       if (job.stop || api.cur !== c) throw Object.assign(new Error('stopped'), { stopped: true });
       if (api.sensitive && api.sensitive(c.track.id)) throw new Error('the recording was marked sensitive while Claude was reading it, so it stopped');
       job.part = k + 1; draw();
-      const ps = paragraphs(words), [a, b] = parts[k], label = id => (people.find(p => p.id === id) || {}).label || id;
+      const given = words, ps = paragraphs(words), [a, b] = parts[k], label = id => (people.find(p => p.id === id) || {}).label || id;
       const body = { model: MODEL, max_tokens: 64000, thinking: { type: 'adaptive' }, output_config: { effort: 'high', format: { type: 'json_schema', schema: SCHEMA } },
         system: [{ type: 'text', text: instructions(legal, (ownGuide(legal) || {}).text || ''), cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: request(ps, parts[k], { title: c.track.title, people, legal, cast }) }] };
       const rd = itemReader((key, x) => {
@@ -107,7 +107,7 @@ async function run(why = 'auto') {
       try { ans = JSON.parse(text); } catch (e) { throw new Error('Claude’s answer could not be read'); }
       for (const [kk, v] of Object.entries(msg.usage || {})) if (typeof v === 'number' && kk in usage) usage[kk] += v;
       const pu = restyle(words, ps, (ans.paras || []).filter(x => x.para >= a && x.para < b)); words = pu.words; marks += pu.marked; styledN += pu.styled; cutN += pu.cut; changes.push(...pu.changes); // anything the live reading missed (it changes no word, so the numbers stay)
-      const res = apply(words, ps, parts[k], ans); words = res.words; log.push(...res.log); if (ans.summary) summary.push(ans.summary);
+      const res = apply(words, ps, parts[k], ans, given); words = res.words; log.push(...res.log); if (ans.summary) summary.push(ans.summary);
       for (const i of res.keep) keep.add(i + kept); // breaks Claude chose to keep (counted afresh below, after earlier parts were joined)
       for (const p of ans.people || []) if (!people.some(x => x.id === p.id)) people.push(p);
       const t = tally(res.log); feed(`Part ${k + 1} of ${parts.length} done: ${t.speakers} speakers set, ${t.splits} split, ${t.inserts} notation${t.inserts === 1 ? '' : 's'}${t.skipped ? `, ${t.skipped} could not be placed` : ''}`);

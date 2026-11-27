@@ -1,5 +1,12 @@
 [
   {
+    "version": 136,
+    "date": "2026-11-28",
+    "items": [
+      "Transcripts: Claude no longer loses a change of speaker inside a paragraph. When Claude also corrected a spelling or left out a filler in the same paragraph, the place it pointed to could not be found afterwards, so the speaker change (or a notation) was skipped. Places are now looked up in the words exactly as Claude was given them."
+    ]
+  },
+  {
     "version": 135,
     "date": "2026-11-26",
     "items": [
