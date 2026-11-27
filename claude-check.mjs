@@ -89,14 +89,14 @@ ok(/YOUR BIBLE/.test(instructions(true)) && /STYLE GUIDE: TranscribeMe/.test(ins
   ok(f.ends >= 2 && f.caps >= 3, 'what Mixtape fixed itself is counted: ' + f.ends + ' ends, ' + f.caps + ' capitals'); }
 { const w = mk([['A', 'I went to the -- we drove there.']]); ok(dashes(w) === 1 && dashes(finish(w).words) === 1, 'false starts with the guide’s dash are counted, and a paragraph already ending with a mark is left alone'); }
 
-{ // a turn quoted in the words as given is still placed after the paragraph was restyled (found 27 Nov 2026: "sowetto" had become "Soweto")
-  const w = 'where did you grow up um well i grew up in sowetto and we had four fifty five dollars'.split(' ').map((t, i) => ({ t, s: i, e: i + 0.5, ...(i === 0 ? { p: true, sp: 'Speaker 1' } : {}) }));
-  const ps = paragraphs(w), ans = { people: [{ id: 'S1', label: 'Interviewer' }, { id: 'S2', label: 'Guest' }], turns: [{ para: 0, starts_with: '', speaker: 'S1' }, { para: 0, starts_with: 'um well i grew up in sowetto', speaker: 'S2' }], inserts: [{ para: 0, after: 'four fifty five dollars', text: '(Laughter.)' }] };
-  const st = restyle(w, ps, [{ para: 0, text: 'Where did you grow up? Well, I grew up in Soweto, and we had $455.' }]);
+{ // a turn quoted in the words as given is still placed after the paragraph was restyled (found 27 Nov 2026: a corrected spelling hid the place)
+  const w = 'what did you cook um well i cooked the lentles and it cost four fifty five dollars'.split(' ').map((t, i) => ({ t, s: i, e: i + 0.5, ...(i === 0 ? { p: true, sp: 'Speaker 1' } : {}) }));
+  const ps = paragraphs(w), ans = { people: [{ id: 'S1', label: 'Interviewer' }, { id: 'S2', label: 'Guest' }], turns: [{ para: 0, starts_with: '', speaker: 'S1' }, { para: 0, starts_with: 'um well i cooked the lentles', speaker: 'S2' }], inserts: [{ para: 0, after: 'four fifty five dollars', text: '(Laughter.)' }] };
+  const st = restyle(w, ps, [{ para: 0, text: 'What did you cook? Well, I cooked the lentils, and it cost $455.' }]);
   const flat = r => r.words.filter(x => !x.cut).map(x => (x.p ? ' / ' + (x.sp ? x.sp + ': ' : '') : ' ') + x.t).join('').trim();
   const old = apply(st.words, ps, [0, 1], ans), fix = apply(st.words, ps, [0, 1], ans, w);
   ok(old.log.filter(x => x.kind === 'skipped').length === 2, 'looked up in the restyled words, both the turn and the notation are lost (the fault): ' + old.log.filter(x => x.kind === 'skipped').length + ' skipped');
-  ok(flat(fix) === '/ Interviewer: Where did you grow up? / Guest: Well, I grew up in Soweto, and we had $455. / (Laughter.)' && !fix.log.some(x => x.kind === 'skipped'), 'looked up in the words as given, the turn starts on the first word that shows and the notation goes in: ' + flat(fix));
+  ok(flat(fix) === '/ Interviewer: What did you cook? / Guest: Well, I cooked the lentils, and it cost $455. / (Laughter.)' && !fix.log.some(x => x.kind === 'skipped'), 'looked up in the words as given, the turn starts on the first word that shows and the notation goes in: ' + flat(fix));
   ok(fix.words.length === w.length + 1 && fix.words.filter(x => x.cut).length === 4, 'no word is lost: the filler and the tail of the rewritten amount are hidden, not deleted'); }
 
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
